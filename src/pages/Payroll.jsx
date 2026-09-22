@@ -29,6 +29,14 @@ function toLocalDateStr(d) {
  * Urlaub hat dagegen kein Zeitlimit.
  * Überschneiden sich Urlaub und Krankheit an einem Tag, hat Krankheit Vorrang
  * (konsistent mit §9 BUrlG-Logik in vacationLogic.js).
+ *
+ * Attest-Pflicht (konsistent mit §9 BUrlG-Logik in vacationLogic.js): eine
+ * Krankmeldung zählt hier nur dann als bezahlter Lohnfortzahlungstag, wenn
+ * ein Attest vorliegt (certificate_received === true ODER certificate_file_path
+ * gesetzt). Es gibt serverseitig KEINE Datumsbereichs-Prüfung für sick_leave-
+ * INSERTs (nur clientseitig in validateSickLeaveInput()) — ohne dieses Gate
+ * würde eine unbestätigte, selbst gemeldete Krankmeldung sofort und in voller
+ * Höhe ins Bruttogehalt einfließen.
  */
 function getPaidAbsenceDays(empVacations, empSickLeaves, workedDatesSet, rangeStart, rangeEnd) {
   let vacationDays = 0, sickDays = 0
@@ -42,6 +50,8 @@ function getPaidAbsenceDays(empVacations, empSickLeaves, workedDatesSet, rangeSt
       if (!workedDatesSet.has(ds)) {
         const sick = (empSickLeaves || []).find(s => {
           if (!s.continued_pay_end) return false   // ohne Trigger-Wert kein Lohnfortzahlungs-Tag (defensiv)
+          const hasAttest = s.certificate_received === true || !!s.certificate_file_path
+          if (!hasAttest) return false   // ohne Attest kein bezahlter Lohnfortzahlungstag (siehe vacationLogic.js-Konvention)
           const sickEnd = s.end_date || today
           return ds >= s.start_date && ds <= sickEnd && ds <= s.continued_pay_end
         })
@@ -162,7 +172,8 @@ export default function Payroll() {
       // §11 BUrlG Urlaubsentgelt: genehmigte Urlaube, die (teilweise) in den Monat fallen.
       supabase.from('vacation_requests').select('employee_id, start_date, end_date, status').eq('status', 'approved').lte('start_date', end).gte('end_date', start),
       // §3 EFZG Lohnfortzahlung: Krankmeldungen, die (teilweise) in den Monat fallen (end_date=null → andauernd).
-      supabase.from('sick_leave').select('employee_id, start_date, end_date, continued_pay_end').lte('start_date', end).or(`end_date.is.null,end_date.gte.${start}`),
+      // certificate_received/certificate_file_path: Attest-Pflicht, siehe getPaidAbsenceDays().
+      supabase.from('sick_leave').select('employee_id, start_date, end_date, continued_pay_end, certificate_received, certificate_file_path').lte('start_date', end).or(`end_date.is.null,end_date.gte.${start}`),
     ])
 
     const daysInMonth     = new Date(year, month, 0).getDate()
