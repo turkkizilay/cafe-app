@@ -8,6 +8,56 @@ import { useToast } from '../components/UI/Toast'
 const MINIJOB_LIMIT      = 603    // € / Monat 2026 (§ 8 Abs. 1 Nr. 1 SGB IV)
 const WERKSTUDENT_LIMIT  = 80     // Stunden / Monat (interne Regel Café Buur)
 
+// Lokales Datum als YYYY-MM-DD — KEIN toISOString() (verschiebt in DE um 1 Tag durch UTC)
+function toLocalDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+}
+
+/**
+ * §11 BUrlG (Urlaubsentgelt) & §3 EFZG (Lohnfortzahlung im Krankheitsfall):
+ * Zählt bezahlte Abwesenheitstage (Werktage) im Zeitraum, die NICHT bereits
+ * durch eine erfasste Arbeitszeit an diesem Tag abgedeckt sind.
+ *
+ * Vereinfachung (siehe Audit-Bericht C5): bewertet wird mit den vertraglichen
+ * Ø-Tagesstunden (hours_per_week / 5), NICHT mit dem exakten 13-Wochen-
+ * Durchschnittsverdienst nach §11 BUrlG. Für Mitarbeiter mit stark
+ * schwankenden Stunden bitte mit der Steuerberaterin abstimmen.
+ *
+ * Krankheit zählt nur innerhalb des Lohnfortzahlungszeitraums (§3 EFZG,
+ * max. 6 Wochen, siehe sick_leave.continued_pay_end). Danach zahlt die
+ * Krankenkasse Krankengeld — nicht der Arbeitgeber, daher hier nicht erfasst.
+ * Urlaub hat dagegen kein Zeitlimit.
+ * Überschneiden sich Urlaub und Krankheit an einem Tag, hat Krankheit Vorrang
+ * (konsistent mit §9 BUrlG-Logik in vacationLogic.js).
+ */
+function getPaidAbsenceDays(empVacations, empSickLeaves, workedDatesSet, rangeStart, rangeEnd) {
+  let vacationDays = 0, sickDays = 0
+  const d     = new Date(rangeStart + 'T12:00:00')
+  const end   = new Date(rangeEnd   + 'T12:00:00')
+  const today = toLocalDateStr(new Date())
+  while (d <= end) {
+    const dow = d.getDay()
+    if (dow !== 0 && dow !== 6) {
+      const ds = toLocalDateStr(d)
+      if (!workedDatesSet.has(ds)) {
+        const sick = (empSickLeaves || []).find(s => {
+          if (!s.continued_pay_end) return false   // ohne Trigger-Wert kein Lohnfortzahlungs-Tag (defensiv)
+          const sickEnd = s.end_date || today
+          return ds >= s.start_date && ds <= sickEnd && ds <= s.continued_pay_end
+        })
+        if (sick) {
+          sickDays++
+        } else {
+          const vac = (empVacations || []).find(v => ds >= v.start_date && ds <= v.end_date)
+          if (vac) vacationDays++
+        }
+      }
+    }
+    d.setDate(d.getDate() + 1)
+  }
+  return { vacationDays, sickDays }
+}
+
 const EMP_TYPE_LABEL = { vollzeit:'Vollzeit', teilzeit:'Teilzeit', werkstudent:'Werkstudent', minijob:'Minijob' }
 
 function calcOvertime(emp, actualHours, monthTarget) {
@@ -18,9 +68,10 @@ function calcOvertime(emp, actualHours, monthTarget) {
   }
 }
 
-function OvertimeBadge({ emp, overtime, actualHours, limit }) {
+function OvertimeBadge({ emp, overtime, actualHours, limit, earnings }) {
   if (emp.employment_type === 'minijob') {
-    const earnings  = actualHours * emp.hourly_rate
+    // Minijob-Grenze zählt das TATSÄCHLICH ausgezahlte Brutto — inkl. bezahltem
+    // Urlaub & Lohnfortzahlung bei Krankheit, nicht nur die gearbeiteten Stunden.
     const pct       = Math.min(100, (earnings / MINIJOB_LIMIT) * 100)
     const remaining = MINIJOB_LIMIT - earnings
     const color     = pct > 95 ? '#DC2626' : pct > 80 ? '#D97706' : '#16A34A'
@@ -49,13 +100,15 @@ function OvertimeBadge({ emp, overtime, actualHours, limit }) {
 // DATEV-kompatibler CSV-Export für Steuerberaterin Frau Todt
 function exportDATEV(rows, monthLabel) {
   const EMP_TYPE_DATEV = { vollzeit:'Vollzeit', teilzeit:'Teilzeit', werkstudent:'Werkstudent', minijob:'Geringfügig' }
-  const headers = ['Personalnummer','Nachname','Vorname','Beschäftigungsart','Stunden Soll','Stunden Ist','Überstunden','Stundenlohn EUR','Bruttolohn EUR','Hinweise']
+  const headers = ['Personalnummer','Nachname','Vorname','Beschäftigungsart','Stunden Soll','Stunden Ist','Urlaubsstunden (§11 BUrlG)','Krankheitsstunden (Lohnfortzahlung §3 EFZG)','Überstunden','Stundenlohn EUR','Bruttolohn EUR','Hinweise']
   const rows_csv = rows.map((r, i) => [
     String(i+1).padStart(4,'0'),
     r.last_name, r.first_name,
     EMP_TYPE_DATEV[r.employment_type] || r.employment_type,
     r.monthTarget.toFixed(2).replace('.',','),
     r.actualHours.toFixed(2).replace('.',','),
+    (r.vacationHours || 0).toFixed(2).replace('.',','),
+    (r.sickHours || 0).toFixed(2).replace('.',','),
     r.overtime > 0 ? r.overtime.toFixed(2).replace('.',',') : '0,00',
     r.hourly_rate.toFixed(2).replace('.',','),
     r.total.toFixed(2).replace('.',','),
@@ -101,11 +154,15 @@ export default function Payroll() {
     const start = `${year}-${pad}-01`
     const end   = `${year}-${pad}-${String(new Date(year, month, 0).getDate()).padStart(2,'0')}`
 
-    const [{ data: employees }, { data: entries }, { data: finalized }] = await Promise.all([
+    const [{ data: employees }, { data: entries }, { data: finalized }, { data: vacations }, { data: sickLeaves }] = await Promise.all([
       supabase.from('employees').select('*').eq('is_active', true).order('last_name'),
       supabase.from('time_entries').select('employee_id, hours_worked, date').gte('date', start).lte('date', end),
       // Bereits abgeschlossene (eingefrorene) Lohnwerte für diesen Monat, falls vorhanden.
       supabase.from('payroll_months').select('*').eq('year', year).eq('month', month),
+      // §11 BUrlG Urlaubsentgelt: genehmigte Urlaube, die (teilweise) in den Monat fallen.
+      supabase.from('vacation_requests').select('employee_id, start_date, end_date, status').eq('status', 'approved').lte('start_date', end).gte('end_date', start),
+      // §3 EFZG Lohnfortzahlung: Krankmeldungen, die (teilweise) in den Monat fallen (end_date=null → andauernd).
+      supabase.from('sick_leave').select('employee_id, start_date, end_date, continued_pay_end').lte('start_date', end).or(`end_date.is.null,end_date.gte.${start}`),
     ])
 
     const daysInMonth     = new Date(year, month, 0).getDate()
@@ -117,6 +174,16 @@ export default function Payroll() {
     const finalizedByEmp = Object.fromEntries(
       (finalized || []).filter(f => f.is_finalized).map(f => [f.employee_id, f])
     )
+    const vacationsByEmp = {}
+    ;(vacations || []).forEach(v => {
+      if (!vacationsByEmp[v.employee_id]) vacationsByEmp[v.employee_id] = []
+      vacationsByEmp[v.employee_id].push(v)
+    })
+    const sickByEmp = {}
+    ;(sickLeaves || []).forEach(s => {
+      if (!sickByEmp[s.employee_id]) sickByEmp[s.employee_id] = []
+      sickByEmp[s.employee_id].push(s)
+    })
 
     const result = (employees || []).map(emp => {
       const frozen = finalizedByEmp[emp.id]
@@ -125,19 +192,22 @@ export default function Payroll() {
       // Stundenlohn neu berechnen — sonst würde eine spätere Lohnänderung rückwirkend
       // vergangene, bereits an die Steuerberaterin gemeldete Monate verändern.
       if (frozen) {
-        const payrollHours = frozen.actual_hours  || 0
-        const monthTarget  = frozen.planned_hours || 0
-        const overtime     = frozen.overtime_hours || 0
-        const hourlyRate   = frozen.hourly_rate ?? emp.hourly_rate
-        const grossSalary  = frozen.gross_salary ?? Math.round(payrollHours * hourlyRate * 100) / 100
-        const isAlert      = emp.employment_type === 'minijob'
+        const payrollHours  = frozen.actual_hours   || 0
+        const vacationHours = frozen.vacation_hours || 0
+        const sickHours     = frozen.sick_hours     || 0
+        const paidHours     = payrollHours + vacationHours + sickHours
+        const monthTarget   = frozen.planned_hours  || 0
+        const overtime      = frozen.overtime_hours || 0
+        const hourlyRate    = frozen.hourly_rate ?? emp.hourly_rate
+        const grossSalary   = frozen.gross_salary ?? Math.round(paidHours * hourlyRate * 100) / 100
+        const isAlert       = emp.employment_type === 'minijob'
                                ? grossSalary > MINIJOB_LIMIT
                                : emp.employment_type === 'werkstudent'
                                  ? payrollHours > WERKSTUDENT_LIMIT
                                  : overtime > 0
         return {
           ...emp,
-          payrollHours, actualHours: payrollHours, monthTarget, overtime,
+          payrollHours, actualHours: payrollHours, vacationHours, sickHours, paidHours, monthTarget, overtime,
           limit: emp.employment_type === 'werkstudent' ? WERKSTUDENT_LIMIT
                : emp.employment_type === 'minijob'      ? MINIJOB_LIMIT / hourlyRate
                : monthTarget,
@@ -154,12 +224,26 @@ export default function Payroll() {
       // Stunden × Stundenlohn immer exakt = Brutto ergibt.
       const payrollHours = Math.round(rawHours * 100) / 100
       const actualHours  = payrollHours
-      const dailyH      = emp.hours_per_week / 5
-      const monthTarget = Math.round(dailyH * workdaysInMonth * 100) / 100
+      const dailyH       = emp.hours_per_week ? emp.hours_per_week / 5 : 0
+      const monthTarget  = Math.round(dailyH * workdaysInMonth * 100) / 100
+
+      // §11 BUrlG / §3 EFZG: bezahlte Urlaubs- & Krankheitstage (ohne bereits erfasste
+      // Arbeitszeit an diesem Tag) fließen ins Bruttogehalt ein — siehe getPaidAbsenceDays().
+      const workedDates = new Set(empEntries.filter(e => (e.hours_worked || 0) > 0).map(e => e.date))
+      const { vacationDays, sickDays } = getPaidAbsenceDays(
+        vacationsByEmp[emp.id], sickByEmp[emp.id], workedDates, start, end
+      )
+      const vacationHours = Math.round(vacationDays * dailyH * 100) / 100
+      const sickHours     = Math.round(sickDays * dailyH * 100) / 100
+      const paidHours     = Math.round((payrollHours + vacationHours + sickHours) * 100) / 100
+
+      // Überstunden bleiben ausschließlich an TATSÄCHLICH gearbeiteten Stunden bemessen
+      // (bezahlter Urlaub/Krankheit zählt nicht als Überstunden-Basis).
       const { overtime, limit } = calcOvertime(emp, payrollHours, monthTarget)
-      const grossSalary  = Math.round(payrollHours * emp.hourly_rate * 100) / 100
+      // Brutto = gearbeitete + bezahlte Urlaubs-/Krankheitsstunden × Stundenlohn.
+      const grossSalary  = Math.round(paidHours * emp.hourly_rate * 100) / 100
       const isAlert      = emp.employment_type === 'minijob'
-                             ? grossSalary > MINIJOB_LIMIT
+                             ? grossSalary > MINIJOB_LIMIT   // zählt volles Brutto, nicht nur gearbeitete Stunden
                              : emp.employment_type === 'werkstudent'
                                ? payrollHours > WERKSTUDENT_LIMIT
                                : overtime > 0
@@ -168,7 +252,7 @@ export default function Payroll() {
       const overtimeRounded = Math.round(overtime * 100) / 100
       // Volle Präzision behalten — Anzeige rundet über toLocaleString.
       // Kein toFixed(1) im gespeicherten Wert, sonst wirkt Brutto (aus vollen Stunden) widersprüchlich.
-      return { ...emp, payrollHours, actualHours, monthTarget, overtime: overtimeRounded, limit, grossSalary, total: grossSalary, isAlert, frozen: false }
+      return { ...emp, payrollHours, actualHours, vacationHours, sickHours, paidHours, monthTarget, overtime: overtimeRounded, limit, grossSalary, total: grossSalary, isAlert, frozen: false }
     })
 
     setRows(result)
@@ -192,6 +276,9 @@ export default function Payroll() {
       planned_hours:  r.monthTarget,
       actual_hours:   r.actualHours,
       overtime_hours: r.overtime,
+      vacation_hours: r.vacationHours || 0,
+      sick_hours:     r.sickHours || 0,
+      sick_pay:       Math.round((r.sickHours || 0) * r.hourly_rate * 100) / 100,
       hourly_rate:    r.hourly_rate,
       gross_salary:   r.total,
       total_payout:   r.total,
@@ -295,7 +382,7 @@ export default function Payroll() {
 
         {!isFinalized && !loading && rows.length > 0 && (
           <div className="alert" style={{ marginBottom:16, fontSize:12, color:'var(--text-secondary)' }}>
-            ℹ️ Vorläufige, live berechnete Werte (Basis: aktueller Stundenlohn). Erst nach „Monat abschließen" sind die Zahlen für diesen Monat dauerhaft fixiert.
+            ℹ️ Vorläufige, live berechnete Werte (Basis: aktueller Stundenlohn; enthält bezahlten Urlaub & Lohnfortzahlung bei Krankheit als Ø-Tagesstunden). Erst nach „Monat abschließen" sind die Zahlen für diesen Monat dauerhaft fixiert.
           </div>
         )}
 
@@ -363,8 +450,16 @@ export default function Payroll() {
                             ? `max ${(MINIJOB_LIMIT/r.hourly_rate).toFixed(0)} h`
                             : `${r.monthTarget.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} h`}
                       </td>
-                      <td><strong>{r.actualHours.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} h</strong></td>
-                      <td><OvertimeBadge emp={r} overtime={r.overtime} actualHours={r.actualHours} limit={r.limit} /></td>
+                      <td>
+                        <strong>{r.actualHours.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} h</strong>
+                        {(r.vacationHours > 0 || r.sickHours > 0) && (
+                          <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
+                            {r.vacationHours > 0 && <>+{r.vacationHours.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h Urlaub </>}
+                            {r.sickHours > 0 && <>+{r.sickHours.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h Krank (bez.)</>}
+                          </div>
+                        )}
+                      </td>
+                      <td><OvertimeBadge emp={r} overtime={r.overtime} actualHours={r.actualHours} limit={r.limit} earnings={r.total} /></td>
                       <td>{formatCurrency(r.hourly_rate)}/h</td>
                       <td>
                         <strong style={{ color: r.isAlert ? 'var(--danger)' : 'inherit' }}>
