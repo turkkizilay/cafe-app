@@ -85,11 +85,11 @@ export default function Shifts() {
   useEffect(() => { fetchData() }, [offset])
   useEffect(() => { fetchSwaps() }, [])
 
-    async function fetchData() {
+  async function fetchData() {
     setLoading(true)
     const [{ data: s }, { data: e }] = await Promise.all([
       supabase.from('shifts')
-        .select('*, employees!employee_id(id, first_name, last_name, avatar_color, avatar_url, position)')
+        .select('*')
         .gte('date', start).lte('date', end).order('start_time'),
       supabase.rpc('get_employees_directory'),
     ])
@@ -98,6 +98,9 @@ export default function Shifts() {
       .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '', 'de'))
     setShifts(s || [])
     setEmployees(active)
+    setLoading(false)
+  }
+
   async function fetchSwaps() {
     const [{ data, error }, { data: dir }] = await Promise.all([
       supabase.from('shift_swap_requests')
@@ -115,9 +118,6 @@ export default function Shifts() {
       target: byId[sw.target_id] || null,
     }))
     setSwaps(merged)
-  }
-    if (error) { console.error('Tauschanfragen laden fehlgeschlagen:', error); return }
-    setSwaps(data || [])
   }
 
   async function addShift() {
