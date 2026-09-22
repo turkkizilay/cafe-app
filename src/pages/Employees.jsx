@@ -179,81 +179,85 @@ export default function Employees() {
 
   async function handleSave() {
     if (!saveGuard.begin()) return
-    // ── Pflichtfelder validieren ──
-    if (!form.first_name?.trim()) { setError('Vorname fehlt'); saveGuard.end(); return }
-    if (!form.last_name?.trim())  { setError('Nachname fehlt'); return }
-    if (!form.email?.trim())      { setError('E-Mail fehlt'); return }
-    if (!form.start_date)         { setError('Eintrittsdatum fehlt'); return }
-    const rate = parseFloat(form.hourly_rate)
-    if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError('Stundenlohn ungültig'); return }
+    // ── WICHTIG: try/finally stellt sicher, dass saveGuard.end() und setSaving(false)
+    // bei JEDEM Ausgang aufgerufen werden — egal ob Validierungsfehler, Speicherfehler
+    // oder Erfolg. Vorher blieb der Guard nach dem ersten Klick für den Rest der
+    // Seiten-Session hängen und der "Speichern"-Button reagierte danach gar nicht mehr. ──
+    try {
+      // ── Pflichtfelder validieren ──
+      if (!form.first_name?.trim()) { setError('Vorname fehlt'); return }
+      if (!form.last_name?.trim())  { setError('Nachname fehlt'); return }
+      if (!form.email?.trim())      { setError('E-Mail fehlt'); return }
+      if (!form.start_date)         { setError('Eintrittsdatum fehlt'); return }
+      const rate = parseFloat(form.hourly_rate)
+      if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError('Stundenlohn ungültig'); return }
 
-    // ── Gesetzliche Warnungen ──
-    if (rate < MINDESTLOHN) {
-      setError(`⚠️ Mindestlohn-Warnung: Der Stundenlohn (${rate.toFixed(2)} €) liegt unter dem gesetzlichen Mindestlohn 2026 (${MINDESTLOHN} €/Std). Bitte korrigieren.`)
-      setSaving(false)
-      return
-    }
-    if (form.employment_type === 'werkstudent' && parseFloat(form.hours_per_week) > 20) {
-      setError('⚠️ Werkstudenten-Warnung: Max. 20h/Woche während Vorlesungszeit (§20 SGB IV). Bitte Stunden anpassen oder Beschäftigungsart prüfen.')
-      setSaving(false)
-      return
-    }
-
-    // ── Urlaubstage-Prüfung: nicht unter bereits genehmigte Tage reduzieren ──
-    if (modal === 'edit' && parseInt(form.vacation_days_per_year) < 28) {
-      const { data: approvedVacs } = await supabase
-        .from('vacation_requests')
-        .select('days_count')
-        .eq('employee_id', form.id)
-        .eq('status', 'approved')
-        .gte('start_date', `${new Date().getFullYear()}-01-01`)
-      const usedDays = (approvedVacs || []).reduce((s, v) => s + (v.days_count || 0), 0)
-      if (usedDays > parseInt(form.vacation_days_per_year)) {
-        setError(`⚠️ Achtung: ${form.first_name} hat bereits ${usedDays} Urlaubstage in ${new Date().getFullYear()} genehmigt. Neue Anzahl (${form.vacation_days_per_year}) würde ein negatives Urlaubssaldo erzeugen. Bitte zuerst genehmigte Anträge anpassen.`)
-        setSaving(false)
+      // ── Gesetzliche Warnungen ──
+      if (rate < MINDESTLOHN) {
+        setError(`⚠️ Mindestlohn-Warnung: Der Stundenlohn (${rate.toFixed(2)} €) liegt unter dem gesetzlichen Mindestlohn 2026 (${MINDESTLOHN} €/Std). Bitte korrigieren.`)
         return
       }
-    }
+      if (form.employment_type === 'werkstudent' && parseFloat(form.hours_per_week) > 20) {
+        setError('⚠️ Werkstudenten-Warnung: Max. 20h/Woche während Vorlesungszeit (§20 SGB IV). Bitte Stunden anpassen oder Beschäftigungsart prüfen.')
+        return
+      }
 
-    setSaving(true)
-    setError('')
+      // ── Urlaubstage-Prüfung: nicht unter bereits genehmigte Tage reduzieren ──
+      if (modal === 'edit' && parseInt(form.vacation_days_per_year) < 28) {
+        const { data: approvedVacs } = await supabase
+          .from('vacation_requests')
+          .select('days_count')
+          .eq('employee_id', form.id)
+          .eq('status', 'approved')
+          .gte('start_date', `${new Date().getFullYear()}-01-01`)
+        const usedDays = (approvedVacs || []).reduce((s, v) => s + (v.days_count || 0), 0)
+        if (usedDays > parseInt(form.vacation_days_per_year)) {
+          setError(`⚠️ Achtung: ${form.first_name} hat bereits ${usedDays} Urlaubstage in ${new Date().getFullYear()} genehmigt. Neue Anzahl (${form.vacation_days_per_year}) würde ein negatives Urlaubssaldo erzeugen. Bitte zuerst genehmigte Anträge anpassen.`)
+          return
+        }
+      }
 
-    // ── FIX: Leere Strings → null (PostgreSQL akzeptiert "" nicht für optionale Felder) ──
-    const n = v => (v === '' || v === undefined || v === null) ? null : v
+      setSaving(true)
+      setError('')
 
-    const payload = {
-      first_name:             form.first_name.trim(),
-      last_name:              form.last_name.trim(),
-      email:                  form.email.trim().toLowerCase(),
-      phone:                  n(form.phone),
-      birth_date:             n(form.birth_date),
-      address:                n(form.address),
-      position:               n(form.position),
-      employment_type:        form.employment_type,
-      hours_per_week:         parseFloat(form.hours_per_week),
-      hourly_rate:            rate,
-      start_date:             form.start_date,
-      end_date:               n(form.end_date),
-      vacation_days_per_year: parseInt(form.vacation_days_per_year),
-      iban:                   n(form.iban),
-      notes:                  n(form.notes),
-      avatar_initials:        getInitials(form.first_name, form.last_name),
-      avatar_color:           getAvatarColor(form.first_name),
-      ...(modal === 'add' && { is_active: true }),
-    }
+      // ── FIX: Leere Strings → null (PostgreSQL akzeptiert "" nicht für optionale Felder) ──
+      const n = v => (v === '' || v === undefined || v === null) ? null : v
 
-    const { error: err } = modal === 'add'
-      ? await supabase.from('employees').insert([payload])
-      : await supabase.from('employees').update(payload).eq('id', form.id)
+      const payload = {
+        first_name:             form.first_name.trim(),
+        last_name:              form.last_name.trim(),
+        email:                  form.email.trim().toLowerCase(),
+        phone:                  n(form.phone),
+        birth_date:             n(form.birth_date),
+        address:                n(form.address),
+        position:               n(form.position),
+        employment_type:        form.employment_type,
+        hours_per_week:         parseFloat(form.hours_per_week),
+        hourly_rate:            rate,
+        start_date:             form.start_date,
+        end_date:               n(form.end_date),
+        vacation_days_per_year: parseInt(form.vacation_days_per_year),
+        iban:                   n(form.iban),
+        notes:                  n(form.notes),
+        avatar_initials:        getInitials(form.first_name, form.last_name),
+        avatar_color:           getAvatarColor(form.first_name),
+        ...(modal === 'add' && { is_active: true }),
+      }
 
-    if (err) {
-      setError(translateSupabaseError(err, 'Mitarbeiter speichern'))
+      const { error: err } = modal === 'add'
+        ? await supabase.from('employees').insert([payload])
+        : await supabase.from('employees').update(payload).eq('id', form.id)
+
+      if (err) {
+        setError(translateSupabaseError(err, 'Mitarbeiter speichern'))
+        return
+      }
+      setModal(null)
+      fetchEmployees()
+    } finally {
       setSaving(false)
-      return
+      saveGuard.end()
     }
-    setModal(null)
-    setSaving(false)
-    fetchEmployees()
   }
 
   async function handleDeactivate(id, name) {
