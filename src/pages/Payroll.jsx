@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import Avatar from '../components/UI/Avatar'
 import { supabase, formatCurrency } from '../lib/supabase'
 import { logActivity } from '../lib/activityLog'
+import { useProfile } from '../context/ProfileContext'
+import { useToast } from '../components/UI/Toast'
 
 const MINIJOB_LIMIT      = 603    // € / Monat 2026 (§ 8 Abs. 1 Nr. 1 SGB IV)
 const WERKSTUDENT_LIMIT  = 80     // Stunden / Monat (interne Regel Café Buur)
@@ -69,12 +71,16 @@ function exportDATEV(rows, monthLabel) {
 }
 
 export default function Payroll() {
+  const { isAdmin } = useProfile()
+  const toast = useToast()
   const now = new Date()
-  const [year,    setYear]    = useState(now.getFullYear())
-  const [month,   setMonth]   = useState(now.getMonth() + 1)
-  const [rows,    setRows]    = useState([])
-  const [loading, setLoading] = useState(true)
-  const [filter,  setFilter]  = useState('all') // all | overtime | alert
+  const [year,        setYear]        = useState(now.getFullYear())
+  const [month,       setMonth]       = useState(now.getMonth() + 1)
+  const [rows,        setRows]        = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [filter,      setFilter]      = useState('all') // all | overtime | alert
+  const [isFinalized, setIsFinalized] = useState(false)
+  const [finalizing,  setFinalizing]  = useState(false)
 
   function handleDatevExport(filtered, monthLabel) {
     exportDATEV(filtered, monthLabel)
@@ -95,9 +101,11 @@ export default function Payroll() {
     const start = `${year}-${pad}-01`
     const end   = `${year}-${pad}-${String(new Date(year, month, 0).getDate()).padStart(2,'0')}`
 
-    const [{ data: employees }, { data: entries }] = await Promise.all([
+    const [{ data: employees }, { data: entries }, { data: finalized }] = await Promise.all([
       supabase.from('employees').select('*').eq('is_active', true).order('last_name'),
       supabase.from('time_entries').select('employee_id, hours_worked, date').gte('date', start).lte('date', end),
+      // Bereits abgeschlossene (eingefrorene) Lohnwerte für diesen Monat, falls vorhanden.
+      supabase.from('payroll_months').select('*').eq('year', year).eq('month', month),
     ])
 
     const daysInMonth     = new Date(year, month, 0).getDate()
@@ -106,7 +114,39 @@ export default function Payroll() {
       return d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0
     }).reduce((a,b) => a+b, 0)
 
+    const finalizedByEmp = Object.fromEntries(
+      (finalized || []).filter(f => f.is_finalized).map(f => [f.employee_id, f])
+    )
+
     const result = (employees || []).map(emp => {
+      const frozen = finalizedByEmp[emp.id]
+
+      // Abgeschlossener Monat: eingefrorene Werte anzeigen, NICHT mit dem aktuellen
+      // Stundenlohn neu berechnen — sonst würde eine spätere Lohnänderung rückwirkend
+      // vergangene, bereits an die Steuerberaterin gemeldete Monate verändern.
+      if (frozen) {
+        const payrollHours = frozen.actual_hours  || 0
+        const monthTarget  = frozen.planned_hours || 0
+        const overtime     = frozen.overtime_hours || 0
+        const hourlyRate   = frozen.hourly_rate ?? emp.hourly_rate
+        const grossSalary  = frozen.gross_salary ?? Math.round(payrollHours * hourlyRate * 100) / 100
+        const isAlert      = emp.employment_type === 'minijob'
+                               ? grossSalary > MINIJOB_LIMIT
+                               : emp.employment_type === 'werkstudent'
+                                 ? payrollHours > WERKSTUDENT_LIMIT
+                                 : overtime > 0
+        return {
+          ...emp,
+          payrollHours, actualHours: payrollHours, monthTarget, overtime,
+          limit: emp.employment_type === 'werkstudent' ? WERKSTUDENT_LIMIT
+               : emp.employment_type === 'minijob'      ? MINIJOB_LIMIT / hourlyRate
+               : monthTarget,
+          hourly_rate: hourlyRate,
+          grossSalary, total: grossSalary, isAlert,
+          frozen: true,
+        }
+      }
+
       const empEntries  = (entries || []).filter(e => e.employee_id === emp.id)
       const rawHours    = empEntries.reduce((s, e) => s + (e.hours_worked || 0), 0)
       // payrollHours = eine einzige, auf 2 Nachkommastellen gerundete Stundenbasis.
@@ -128,14 +168,61 @@ export default function Payroll() {
       const overtimeRounded = Math.round(overtime * 100) / 100
       // Volle Präzision behalten — Anzeige rundet über toLocaleString.
       // Kein toFixed(1) im gespeicherten Wert, sonst wirkt Brutto (aus vollen Stunden) widersprüchlich.
-      return { ...emp, payrollHours, actualHours, monthTarget, overtime: overtimeRounded, limit, grossSalary, total: grossSalary, isAlert }
+      return { ...emp, payrollHours, actualHours, monthTarget, overtime: overtimeRounded, limit, grossSalary, total: grossSalary, isAlert, frozen: false }
     })
 
     setRows(result)
+    setIsFinalized(result.length > 0 && result.every(r => r.frozen))
     } catch (err) {
       toast.error('Fehler beim Laden der Lohndaten: ' + err.message)
     }
     setLoading(false)
+  }
+
+  // Ein Monat kann erst abgeschlossen werden, wenn er tatsächlich vorbei ist —
+  // sonst würden unvollständige, noch laufende Daten eingefroren.
+  const monthHasEnded = new Date(year, month, 1) <= new Date()
+
+  async function finalizeMonth() {
+    if (finalizing || rows.length === 0) return
+    setFinalizing(true)
+    const payload = rows.map(r => ({
+      employee_id:    r.id,
+      year, month,
+      planned_hours:  r.monthTarget,
+      actual_hours:   r.actualHours,
+      overtime_hours: r.overtime,
+      hourly_rate:    r.hourly_rate,
+      gross_salary:   r.total,
+      total_payout:   r.total,
+      is_finalized:   true,
+    }))
+    const { error } = await supabase.from('payroll_months').upsert(payload, { onConflict: 'employee_id,year,month' })
+    setFinalizing(false)
+    if (error) { toast.error('Fehler beim Abschließen: ' + error.message); return }
+    toast.success(`✅ ${monthLabel} abgeschlossen — Werte sind jetzt eingefroren.`)
+    logActivity({
+      action: 'payroll.month_finalized', category: 'payroll',
+      summary: `hat die Lohnabrechnung für ${monthLabel} abgeschlossen.`,
+      targetType: 'payroll_month', metadata: { year, month },
+    })
+    fetchPayroll()
+  }
+
+  async function reopenMonth() {
+    if (finalizing) return
+    if (!window.confirm(`${monthLabel} wirklich wieder öffnen? Die Werte werden dann bei jedem Aufruf wieder live aus den aktuellen Daten neu berechnet, bis der Monat erneut abgeschlossen wird.`)) return
+    setFinalizing(true)
+    const { error } = await supabase.from('payroll_months').update({ is_finalized: false }).eq('year', year).eq('month', month)
+    setFinalizing(false)
+    if (error) { toast.error('Fehler beim Öffnen: ' + error.message); return }
+    toast.info(`${monthLabel} wieder geöffnet.`)
+    logActivity({
+      action: 'payroll.month_reopened', category: 'payroll',
+      summary: `hat die Lohnabrechnung für ${monthLabel} wieder geöffnet.`,
+      targetType: 'payroll_month', metadata: { year, month },
+    })
+    fetchPayroll()
   }
 
   const filtered = rows.filter(r => {
@@ -159,6 +246,18 @@ export default function Payroll() {
           <select value={month} onChange={e => setMonth(+e.target.value)} style={{ width:'auto' }}>
             {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
           </select>
+          {isAdmin && (
+            isFinalized ? (
+              <button className="btn btn-sm" onClick={reopenMonth} disabled={finalizing}>
+                🔓 Wieder öffnen
+              </button>
+            ) : (
+              <button className="btn btn-sm" onClick={finalizeMonth} disabled={finalizing || loading || rows.length === 0 || !monthHasEnded}
+                title={!monthHasEnded ? 'Kann erst nach Monatsende abgeschlossen werden' : 'Werte für diesen Monat einfrieren'}>
+                🔒 Monat abschließen
+              </button>
+            )
+          )}
           <button className="btn" onClick={() => handleDatevExport(filtered, monthLabel)} disabled={loading || rows.length === 0}>
             📊 DATEV Export (CSV)
           </button>
@@ -173,7 +272,10 @@ export default function Payroll() {
         <div className="stats-grid mb-5">
           <div className="stat-card">
             <div className="stat-label">Monat</div>
-            <div className="stat-value" style={{ fontSize:17 }}>{monthLabel}</div>
+            <div className="stat-value" style={{ fontSize:17 }}>
+              {monthLabel}
+              {isFinalized && <span className="badge badge-green" style={{ marginLeft:8, fontSize:10, verticalAlign:'middle' }}>🔒 abgeschlossen</span>}
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Gesamtstunden</div>
@@ -190,6 +292,12 @@ export default function Payroll() {
             <div className="stat-value" style={{ fontSize:20 }}>{formatCurrency(totalPayout)}</div>
           </div>
         </div>
+
+        {!isFinalized && !loading && rows.length > 0 && (
+          <div className="alert" style={{ marginBottom:16, fontSize:12, color:'var(--text-secondary)' }}>
+            ℹ️ Vorläufige, live berechnete Werte (Basis: aktueller Stundenlohn). Erst nach „Monat abschließen" sind die Zahlen für diesen Monat dauerhaft fixiert.
+          </div>
+        )}
 
         {/* Alert Banner */}
         {alertCount > 0 && (
