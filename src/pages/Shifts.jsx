@@ -85,16 +85,19 @@ export default function Shifts() {
   useEffect(() => { fetchData() }, [offset])
   useEffect(() => { fetchSwaps() }, [])
 
-  async function fetchData() {
+    async function fetchData() {
     setLoading(true)
     const [{ data: s }, { data: e }] = await Promise.all([
       supabase.from('shifts')
         .select('*, employees!employee_id(id, first_name, last_name, avatar_color, avatar_url, position)')
         .gte('date', start).lte('date', end).order('start_time'),
-      supabase.from('employees').select('id, first_name, last_name, avatar_color, avatar_url, position, hours_per_week').eq('is_active', true).order('last_name'),
+      supabase.rpc('get_employees_directory'),
     ])
+    const active = (e || [])
+      .filter(emp => emp.is_active)
+      .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '', 'de'))
     setShifts(s || [])
-    setEmployees(e || [])
+    setEmployees(active)
     setLoading(false)
   }
 
