@@ -23,6 +23,7 @@ import MyHours from './pages/MyHours'
 import AbsenceCalendar from './pages/AbsenceCalendar'
 import Account        from './pages/Account'
 import InvitationAccept from './pages/InvitationAccept'
+import ResetPassword    from './pages/ResetPassword'
 import AccessDenied    from './pages/AccessDenied'
 import ActivityLog     from './pages/ActivityLog'
 
@@ -152,6 +153,7 @@ export default function App() {
   const [sickPending, setSickPending] = useState(0)
   const [loading,     setLoading]     = useState(true)
   const [fetchErr,    setFetchErr]    = useState(null)
+  const [recoveryDone,setRecoveryDone]= useState(false)
 
   // ── Auto-Logout ────────────────────────────────────────────────────────
   const handleAutoLogout = useCallback(async (reason) => {
@@ -267,6 +269,14 @@ export default function App() {
   // ── URL-Hash Fehler (z.B. abgelaufener Email-Bestätigungslink) ──
   if (window.location.hash.includes('error=')) {
     return <AuthErrorScreen />
+  }
+
+  // ── Passwort-Reset-Link ("Passwort vergessen") ───────────────
+  // Supabase erstellt aus dem Reset-Link automatisch eine gültige Session
+  // (type=recovery im URL-Hash). Statt direkt ins Dashboard zu springen,
+  // muss hier erst ein neues Passwort festgelegt werden.
+  if (window.location.hash.includes('type=recovery') && !recoveryDone) {
+    return <ResetPassword onDone={() => setRecoveryDone(true)} />
   }
 
   // ── Einladungs-Link ─────────────────────────────────────────
