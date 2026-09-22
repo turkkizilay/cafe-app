@@ -98,17 +98,24 @@ export default function Shifts() {
       .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '', 'de'))
     setShifts(s || [])
     setEmployees(active)
-    setLoading(false)
-  }
-
   async function fetchSwaps() {
-    const { data, error } = await supabase.from('shift_swap_requests')
-      .select(`*,
-        requester:employees!requester_id(first_name, last_name, avatar_color, avatar_url),
-        target:employees!target_id(first_name, last_name, avatar_color, avatar_url),
-        requester_shift:shifts!requester_shift_id(date, start_time, end_time),
-        target_shift:shifts!target_shift_id(date, start_time, end_time)`)
-      .order('created_at', { ascending:false })
+    const [{ data, error }, { data: dir }] = await Promise.all([
+      supabase.from('shift_swap_requests')
+        .select(`*,
+          requester_shift:shifts!requester_shift_id(date, start_time, end_time),
+          target_shift:shifts!target_shift_id(date, start_time, end_time)`)
+        .order('created_at', { ascending:false }),
+      supabase.rpc('get_employees_directory'),
+    ])
+    if (error) { console.error('Tauschanfragen laden fehlgeschlagen:', error); return }
+    const byId = Object.fromEntries((dir || []).map(e => [e.id, e]))
+    const merged = (data || []).map(sw => ({
+      ...sw,
+      requester: byId[sw.requester_id] || null,
+      target: byId[sw.target_id] || null,
+    }))
+    setSwaps(merged)
+  }
     if (error) { console.error('Tauschanfragen laden fehlgeschlagen:', error); return }
     setSwaps(data || [])
   }
