@@ -417,6 +417,13 @@ export default function Vacation() {
   //   Aktuell verbleibt die Datei im sick-certs Bucket (kein public access, aber verwaist).
   //   Empfehlung: sick_leave.certificate_file_path beim Löschen per Admin-RPC aus Storage entfernen.
   //   Nie automatisch ohne Policy — Gesundheitsdaten erfordern bewusstes Handeln.
+  // Mitarbeiter dürfen eigene Krankmeldungen nur kurz nach dem Anlegen und ohne Attest löschen
+  // (gleiche Regel wie in der Datenbank — sonst entstehen Lücken in der Lohnabrechnung)
+  function canSelfDeleteSick(lv) {
+    if (!lv || lv.certificate_file_path) return false
+    return lv.created_at && (Date.now() - new Date(lv.created_at).getTime()) < 24 * 3600 * 1000
+  }
+
   async function deleteSickLeave(sickId, ownEmployeeId, dateLabel, hasAttest = false) {
     if (deletingSickId) return
     const isOwnLeave = ownEmployeeId === (profile?.employee_id)
@@ -432,9 +439,11 @@ export default function Vacation() {
     )) return
     setDeletingSickId(sickId)
     setSick(prev => prev.filter(s => s.id !== sickId))
-    const { error } = await supabase.from('sick_leave').delete().eq('id', sickId)
-    if (error) {
-      toast.error('Fehler beim Löschen: ' + error.message)
+    const { data: deleted, error } = await supabase.from('sick_leave').delete().eq('id', sickId).select('id')
+    if (error || !deleted?.length) {
+      // Datenbank lässt Mitarbeitern nur frische (24 h) Meldungen ohne Attest löschen
+      toast.error(error ? 'Fehler beim Löschen: ' + error.message
+        : 'Diese Krankmeldung kann nur noch das Management löschen (älter als 24 Std. oder mit Attest).', 8000)
       fetchAll()
     } else {
       toast.success('✅ Krankmeldung gelöscht')
@@ -904,7 +913,7 @@ export default function Vacation() {
                                     {/* Löschen: NUR bei Einzelmeldung über diesen Button.
                                         Bei mehreren Meldungen im Fall: individuelle Buttons im Warn-Bereich unten. */}
                                     {sc.leaves.length === 1 &&
-                                     (canManage || sc.employee_id === profile?.employee_id) && (
+                                     (canManage || (sc.employee_id === profile?.employee_id && canSelfDeleteSick(sc.leaves[0]))) && (
                                       <button
                                         className="btn btn-sm"
                                         disabled={!!deletingSickId}
@@ -955,7 +964,7 @@ export default function Vacation() {
                                                     ? <span style={{ fontSize:11, color:'#059669' }}>✓</span>
                                                     : <span style={{ fontSize:11, color:'#DC2626' }}>Attest fehlt</span>
                                                 }
-                                                {(canManage || lv.employee_id === profile?.employee_id) && (
+                                                {(canManage || (lv.employee_id === profile?.employee_id && canSelfDeleteSick(lv))) && (
                                                   <button
                                                     className="btn btn-sm"
                                                     style={{ background:'#FEF2F2', color:'#DC2626', border:'1px solid #FECACA', padding:'1px 6px', fontSize:11 }}

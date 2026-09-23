@@ -23,8 +23,11 @@ export function translateSupabaseError(error, context = '') {
       profiles:           'Benutzerprofile',
     }
     const tableDe = tableNames[table] || table
-    return `🔒 Keine Berechtigung für ${tableDe}. Bitte "fix_rls_all.sql" in Supabase ausführen oder den Administrator kontaktieren.`
+    return `🔒 Keine Berechtigung für ${tableDe}. Bitte wende dich an die Geschäftsführung.`
   }
+
+  // ── Eigene Prüfungen der Datenbank (RAISE EXCEPTION) — Texte sind bereits deutsch ──
+  if (code === 'P0001' && error.message) return `❌ ${error.message}`
 
   // ── Duplikat / Eindeutigkeitsverletzung ──────────────────
   if (code === '23505' || msg.includes('duplicate') || msg.includes('unique')) {
