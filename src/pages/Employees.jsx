@@ -1,18 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import Avatar from '../components/UI/Avatar'
 import { supabase, getInitials, getAvatarColor, formatDate, formatCurrency, toLocalDateStr } from '../lib/supabase'
+import { openSignedFile } from '../lib/openFile'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { MINDESTLOHN } from '../lib/constants'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
+import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS } from '../lib/personalData'
 
 const EMPTY = {
   first_name: '', last_name: '', email: '', phone: '', birth_date: '',
   position: '', employment_type: 'vollzeit', hours_per_week: 40,
   hourly_rate: '', start_date: (() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` })(),
   vacation_days_per_year: 28, iban: '', address: '', notes: '',
+  birth_name: '', birth_place: '', nationality: '', street: '', house_number: '', postal_code: '', city: '',
+  account_holder: '', tax_id: '', social_security_number: '', health_insurance: '',
+  other_employment: null, other_employment_note: '', emergency_contact_name: '', emergency_contact_phone: '',
 }
+// Personaldaten, die bei Validierung/Speichern gesondert behandelt werden
+const PERSONAL_CHECK = ['birth_date','postal_code','iban','tax_id','social_security_number','phone','emergency_contact_phone']
 
 const DOC_TYPES = {
   employment_contract: 'Arbeitsvertrag',
@@ -117,10 +124,15 @@ export default function Employees() {
     if (docActionId) return
     setDocActionId(doc.id + ':open')
     try {
-      const { data, error } = await supabase.storage
-        .from('employee-documents').createSignedUrl(doc.file_path, 120)
-      if (error) { toast.error('Fehler beim Öffnen: ' + error.message); return }
-      window.open(data.signedUrl, '_blank')
+      // Kein await vor openSignedFile — sonst blockiert Safari den neuen Tab
+      await openSignedFile(async () => {
+        const { data, error } = await supabase.storage
+          .from('employee-documents').createSignedUrl(doc.file_path, 120)
+        if (error) throw error
+        return data.signedUrl
+      })
+    } catch {
+      toast.error('Das Dokument konnte nicht geöffnet werden. Bitte erneut versuchen.')
     } finally { setDocActionId(null) }
   }
 
@@ -156,7 +168,7 @@ export default function Employees() {
   }
 
   const toast   = useToast()
-  const { profile } = useProfile()
+  const { profile, isAdmin } = useProfile()
   const saveGuard = useSavingGuard()
   const deactGuard = useSavingGuard()
   const [fetchError, setFetchError] = useState('')
@@ -178,6 +190,7 @@ export default function Employees() {
   function openEdit(emp) { setForm({ ...emp, _origVac: emp.vacation_days_per_year }); setError(''); setModal('edit'); fetchDocs(emp.id) }
 
   async function handleSave() {
+    if (!isAdmin) return
     if (!saveGuard.begin()) return
     // ── WICHTIG: try/finally stellt sicher, dass saveGuard.end() und setSaving(false)
     // bei JEDEM Ausgang aufgerufen werden — egal ob Validierungsfehler, Speicherfehler
@@ -217,6 +230,16 @@ export default function Employees() {
         }
       }
 
+      // ── Personaldaten: Format nur prüfen, wenn etwas eingetragen ist ──
+      const filled = PERSONAL_CHECK.filter(k => form[k] !== null && form[k] !== undefined && String(form[k]).trim() !== '')
+      const pErr = validatePersonal(form, filled)
+      if (form.other_employment === true && !String(form.other_employment_note || '').trim()) pErr.other_employment_note = 'Bitte angeben'
+      if (Object.keys(pErr).length) {
+        const k = Object.keys(pErr)[0]
+        setError(`${FIELD_LABELS[k] || k}: ${pErr[k]}`)
+        return
+      }
+
       setSaving(true)
       setError('')
 
@@ -229,7 +252,9 @@ export default function Employees() {
         email:                  form.email.trim().toLowerCase(),
         phone:                  n(form.phone),
         birth_date:             n(form.birth_date),
-        address:                n(form.address),
+        address:                (form.street && form.house_number && form.postal_code && form.city)
+                                  ? `${form.street.trim()} ${form.house_number.trim()}, ${form.postal_code.trim()} ${form.city.trim()}`
+                                  : n(form.address),
         position:               n(form.position),
         employment_type:        form.employment_type,
         hours_per_week:         parseFloat(form.hours_per_week),
@@ -237,8 +262,23 @@ export default function Employees() {
         start_date:             form.start_date,
         end_date:               n(form.end_date),
         vacation_days_per_year: parseInt(form.vacation_days_per_year),
-        iban:                   n(form.iban),
+        iban:                   form.iban ? cleanIBAN(form.iban) : null,
         notes:                  n(form.notes),
+        birth_name:             n(form.birth_name?.trim()),
+        birth_place:            n(form.birth_place?.trim()),
+        nationality:            n(form.nationality?.trim()),
+        street:                 n(form.street?.trim()),
+        house_number:           n(form.house_number?.trim()),
+        postal_code:            n(form.postal_code?.trim()),
+        city:                   n(form.city?.trim()),
+        account_holder:         n(form.account_holder?.trim()),
+        tax_id:                 form.tax_id ? cleanTaxId(form.tax_id) : null,
+        social_security_number: form.social_security_number ? cleanSV(form.social_security_number) : null,
+        health_insurance:       n(form.health_insurance?.trim()),
+        other_employment:       form.other_employment === true ? true : form.other_employment === false ? false : null,
+        other_employment_note:  form.other_employment === true ? n(form.other_employment_note?.trim()) : null,
+        emergency_contact_name: n(form.emergency_contact_name?.trim()),
+        emergency_contact_phone:n(form.emergency_contact_phone?.trim()),
         avatar_initials:        getInitials(form.first_name, form.last_name),
         avatar_color:           getAvatarColor(form.first_name),
         ...(modal === 'add' && { is_active: true }),
@@ -304,7 +344,7 @@ export default function Employees() {
             style={{ borderColor: showInactive ? 'var(--accent)' : undefined, color: showInactive ? 'var(--accent)' : undefined }}>
             {showInactive ? '👥 Alle' : '📦 Archiv anzeigen'}
           </button>
-          <button className="btn btn-primary" onClick={openAdd}>+ Neuer Mitarbeiter</button>
+          {isAdmin && <button className="btn btn-primary" onClick={openAdd}>+ Neuer Mitarbeiter</button>}
         </div>
       </div>
 
@@ -351,8 +391,8 @@ export default function Employees() {
                         <td className="text-muted">{formatDate(emp.start_date)}</td>
                         <td>
                           <div className="flex gap-2">
-                            <button className="btn btn-sm" onClick={() => openEdit(emp)}>✏️ Bearbeiten</button>
-                            {emp.is_active
+                            <button className="btn btn-sm" onClick={() => openEdit(emp)}>{isAdmin ? '✏️ Bearbeiten' : '👁️ Ansehen'}</button>
+                            {!isAdmin ? null : emp.is_active
                               ? <button className="btn btn-sm btn-danger" onClick={() => handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`)}>Deaktivieren</button>
                               : <button className="btn btn-sm" style={{ border:'1px solid #16A34A', color:'#16A34A' }} onClick={() => doReactivate(emp.id, `${emp.first_name} ${emp.last_name}`)}>Reaktivieren</button>
                             }
@@ -399,11 +439,13 @@ export default function Employees() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div className="modal" style={{ maxWidth: 540 }}>
             <div className="modal-header">
-              <div className="modal-title">{modal === 'add' ? '+ Neuer Mitarbeiter' : '✏️ Mitarbeiter bearbeiten'}</div>
+              <div className="modal-title">{modal === 'add' ? '+ Neuer Mitarbeiter' : isAdmin ? '✏️ Mitarbeiter bearbeiten' : '👁️ Mitarbeiter'}</div>
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
               {error && <div className="alert alert-danger">❌ {error}</div>}
+              {!isAdmin && <div className="alert alert-info" style={{ fontSize:12 }}>🔒 Nur ansehen — Änderungen kann nur der Admin vornehmen.</div>}
+              <fieldset disabled={!isAdmin} style={{ border:'none', padding:0, margin:0, minWidth:0 }}>
               <div className="two-col">
                 <div className="form-group"><label>Vorname *</label><input value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="Max" /></div>
                 <div className="form-group"><label>Nachname *</label><input value={form.last_name}  onChange={e => f('last_name', e.target.value)} placeholder="Mustermann" /></div>
@@ -467,9 +509,55 @@ export default function Employees() {
                 </div>
                 <div className="form-group"><label>Eintrittsdatum *</label><input type="date" value={form.start_date || ''} onChange={e => f('start_date', e.target.value)} /></div>
               </div>
-              <div className="form-group"><label>IBAN</label><input value={form.iban || ''} onChange={e => f('iban', e.target.value)} placeholder="DE89 3704 0044 0532 0130 00" /></div>
-              <div className="form-group"><label>Adresse</label><input value={form.address || ''} onChange={e => f('address', e.target.value)} placeholder="Musterstr. 1, 60000 Frankfurt" /></div>
+              <div style={{ fontWeight:700, fontSize:13, margin:'18px 0 10px', paddingTop:14, borderTop:'1px solid var(--border)' }}>
+                🧾 Personaldaten (Lohnabrechnung)
+                {form.onboarding_completed_at && <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:8 }}>vom Mitarbeiter selbst erfasst</span>}
+              </div>
+              <div className="two-col">
+                <div className="form-group"><label>Geburtsname</label><input value={form.birth_name || ''} onChange={e => f('birth_name', e.target.value)} /></div>
+                <div className="form-group"><label>Geburtsort</label><input value={form.birth_place || ''} onChange={e => f('birth_place', e.target.value)} /></div>
+              </div>
+              <div className="form-group"><label>Staatsangehörigkeit</label><input value={form.nationality || ''} onChange={e => f('nationality', e.target.value)} /></div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 90px', gap:12 }}>
+                <div className="form-group"><label>Straße</label><input value={form.street || ''} onChange={e => f('street', e.target.value)} /></div>
+                <div className="form-group"><label>Nr.</label><input value={form.house_number || ''} onChange={e => f('house_number', e.target.value)} /></div>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'90px 1fr', gap:12 }}>
+                <div className="form-group"><label>PLZ</label><input inputMode="numeric" maxLength={5} value={form.postal_code || ''} onChange={e => f('postal_code', e.target.value.replace(/\D/g, ''))} /></div>
+                <div className="form-group"><label>Ort</label><input value={form.city || ''} onChange={e => f('city', e.target.value)} /></div>
+              </div>
+              {!form.street && (
+                <div className="form-group"><label>Adresse (alte Freitext-Angabe)</label><input value={form.address || ''} onChange={e => f('address', e.target.value)} placeholder="Musterstr. 1, 60000 Frankfurt" /></div>
+              )}
+              <div className="form-group"><label>IBAN</label><input value={form.iban ? formatIBAN(form.iban) : ''} onChange={e => f('iban', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} placeholder="DE89 3704 0044 0532 0130 00" style={{ fontFamily:'monospace' }} /></div>
+              <div className="two-col">
+                <div className="form-group"><label>Kontoinhaber</label><input value={form.account_holder || ''} onChange={e => f('account_holder', e.target.value)} /></div>
+                <div className="form-group"><label>Krankenkasse</label><input value={form.health_insurance || ''} onChange={e => f('health_insurance', e.target.value)} /></div>
+              </div>
+              <div className="two-col">
+                <div className="form-group"><label>Steuer-ID</label><input inputMode="numeric" value={form.tax_id || ''} onChange={e => f('tax_id', e.target.value.replace(/[^0-9 ]/g, ''))} style={{ fontFamily:'monospace' }} /></div>
+                <div className="form-group"><label>SV-Nummer</label><input value={form.social_security_number || ''} onChange={e => f('social_security_number', e.target.value.replace(/[^A-Za-z0-9 ]/g, '').toUpperCase())} placeholder="12 345678 A 123" style={{ fontFamily:'monospace' }} /></div>
+              </div>
+              <div className="two-col">
+                <div className="form-group">
+                  <label>Weitere Beschäftigung</label>
+                  <select value={form.other_employment === true ? 'ja' : form.other_employment === false ? 'nein' : ''}
+                    onChange={e => f('other_employment', e.target.value === 'ja' ? true : e.target.value === 'nein' ? false : null)}>
+                    <option value="">— unbekannt —</option>
+                    <option value="nein">Nein</option>
+                    <option value="ja">Ja</option>
+                  </select>
+                </div>
+                {form.other_employment === true && (
+                  <div className="form-group"><label>Welche?</label><input value={form.other_employment_note || ''} onChange={e => f('other_employment_note', e.target.value)} /></div>
+                )}
+              </div>
+              <div className="two-col">
+                <div className="form-group"><label>Notfallkontakt</label><input value={form.emergency_contact_name || ''} onChange={e => f('emergency_contact_name', e.target.value)} /></div>
+                <div className="form-group"><label>Telefon Notfallkontakt</label><input value={form.emergency_contact_phone || ''} onChange={e => f('emergency_contact_phone', e.target.value)} /></div>
+              </div>
               <div className="form-group"><label>Interne Notizen</label><textarea rows="2" value={form.notes || ''} onChange={e => f('notes', e.target.value)} /></div>
+              </fieldset>
 
               {/* ── Dokumente (nur im Edit-Modus) ────────────────── */}
               {modal === 'edit' && (
@@ -596,7 +684,7 @@ export default function Employees() {
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setModal(null)}>Abbrechen</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Speichern...' : '💾 Speichern'}</button>
+              {isAdmin && <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Speichern...' : '💾 Speichern'}</button>}
             </div>
           </div>
         </div>

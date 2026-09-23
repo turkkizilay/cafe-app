@@ -437,12 +437,7 @@ export default function Login() {
             <p style={{ fontSize:12, color:'var(--text-muted)', margin:0, lineHeight:1.6 }}>
               Zugang benötigt? Bitte wende dich an dein Management.
               <br />
-              <button
-                onClick={() => switchMode('signup')}
-                style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:12, textDecoration:'underline', padding:'2px 0' }}
-              >
-                Einladungslink erhalten?
-              </button>
+              Einladung erhalten? Öffne einfach den Link aus deiner Nachricht.
             </p>
           )}
           {mode === 'signup' && (

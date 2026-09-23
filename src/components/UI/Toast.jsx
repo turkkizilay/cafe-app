@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { subscribeOpenFallback, clearOpenFallback } from '../../lib/openFile'
 
 // ── Singleton außerhalb React — vollständig immun gegen Concurrent Mode ──
 let _id     = 0
@@ -83,6 +84,37 @@ export function ToastProvider({ children }) {
           )
         })}
       </div>
+      <OpenFileFallback />
     </>
+  )
+}
+
+// ── Fallback, falls der Browser den neuen Tab trotzdem blockiert ──
+// Ein echter Tipp auf diesen Link ist eine Nutzeraktion und wird nie blockiert.
+function OpenFileFallback() {
+  const [pending, setPending] = useState(null)
+  useEffect(() => subscribeOpenFallback(setPending), [])
+  if (!pending) return null
+  return (
+    <div className="modal-overlay" onClick={clearOpenFallback} style={{ zIndex:10000 }}>
+      <div className="modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">Dokument ist bereit</div>
+        </div>
+        <div className="modal-body" style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.6 }}>
+          Dein Browser hat das automatische Öffnen verhindert. Tippe auf den Button, um das Dokument zu öffnen.
+          <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:8 }}>
+            Der Link ist aus Sicherheitsgründen nur kurz gültig.
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn" onClick={clearOpenFallback}>Schließen</button>
+          <a className="btn btn-primary" href={pending.url} target="_blank" rel="noopener noreferrer"
+             onClick={() => setTimeout(clearOpenFallback, 0)}>
+            📄 {pending.label}
+          </a>
+        </div>
+      </div>
+    </div>
   )
 }

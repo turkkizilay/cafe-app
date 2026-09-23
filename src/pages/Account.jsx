@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, formatDate, formatCurrency } from '../lib/supabase'
+import PersonalDataCard, { missingPersonalFields } from '../components/PersonalDataCard'
+import { openSignedFile } from '../lib/openFile'
 import { logActivity } from '../lib/activityLog'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
@@ -18,10 +20,6 @@ function checkPw(pw) {
   }
 }
 function isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) }
-function isValidIBAN(iban) {
-  const clean = iban.replace(/\s/g, '').toUpperCase()
-  return /^DE\d{20}$/.test(clean)
-}
 
 const STRENGTH_COLOR = ['','#DC2626','#D97706','#16A34A','#16A34A']
 const STRENGTH_LABEL = ['','Schwach','Mittel','Gut','Stark']
@@ -77,10 +75,15 @@ export default function Account() {
     if (docActionId) return
     setDocActionId(doc.id + ':open')
     try {
-      const { data, error } = await supabase.storage
-        .from('employee-documents').createSignedUrl(doc.file_path, 120)
-      if (error) { toast.error('Fehler beim Öffnen: ' + error.message); return }
-      window.open(data.signedUrl, '_blank')
+      // Kein await vor openSignedFile — sonst blockiert Safari den neuen Tab
+      await openSignedFile(async () => {
+        const { data, error } = await supabase.storage
+          .from('employee-documents').createSignedUrl(doc.file_path, 120)
+        if (error) throw error
+        return data.signedUrl
+      })
+    } catch {
+      toast.error('Das Dokument konnte nicht geöffnet werden. Bitte erneut versuchen.')
     } finally { setDocActionId(null) }
   }
 
@@ -115,11 +118,6 @@ export default function Account() {
   const [cropSrc,      setCropSrc]      = useState(null)
 
   // ── Persönliche Daten Bearbeiten ────────────────────────────
-  const [editing,      setEditing]      = useState(false)
-  const [editForm,     setEditForm]     = useState({ phone:'', address:'', iban:'', birth_date:'' })
-  const [editSaving,   setEditSaving]   = useState(false)
-  const [editError,    setEditError]    = useState('')
-  const [showIban,     setShowIban]     = useState(false)
 
   // ── E-Mail ändern ───────────────────────────────────────────
   const [changingEmail, setChangingEmail] = useState(false)
@@ -152,12 +150,6 @@ export default function Account() {
       setAllSick(sick || [])
       if (emp) {
         setAvatarUrl(emp.avatar_url || profile?.avatar_url || null)
-        setEditForm({
-          phone:      emp.phone      || '',
-          address:    emp.address    || '',
-          iban:       emp.iban       || '',
-          birth_date: emp.birth_date || '',
-        })
         setVacBalance(getVacationBalance(emp, vacs||[], sick||[], holidays||[]))
       } else {
         // Kein Employee-Eintrag (z.B. Admin) → avatar aus profiles laden
@@ -206,42 +198,6 @@ export default function Account() {
   async function removeAvatar() {
     await supabase.rpc('update_own_avatar', { new_avatar_url: null })
     setAvatarUrl(null); toast.success('Profilbild entfernt')
-  }
-
-  // ── Persönliche Daten speichern (via sichere RPC) ───────────
-  async function savePersonal() {
-    if (editSaving) return  // guard
-    setEditError('')
-
-    // IBAN validieren wenn ausgefüllt
-    if (editForm.iban && !isValidIBAN(editForm.iban)) {
-      setEditError('IBAN ungültig — Deutsches Format: DE + 20 Ziffern (z.B. DE89 3704 0044 0532 0130 00)')
-      return
-    }
-
-    setEditSaving(true)
-    const { data, error } = await supabase.rpc('update_own_employee_profile', {
-      p_phone:      editForm.phone      || null,
-      p_address:    editForm.address    || null,
-      p_iban:       editForm.iban?.replace(/\s/g, '').toUpperCase() || null,
-      p_birth_date: editForm.birth_date || null,
-    })
-
-    if (error || data?.success === false) {
-      setEditError(error?.message || data?.error || 'Unbekannter Fehler')
-      setEditSaving(false)
-      return
-    }
-    toast.success('✅ Persönliche Daten aktualisiert!')
-    setEditing(false); setEditSaving(false); fetchData()
-  }
-
-  function cancelEdit() {
-    setEditing(false); setEditError('')
-    setEditForm({
-      phone: employee?.phone || '', address: employee?.address || '',
-      iban:  employee?.iban  || '', birth_date: employee?.birth_date || '',
-    })
   }
 
   // ── Login E-Mail ändern ─────────────────────────────────────
@@ -319,6 +275,16 @@ export default function Account() {
         {/* ══════════════════════════════════════════════════ */}
         {/* TAB 1: PROFIL                                      */}
         {/* ══════════════════════════════════════════════════ */}
+        {employee && accountTab !== 'daten' && missingPersonalFields(employee).length > 0 && (
+          <div style={{ background:'var(--warn-bg)', border:'1px solid #FDE68A', borderRadius:10, padding:'12px 14px', marginBottom:16, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+            <div style={{ flex:1, minWidth:200, fontSize:13.5, lineHeight:1.5 }}>
+              <strong>📝 Profil vervollständigen</strong><br />
+              <span style={{ color:'var(--text-secondary)' }}>Für die Lohnabrechnung fehlen noch Angaben (z. B. Steuer-ID, SV-Nummer, Krankenkasse).</span>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => setAccountTab('daten')}>Jetzt ergänzen</button>
+          </div>
+        )}
+
         {accountTab === 'profil' && (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(340px, 1fr))', gap:16 }}>
 
@@ -404,105 +370,9 @@ export default function Account() {
         {/* ══════════════════════════════════════════════════ */}
         {accountTab === 'daten' && (
           <div style={{ maxWidth:600 }}>
-            <div className="card">
-              <div className="card-header">
-                <div className="card-title">✏️ Persönliche Daten</div>
-                {!editing && (
-                  <button className="btn btn-sm btn-primary" onClick={() => setEditing(true)}>
-                    ✏️ Bearbeiten
-                  </button>
-                )}
-              </div>
-              <div style={{ padding:'16px' }}>
-                {!editing ? (
-                  // ── View Mode ───────────────────────────
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                    <DataField icon="📞" label="Telefon"      value={employee?.phone} />
-                    <DataField icon="🎂" label="Geburtsdatum" value={formatDate(employee?.birth_date)} />
-                    <DataField icon="🏠" label="Adresse"      value={employee?.address} style={{ gridColumn:'1/-1' }} />
-                    <div style={{ gridColumn:'1/-1', background:'var(--bg)', borderRadius:8, padding:'10px 12px' }}>
-                      <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>
-                        🏦 IBAN
-                        {employee?.iban && (
-                          <span style={{ marginLeft:6, fontSize:10, color:'var(--accent)', cursor:'pointer', userSelect:'none' }}
-                            onClick={() => setShowIban(x => !x)}>
-                            {showIban ? '🙈 Verbergen' : '👁️ Anzeigen'}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize:13, fontWeight:500, fontFamily:'monospace', letterSpacing:'0.5px' }}>
-                        {employee?.iban
-                          ? showIban
-                            ? employee.iban.replace(/(.{4})/g, '$1 ').trim()
-                            : `${employee.iban.slice(0,2)}•• •••• •••• •••• •••• ${employee.iban.slice(-2)}`
-                          : <span style={{ color:'var(--text-muted)' }}>—</span>
-                        }
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  // ── Edit Mode ────────────────────────────
-                  <>
-                    {editError && <div className="alert alert-danger" style={{ marginBottom:12 }}>{editError}</div>}
-
-                    <div className="alert alert-info" style={{ marginBottom:16, fontSize:12 }}>
-                      🔒 Arbeitsdaten (Stundenlohn, Urlaubstage, Position etc.) können nur vom Management geändert werden.
-                    </div>
-
-                    <div className="two-col">
-                      <div className="form-group">
-                        <label>📞 Telefon</label>
-                        <input value={editForm.phone} onChange={e => setEditForm(f=>({...f,phone:e.target.value}))}
-                          placeholder="+49 170 1234567" />
-                      </div>
-                      <div className="form-group">
-                        <label>🎂 Geburtsdatum</label>
-                        <input type="date" value={editForm.birth_date}
-                          onChange={e => setEditForm(f=>({...f,birth_date:e.target.value}))} />
-                      </div>
-                    </div>
-
-                    <div className="form-group">
-                      <label>🏠 Adresse</label>
-                      <input value={editForm.address} onChange={e => setEditForm(f=>({...f,address:e.target.value}))}
-                        placeholder="Musterstraße 1, 60000 Frankfurt am Main" />
-                    </div>
-
-                    <div className="form-group">
-                      <label>
-                        🏦 IBAN
-                        <span style={{ fontSize:10, fontWeight:400, color:'var(--text-muted)', marginLeft:6 }}>
-                          (für Lohnzahlungen — Format: DE89 3704 0044 0532 0130 00)
-                        </span>
-                      </label>
-                      <input
-                        value={editForm.iban}
-                        onChange={e => setEditForm(f=>({...f,iban:e.target.value.replace(/[^A-Za-z0-9\s]/g,'')}))}
-                        placeholder="DE89 3704 0044 0532 0130 00"
-                        style={{ fontFamily:'monospace', letterSpacing:'1px' }}
-                      />
-                      {editForm.iban && !isValidIBAN(editForm.iban) && (
-                        <div style={{ fontSize:11, color:'var(--danger)', marginTop:4 }}>
-                          ⚠️ IBAN ungültig — muss mit DE beginnen und 22 Zeichen haben
-                        </div>
-                      )}
-                      {editForm.iban && isValidIBAN(editForm.iban) && (
-                        <div style={{ fontSize:11, color:'#16A34A', marginTop:4 }}>✓ IBAN gültig</div>
-                      )}
-                    </div>
-
-                    <div style={{ display:'flex', gap:10, marginTop:8 }}>
-                      <button className="btn btn-primary" onClick={savePersonal} disabled={editSaving}>
-                        {editSaving ? '⏳ Speichern…' : '💾 Speichern'}
-                      </button>
-                      <button className="btn" onClick={cancelEdit} disabled={editSaving}>
-                        Abbrechen
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            {employee
+              ? <PersonalDataCard employee={employee} onSaved={fetchData} />
+              : <div className="card"><div className="card-body" style={{ color:'var(--text-muted)', fontSize:13 }}>Kein Mitarbeiter-Profil verknüpft.</div></div>}
           </div>
         )}
 

@@ -3,6 +3,7 @@ import { groupSickLeavesIntoCases, getSickCaseWarnings } from '../lib/sickLeaveL
 import { Link } from 'react-router-dom'
 import { supabase, formatTime, formatDate } from '../lib/supabase'
 import Avatar from '../components/UI/Avatar'
+import { missingPersonalFields } from '../components/PersonalDataCard'
 import { useProfile } from '../context/ProfileContext'
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
@@ -53,7 +54,7 @@ function localDateStr(d = new Date()) {
 }
 
 export default function Dashboard() {
-  const { isAdmin, isManager, profile } = useProfile() || {}
+  const { isAdmin, isManager, profile, pendingCount } = useProfile() || {}
   const canManage = isAdmin || isManager
 
   const [myEmployee,  setMyEmployee]  = useState(null)
@@ -80,7 +81,7 @@ export default function Dashboard() {
         supabase.from('time_entries').select('*, employees!employee_id(first_name, last_name, avatar_color, avatar_url)').is('clock_out', null).order('clock_in', { ascending:false }),
         // Mein Employee
         profile?.employee_id
-          ? supabase.from('employees').select('id, first_name, last_name, vacation_days_per_year, hourly_rate, employment_type').eq('id', profile.employee_id).maybeSingle()
+          ? supabase.from('employees').select('id, first_name, last_name, vacation_days_per_year, hourly_rate, employment_type, birth_date, street, house_number, postal_code, city, phone, iban, account_holder, tax_id, social_security_number, health_insurance, other_employment, emergency_contact_name, emergency_contact_phone').eq('id', profile.employee_id).maybeSingle()
           : Promise.resolve({ data: null }),
         // Bin ich eingeclockt?
         profile?.employee_id
@@ -223,6 +224,17 @@ export default function Dashboard() {
       </div>
 
       <div className="content">
+        {/* ── Profil vervollständigen (Bestands-Mitarbeiter ohne vollständige Personaldaten) ── */}
+        {!loading && myEmployee && missingPersonalFields(myEmployee).length > 0 && (
+          <div style={{ background:'var(--warn-bg)', border:'1px solid #FDE68A', borderRadius:10, padding:'12px 14px', marginBottom:16, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+            <div style={{ flex:1, minWidth:200, fontSize:13.5, lineHeight:1.5 }}>
+              <strong>📝 Profil vervollständigen</strong><br />
+              <span style={{ color:'var(--text-secondary)' }}>Für die Lohnabrechnung fehlen noch Angaben von dir.</span>
+            </div>
+            <Link to="/konto" className="btn btn-primary btn-sm">Jetzt ergänzen</Link>
+          </div>
+        )}
+
         {/* ── Warnung wenn kein Mitarbeiter verknüpft ── */}
         {!loading && !profile?.employee_id && (
           <div className="alert alert-danger" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -292,7 +304,7 @@ export default function Dashboard() {
               { icon:'⏱', label:'Eingeclockt',  value: liveClockIns.length, color: liveClockIns.length > 0 ? '#059669' : 'var(--text-secondary)', to:'/einclocken' },
               { icon:'🌴', label:'Urlaub offen', value: stats.pendingVac, color: stats.pendingVac > 0 ? '#D97706' : 'var(--text-secondary)', to:'/urlaub', badge: stats.pendingVac > 0 },
               { icon:'🔄', label:'Schichttausch', value: stats.pendingSwaps, color: stats.pendingSwaps > 0 ? '#D97706' : 'var(--text-secondary)', to:'/schichten', badge: stats.pendingSwaps > 0 },
-              { icon:'🔑', label:'Neue Accounts', value: stats.pendingUsers, color: stats.pendingUsers > 0 ? '#DC2626' : 'var(--text-secondary)', to:'/benutzer', badge: stats.pendingUsers > 0 },
+              { icon:'🔑', label:'Neue Accounts', value: pendingCount || 0, color: pendingCount > 0 ? '#DC2626' : 'var(--text-secondary)', to:'/benutzer', badge: pendingCount > 0 },
             ].map(s => (
               <Link key={s.label} to={s.to} style={{ textDecoration:'none' }}>
                 <div className="card" style={{ padding:'16px 18px', cursor:'pointer', transition:'transform 0.1s', position:'relative' }}

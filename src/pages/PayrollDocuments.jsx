@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, formatDate } from '../lib/supabase'
+import { openSignedFile } from '../lib/openFile'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
@@ -116,10 +117,15 @@ export default function PayrollDocuments() {
     if (actionDocId) return
     setActionDocId(doc.id + ':open')
     try {
-      const { data, error } = await supabase.storage
-        .from('payroll-docs').createSignedUrl(doc.file_path, 120)
-      if (error) { toast.error('Fehler beim Öffnen: ' + error.message); return }
-      window.open(data.signedUrl, '_blank')
+      // Kein await vor openSignedFile — sonst blockiert Safari den neuen Tab
+      await openSignedFile(async () => {
+        const { data, error } = await supabase.storage
+          .from('payroll-docs').createSignedUrl(doc.file_path, 120)
+        if (error) throw error
+        return data.signedUrl
+      }, 'Lohnabrechnung öffnen')
+    } catch {
+      toast.error('Die Lohnabrechnung konnte nicht geöffnet werden. Bitte erneut versuchen.')
     } finally { setActionDocId(null) }
   }
 

@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase, formatDate, toLocalDateStr } from '../lib/supabase'
+import { openSignedFile } from '../lib/openFile'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
@@ -441,11 +442,14 @@ export default function Vacation() {
     setDeletingSickId(null)
   }
 
-  async function viewCert(filePath) {
-    const { data, error } = await supabase.storage
-      .from('sick-certs').createSignedUrl(filePath, 60)
-    if (error) { toast.error('Fehler beim Öffnen: ' + error.message); return }
-    window.open(data.signedUrl, '_blank')
+  // Kein await vor openSignedFile — sonst blockiert Safari den neuen Tab
+  function viewCert(filePath) {
+    openSignedFile(async () => {
+      const { data, error } = await supabase.storage
+        .from('sick-certs').createSignedUrl(filePath, 120)
+      if (error) throw error
+      return data.signedUrl
+    }, 'Attest öffnen').catch(() => toast.error('Das Attest konnte nicht geöffnet werden. Bitte erneut versuchen.'))
   }
 
   async function downloadCert(filePath, fileName) {

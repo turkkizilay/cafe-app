@@ -16,7 +16,7 @@ const STRENGTH_COLOR = ['', '#DC2626', '#D97706', '#16A34A', '#16A34A']
 const STRENGTH_LABEL = ['', 'Schwach', 'Mittel',  'Gut',    'Stark']
 
 export default function InvitationAccept({ token }) {
-  const [step,     setStep]     = useState('loading') // loading | valid | password | success | error
+  const [step,     setStep]     = useState('loading') // loading | password | confirm | success | error
   const [info,     setInfo]     = useState(null)
   const [pw,       setPw]       = useState('')
   const [pw2,      setPw2]      = useState('')
@@ -38,7 +38,7 @@ export default function InvitationAccept({ token }) {
 
   async function handleAccept(e) {
     e.preventDefault()
-    if (loading) return
+    if (saving) return
     setErrMsg('')
     const strength = checkPw(pw)
     if (!strength.length || !strength.uppercase || !strength.number) {
@@ -49,37 +49,57 @@ export default function InvitationAccept({ token }) {
 
     setSaving(true)
 
-    // 1. Supabase Auth Account erstellen
-    const { data: authData, error: signUpErr } = await supabase.auth.signUp({
-      email: info.email,
-      password: pw,
-      options: { emailRedirectTo: window.location.origin }
-    })
+    // Account erstellen. Der Einladungs-Token geht als Metadaten mit —
+    // die Datenbank prüft ihn beim Anlegen (Token gültig + E-Mail passt)
+    // und löst die Einladung serverseitig ein. So klappt es auch, wenn
+    // Supabase erst eine E-Mail-Bestätigung verlangt (dann gibt es noch keine Session).
+    let authData, signUpErr
+    try {
+      const res = await supabase.auth.signUp({
+        email: info.email,
+        password: pw,
+        options: {
+          emailRedirectTo: window.location.origin,
+          data: { invite_token: token },
+        },
+      })
+      authData = res.data; signUpErr = res.error
+    } catch {
+      signUpErr = { message: 'network' }
+    }
 
     if (signUpErr) {
       setSaving(false)
-      if (signUpErr.message.toLowerCase().includes('already registered')) {
+      const m = (signUpErr.message || '').toLowerCase()
+      if (m.includes('already registered')) {
         setErrMsg('Diese E-Mail ist bereits registriert. Bitte direkt anmelden.')
+      } else if (m.includes('password')) {
+        setErrMsg('Das Passwort wurde nicht akzeptiert. Bitte ein anderes, stärkeres Passwort wählen.')
+      } else if (m.includes('rate') || m.includes('security purposes')) {
+        setErrMsg('Zu viele Versuche. Bitte kurz warten und erneut versuchen.')
       } else {
-        setErrMsg('Fehler beim Erstellen: ' + signUpErr.message)
+        setErrMsg('Der Account konnte nicht erstellt werden. Bitte später erneut versuchen.')
       }
       return
     }
 
-    // 2. Einladung annehmen & Profil verknüpfen
-    const { data: acceptData, error: acceptErr } = await supabase.rpc('accept_invitation', { p_token: token })
-
-    if (acceptErr || !acceptData?.success) {
+    // Supabase meldet bei bereits registrierten Adressen (mit E-Mail-Bestätigung)
+    // keinen Fehler, sondern einen User ohne Identitäten.
+    if (authData?.user && Array.isArray(authData.user.identities) && authData.user.identities.length === 0) {
       setSaving(false)
-      setErrMsg('Account erstellt, aber Verknüpfung fehlgeschlagen. Bitte Administrator kontaktieren.')
+      setErrMsg('Diese E-Mail ist bereits registriert. Bitte direkt anmelden.')
       return
     }
 
-    // 3. Erfolg
-    setStep('success')
     setSaving(false)
-    // Kurz warten, dann App neu laden → direkt eingeloggt
-    setTimeout(() => { window.location.href = '/' }, 2500)
+    if (authData?.session) {
+      // Keine Bestätigung nötig → direkt in die App (dort startet das Onboarding)
+      setStep('success')
+      setTimeout(() => { window.location.href = '/' }, 2000)
+    } else {
+      // E-Mail-Bestätigung nötig
+      setStep('confirm')
+    }
   }
 
   const strength = checkPw(pw)
@@ -130,9 +150,22 @@ export default function InvitationAccept({ token }) {
               background:'linear-gradient(135deg, #C2793A, #9A5E2D)',
               borderRadius:12, padding:'16px 18px', marginBottom:24, color:'#fff',
             }}>
-              <div style={{ fontSize:12, opacity:0.85, marginBottom:4 }}>Du wurdest eingeladen als</div>
-              <div style={{ fontSize:18, fontWeight:700 }}>{info.employee_name}</div>
-              {info.position && <div style={{ fontSize:13, opacity:0.9 }}>{info.position}</div>}
+              {info.new_employee ? (
+                <>
+                  <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>Willkommen bei Café Buur!</div>
+                  <div style={{ fontSize:13, opacity:0.92, lineHeight:1.55 }}>
+                    Lege zuerst dein Passwort fest. Danach gibst du deine Personaldaten
+                    (Adresse, Bankverbindung, Steuer- und Sozialversicherungsdaten) ein.
+                    Die Geschäftsführung prüft sie und schaltet dich frei.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize:12, opacity:0.85, marginBottom:4 }}>Du wurdest eingeladen als</div>
+                  <div style={{ fontSize:18, fontWeight:700 }}>{info.employee_name}</div>
+                  {info.position && <div style={{ fontSize:13, opacity:0.9 }}>{info.position}</div>}
+                </>
+              )}
             </div>
 
             {errMsg && (
@@ -218,15 +251,35 @@ export default function InvitationAccept({ token }) {
           </>
         )}
 
+        {/* ── E-Mail bestätigen ── */}
+        {step === 'confirm' && (
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>📬</div>
+            <div style={{ fontWeight:700, fontSize:18, marginBottom:8, color:'#1C1917' }}>Fast geschafft!</div>
+            <div style={{ color:'#57534E', fontSize:14, lineHeight:1.7, marginBottom:12 }}>
+              Wir haben dir eine E-Mail an <strong>{info?.email}</strong> geschickt.
+              Bitte tippe auf den Bestätigungslink darin.
+            </div>
+            <div style={{ color:'#78716C', fontSize:13, lineHeight:1.7, marginBottom:20 }}>
+              Danach meldest du dich mit deiner E-Mail und deinem neuen Passwort an
+              {info?.new_employee ? ' und füllst deine Personaldaten aus.' : '.'}
+              <br />Keine E-Mail da? Schau bitte auch im Spam-Ordner nach.
+            </div>
+            <a href="/" style={{ display:'inline-block', padding:'10px 22px', background:'#C2793A', color:'#fff', borderRadius:8, textDecoration:'none', fontSize:14, fontWeight:600 }}>
+              → Zur Anmeldung
+            </a>
+          </div>
+        )}
+
         {/* ── Erfolg ── */}
         {step === 'success' && (
           <div style={{ textAlign:'center' }}>
             <div style={{ fontSize:52, marginBottom:14 }}>🎉</div>
             <div style={{ fontWeight:700, fontSize:18, marginBottom:8, color:'#1C1917' }}>
-              Willkommen im Team, {info?.employee_name?.split(' ')[0]}!
+              {info?.employee_name ? `Willkommen im Team, ${info.employee_name.split(' ')[0]}!` : 'Willkommen bei Café Buur!'}
             </div>
             <div style={{ color:'#78716C', fontSize:13, lineHeight:1.7, marginBottom:16 }}>
-              Dein Account ist fertig. Du wirst jetzt zur App weitergeleitet…
+              {info?.new_employee ? 'Dein Account ist erstellt. Gleich geht es mit deinen Personaldaten weiter…' : 'Dein Account ist fertig. Du wirst jetzt zur App weitergeleitet…'}
             </div>
             <div style={{ display:'flex', justifyContent:'center' }}>
               <div style={{ width:40, height:40, border:'3px solid #C2793A', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />

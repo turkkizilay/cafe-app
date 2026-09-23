@@ -5,6 +5,7 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
+import OnboardingReview, { ONB_STATUS } from '../components/OnboardingReview'
 
 const ROLES = [
   { value: 'employee', label: '👤 Mitarbeiter' },
@@ -25,6 +26,8 @@ export default function UserManagement() {
   const [approved,     setApproved]     = useState([])
   const [employees,    setEmployees]    = useState([])
   const [invitations,  setInvitations]  = useState([])
+  const [onboardings,  setOnboardings]  = useState([])
+  const [reviewRow,    setReviewRow]    = useState(null)
   const [loading,      setLoading]      = useState(true)
   const [working,      setWorking]      = useState(null)
   const [pendingForms, setPendingForms] = useState({})
@@ -43,12 +46,16 @@ export default function UserManagement() {
   async function fetchAll() {
     setLoading(true)
     try {
-    const [{ data: profiles }, { data: emps }, { data: invs }] = await Promise.all([
+    const [{ data: profiles }, { data: emps }, { data: invs }, { data: onbs }] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, first_name, last_name, email, position, avatar_url, avatar_color').order('last_name'),
       supabase.from('invitations').select('*, employees!employee_id(first_name, last_name)').is('used_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
+      supabase.from('employee_onboarding').select('*').order('created_at', { ascending: false }),
     ])
-    setPending((profiles  || []).filter(p => p.status === 'pending'))
+    const onbIds = new Set((onbs || []).map(o => o.profile_id))
+    setOnboardings(onbs || [])
+    // Accounts mit Onboarding erscheinen im Bereich "Neue Mitarbeiter", nicht hier
+    setPending((profiles  || []).filter(p => p.status === 'pending' && !onbIds.has(p.id)))
     setApproved((profiles || []).filter(p => p.status === 'approved'))
     setEmployees(emps || [])
     setInvitations(invs || [])
@@ -57,34 +64,57 @@ export default function UserManagement() {
   }
 
   // ── Einladung erstellen ─────────────────────────────────────
+  // emp = bestehender Mitarbeiter-Datensatz (alter Weg) oder null = neuer Mitarbeiter (Onboarding)
   function openInvite(emp) {
-    setInviteModal(emp)
-    setInviteForm({ email: emp.email || '', role: 'employee' })
+    setInviteModal(emp || { isNew: true })
+    setInviteForm({ email: emp?.email || '', role: 'employee' })
     setInviteResult(null)
   }
 
   async function createInvitation() {
     if (!inviteGuard.begin()) return
-    if (!inviteForm.email?.trim()) { toast.warn('Bitte E-Mail eingeben'); inviteGuard.end(); return }
+    const email = inviteForm.email?.trim().toLowerCase()
+    if (!email) { toast.warn('Bitte E-Mail eingeben'); inviteGuard.end(); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast.warn('Bitte eine gültige E-Mail-Adresse eingeben.'); inviteGuard.end(); return }
+    const isNew = !!inviteModal.isNew
     setInviteSaving(true)
 
-    const { data: inv, error } = await supabase.from('invitations').insert([{
-      employee_id: inviteModal.id,
-      email:       inviteForm.email.trim().toLowerCase(),
-      role:        inviteForm.role,
-      created_by:  profile?.id,
-    }]).select().maybeSingle()
+    try {
+      if (isNew) {
+        // Doppelte Accounts vermeiden: gibt es die Adresse schon als Login oder Mitarbeiter?
+        const { data: reg } = await supabase.rpc('check_email_registered', { p_email: email })
+        if (reg?.exists) {
+          toast.warn(reg.reason === 'auth'
+            ? 'Mit dieser E-Mail gibt es bereits einen Login.'
+            : 'Diese E-Mail gehört bereits zu einem Mitarbeiter. Bitte dort unter „Mitarbeiter ohne Account" einladen.')
+          return
+        }
+        // Alte, offene Einladungen für dieselbe Adresse schließen (nur ein gültiger Link)
+        await supabase.from('invitations').update({ used_at: new Date().toISOString() })
+          .is('employee_id', null).is('used_at', null).eq('email', email)
+      }
 
-    if (error) {
-      toast.error('Fehler: ' + error.message)
+      const { data: inv, error } = await supabase.from('invitations').insert([{
+        employee_id: isNew ? null : inviteModal.id,
+        email,
+        role:        isNew ? 'employee' : inviteForm.role,
+        created_by:  profile?.id,
+      }]).select().maybeSingle()
+
+      if (error || !inv) { toast.error('Einladung konnte nicht erstellt werden. Bitte erneut versuchen.'); return }
+
+      const link = `${window.location.origin}/?invite=${inv.token}`
+      setInviteResult({ link, isNew, name: isNew ? '' : `${inviteModal.first_name} ${inviteModal.last_name}`, email })
+      logActivity({
+        action: 'employee.invited', category: 'employee',
+        summary: isNew ? `hat ${email} als neuen Mitarbeiter eingeladen.` : `hat ${inviteModal.first_name} ${inviteModal.last_name} eingeladen.`,
+        targetType: 'invitation', targetId: inv.id, targetName: email,
+      })
+      fetchAll()
+    } finally {
       setInviteSaving(false)
-      return
+      inviteGuard.end()
     }
-
-    const link = `${window.location.origin}/?invite=${inv.token}`
-    setInviteResult({ link, name: `${inviteModal.first_name} ${inviteModal.last_name}`, email: inviteForm.email })
-    setInviteSaving(false)
-    fetchAll()
   }
 
   async function copyLink(link) {
@@ -96,8 +126,10 @@ export default function UserManagement() {
     }
   }
 
-  function whatsappLink(link, name) {
-    const msg = encodeURIComponent(`Hallo ${name}! 👋\n\nDu wurdest zum Café Buur Personalverwaltungssystem eingeladen.\n\nBitte klicke auf diesen Link und setze dein Passwort:\n${link}\n\nDer Link ist 7 Tage gültig. ☕`)
+  function whatsappLink(link, name, isNew) {
+    const msg = encodeURIComponent(isNew
+      ? `Hallo! 👋\n\nWillkommen bei Café Buur! Über diesen Link legst du deinen Zugang zur Personal-App an und trägst deine Daten für die Lohnabrechnung ein (IBAN, Steuer-ID, Sozialversicherungsnummer, Krankenkasse):\n${link}\n\nDer Link ist 7 Tage gültig. ☕`
+      : `Hallo ${name}! 👋\n\nDu wurdest zum Café Buur Personalverwaltungssystem eingeladen.\n\nBitte klicke auf diesen Link und setze dein Passwort:\n${link}\n\nDer Link ist 7 Tage gültig. ☕`)
     return `https://wa.me/?text=${msg}`
   }
 
@@ -223,8 +255,8 @@ export default function UserManagement() {
     <>
       <div className="topbar">
         <div className="topbar-title">Benutzerverwaltung</div>
-        <div className="topbar-right" style={{ fontSize:12, color:'var(--text-secondary)' }}>
-          Nur der Admin kann hier Änderungen vornehmen
+        <div className="topbar-right">
+          <button className="btn btn-primary btn-sm" onClick={() => openInvite(null)}>➕ Neuen Mitarbeiter einladen</button>
         </div>
       </div>
 
@@ -249,16 +281,24 @@ export default function UserManagement() {
           <div className="modal-overlay" onClick={() => { setInviteModal(null); setInviteResult(null) }}>
             <div className="modal" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
-                <div className="modal-title">📨 Mitarbeiter einladen</div>
+                <div className="modal-title">{inviteModal.isNew ? '📨 Neuen Mitarbeiter einladen' : '📨 Mitarbeiter einladen'}</div>
                 <button className="btn btn-sm" onClick={() => { setInviteModal(null); setInviteResult(null) }}>✕</button>
               </div>
               <div className="modal-body">
                 {!inviteResult ? (
                   <>
-                    <div style={{ background:'var(--accent-light)', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
-                      <div style={{ fontWeight:600 }}>{inviteModal.first_name} {inviteModal.last_name}</div>
-                      {inviteModal.position && <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{inviteModal.position}</div>}
-                    </div>
+                    {inviteModal.isNew ? (
+                      <div style={{ background:'var(--accent-light)', borderRadius:10, padding:'12px 16px', marginBottom:16, fontSize:13, lineHeight:1.6 }}>
+                        Der neue Mitarbeiter legt über den Link selbst seinen Zugang an und trägt seine
+                        Personaldaten ein. Danach prüfst du alles hier und legst Stundenlohn, Rolle und
+                        Beschäftigungsart fest.
+                      </div>
+                    ) : (
+                      <div style={{ background:'var(--accent-light)', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
+                        <div style={{ fontWeight:600 }}>{inviteModal.first_name} {inviteModal.last_name}</div>
+                        {inviteModal.position && <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{inviteModal.position}</div>}
+                      </div>
+                    )}
 
                     <div className="form-group">
                       <label>E-Mail des Mitarbeiters</label>
@@ -269,15 +309,17 @@ export default function UserManagement() {
                       </div>
                     </div>
 
-                    <div className="form-group">
+                    {!inviteModal.isNew && <div className="form-group">
                       <label>Rolle</label>
                       <select value={inviteForm.role} onChange={e => setInviteForm(f => ({...f, role: e.target.value}))}>
                         {ROLES.filter(r => r.value !== 'admin').map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
-                    </div>
+                    </div>}
 
                     <div className="alert alert-info" style={{ fontSize:12 }}>
-                      📋 Der Einladungslink ist <strong>7 Tage gültig</strong>. Der Mitarbeiter klickt den Link und setzt sein Passwort — er ist danach sofort eingeloggt und mit seinem Profil verknüpft.
+                      📋 Der Einladungslink ist <strong>7 Tage gültig</strong> und funktioniert nur mit dieser E-Mail-Adresse. {inviteModal.isNew
+                        ? 'Nach dem Passwort bestätigt der Mitarbeiter seine E-Mail und füllt dann seine Personaldaten aus.'
+                        : 'Der Mitarbeiter setzt sein Passwort, bestätigt seine E-Mail und ist danach mit seinem Profil verknüpft.'}
                     </div>
                   </>
                 ) : (
@@ -287,7 +329,7 @@ export default function UserManagement() {
                       <div style={{ fontSize:36, marginBottom:8 }}>✅</div>
                       <div style={{ fontWeight:600, fontSize:15 }}>Einladungslink erstellt!</div>
                       <div style={{ fontSize:13, color:'var(--text-secondary)', marginTop:4 }}>
-                        Für: <strong>{inviteResult.name}</strong> ({inviteResult.email})
+                        Für: {inviteResult.name ? <><strong>{inviteResult.name}</strong> ({inviteResult.email})</> : <strong>{inviteResult.email}</strong>}
                       </div>
                     </div>
 
@@ -303,7 +345,7 @@ export default function UserManagement() {
                         📋 Link kopieren
                       </button>
                       <a
-                        href={whatsappLink(inviteResult.link, inviteResult.name)}
+                        href={whatsappLink(inviteResult.link, inviteResult.name, inviteResult.isNew)}
                         target="_blank" rel="noreferrer"
                         style={{ flex:1, background:'#25D366', color:'#fff', border:'none', borderRadius:8, padding:'9px 16px', textAlign:'center', textDecoration:'none', fontSize:13, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}
                       >
@@ -357,6 +399,50 @@ export default function UserManagement() {
         </div>
       )}
 
+      {reviewRow && (
+        <OnboardingReview
+          row={reviewRow} isAdmin={profile?.role === 'admin'}
+          onClose={() => setReviewRow(null)}
+          onDone={() => { setReviewRow(null); fetchAll(); refetch() }}
+        />
+      )}
+
+      {/* ── 0. Neue Mitarbeiter (Selbst-Registrierung per Einladung) ── */}
+      {(() => {
+        const open = onboardings.filter(o => o.status !== 'approved' && o.status !== 'rejected')
+          .sort((a, b) => (a.status === 'submitted' ? 0 : 1) - (b.status === 'submitted' ? 0 : 1))
+        const toReview = open.filter(o => o.status === 'submitted').length
+        if (!open.length) return null
+        return (
+          <div className="card" style={{ marginBottom:20 }}>
+            <div className="card-header">
+              <div className="card-title">
+                🧾 Neue Mitarbeiter
+                {toReview > 0 && <span style={{ background:'#C2793A', color:'#fff', borderRadius:10, fontSize:11, fontWeight:700, padding:'2px 8px', marginLeft:8 }}>{toReview} zu prüfen</span>}
+              </div>
+            </div>
+            <div style={{ padding:'0 4px' }}>
+              {open.map(o => {
+                const st = ONB_STATUS[o.status] || { label:o.status, cls:'badge-gray' }
+                const nm = `${o.first_name || ''} ${o.last_name || ''}`.trim()
+                return (
+                  <div key={o.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderBottom:'1px solid var(--border)', flexWrap:'wrap' }}>
+                    <div style={{ flex:1, minWidth:180 }}>
+                      <div style={{ fontWeight:500, fontSize:13 }}>{nm || o.email}</div>
+                      <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{nm ? o.email : 'Hat noch keine Daten eingetragen'}</div>
+                    </div>
+                    <span className={`badge ${st.cls}`}>{st.label}</span>
+                    {o.status === 'submitted'
+                      ? <button className="btn btn-primary btn-sm" onClick={() => setReviewRow(o)}>Prüfen</button>
+                      : <button className="btn btn-sm" onClick={() => setReviewRow(o)}>Ansehen</button>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── 1. Mitarbeiter ohne Account ── */}
         {employeesWithoutAccount.length > 0 && (
           <div className="card" style={{ marginBottom:20 }}>
@@ -409,7 +495,9 @@ export default function UserManagement() {
                 <tbody>
                   {invitations.map(inv => (
                     <tr key={inv.id}>
-                      <td><strong>{inv.employees?.first_name} {inv.employees?.last_name}</strong></td>
+                      <td>{inv.employee_id
+                        ? <strong>{inv.employees?.first_name} {inv.employees?.last_name}</strong>
+                        : <span className="badge badge-accent">Neuer Mitarbeiter</span>}</td>
                       <td>{inv.email}</td>
                       <td style={{ fontSize:12, color:'var(--text-secondary)' }}>
                         {formatDate(inv.expires_at.split('T')[0])}

@@ -26,6 +26,7 @@ import InvitationAccept from './pages/InvitationAccept'
 import ResetPassword    from './pages/ResetPassword'
 import AccessDenied    from './pages/AccessDenied'
 import ActivityLog     from './pages/ActivityLog'
+import Onboarding      from './pages/Onboarding'
 
 // ── Passwort-Reset-Link erkennen ──────────────────────────────
 const RECOVERY_LINK_DETECTED =
@@ -190,10 +191,17 @@ export default function App() {
       setProfile(data || null)
 
       if (data?.role === 'admin' || data?.role === 'manager') {
-        const [{ count: pCount }, { count: vCount }] = await Promise.all([
-          supabase.from('profiles').select('*', { count:'exact', head:true }).eq('status','pending'),
+        const [{ data: pend }, { count: vCount }, { data: onb }] = await Promise.all([
+          supabase.from('profiles').select('id').eq('status','pending'),
           supabase.from('vacation_requests').select('*', { count:'exact', head:true }).eq('status','pending'),
+          supabase.from('employee_onboarding').select('profile_id, status'),
         ])
+        // Offen = eingereichte Onboardings + alte Warte-Accounts ohne Onboarding
+        // (Onboardings im Entwurf zählen nicht — da ist der Mitarbeiter noch dran)
+        const onbIds = new Set((onb || []).map(o => o.profile_id))
+        const pCount = (onb || []).filter(o => o.status === 'submitted').length
+                     + (pend || []).filter(p => !onbIds.has(p.id)).length
+        // sick_leave hat keine status-Spalte — Krankmeldungen separat zählen
         const { count: sCount } = await supabase
           .from('sick_leave').select('*', { count:'exact', head:true }).is('end_date', null)
         setPending(pCount  || 0)
@@ -303,7 +311,20 @@ export default function App() {
     </DarkModeProvider>
   )
 
-  if (!profile || profile.status === 'pending') return (
+  // ── Account pending / kein Profil ────────────────────────────
+  // Mit Einladung angelegte Accounts füllen zuerst ihre Personaldaten aus (Onboarding).
+  // Ohne Onboarding-Eintrag → bisheriger Warte-Screen.
+  if (profile?.status === 'pending') return (
+    <DarkModeProvider>
+      <ToastProvider>
+        <Onboarding
+          session={session}
+          fallback={<PendingScreen session={session} onRetry={() => fetchProfile(session.user.id)} />}
+        />
+      </ToastProvider>
+    </DarkModeProvider>
+  )
+  if (!profile) return (
     <DarkModeProvider>
       <PendingScreen session={session} onRetry={() => fetchProfile(session.user.id)} />
     </DarkModeProvider>
