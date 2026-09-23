@@ -26,6 +26,8 @@ export default function UserManagement() {
 
   const [pending,      setPending]      = useState([])
   const [approved,     setApproved]     = useState([])
+  const [disabledUsers, setDisabledUsers] = useState([])
+  const [showDisabled, setShowDisabled] = useState(false)
   const [employees,    setEmployees]    = useState([])
   const [invitations,  setInvitations]  = useState([])
   const [onboardings,  setOnboardings]  = useState([])
@@ -64,6 +66,7 @@ export default function UserManagement() {
     // Accounts mit Onboarding erscheinen im Bereich "Neue Mitarbeiter", nicht hier
     setPending((profiles  || []).filter(p => p.status === 'pending' && !onbIds.has(p.id)))
     setApproved((profiles || []).filter(p => p.status === 'approved'))
+    setDisabledUsers((profiles || []).filter(p => p.status === 'disabled'))
     setEmployees(emps || [])
     setInvitations(invs || [])
     // Direktsprünge aus „Mitarbeiter“: ?invite=<employee_id> oder ?new=1
@@ -260,24 +263,27 @@ export default function UserManagement() {
     setConfirmDel(null); fetchAll(); setWorking(null)
   }
 
-  async function deleteActiveUser(p) {
+  // Zugang sperren statt löschen: Daten & Protokoll bleiben erhalten, jederzeit umkehrbar
+  async function setUserLocked(p, locked) {
     if (!deleteGuard.begin()) return
+    if (p.id === profile?.id) { toast.error('Du kannst dich nicht selbst sperren.'); deleteGuard.end(); return }
     setWorking(p.id)
-    const { error } = await supabase.from('profiles').delete().eq('id', p.id)
-    if (error) {
-      toast.error('Fehler: ' + error.message)
-    } else {
-      deleteGuard.end()
-    toast.success(`Account "${p.email}" gelöscht. Bitte auch in Supabase → Authentication → Users entfernen.`, 8000)
+    try {
+      const { error } = await supabase.from('profiles').update({ status: locked ? 'disabled' : 'approved' }).eq('id', p.id)
+      if (error) { toast.error('Das hat nicht geklappt. Bitte erneut versuchen.'); return }
+      const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.email
+      toast.success(locked ? `🔒 Zugang von ${name} gesperrt.` : `🔓 Zugang von ${name} wieder freigegeben.`)
       logActivity({
-        action: 'employee.deleted', category: 'employee',
-        summary: `hat den Account ${p.email} gelöscht.`,
-        targetType: 'profile', targetId: p.id, targetName: p.email,
+        action: locked ? 'employee.access_locked' : 'employee.access_unlocked', category: 'employee',
+        summary: locked ? `hat den App-Zugang von ${name} gesperrt.` : `hat den App-Zugang von ${name} wieder freigegeben.`,
+        targetType: 'profile', targetId: p.id, targetName: name,
       })
       fetchAll(); refetch()
+    } finally {
+      deleteGuard.end()
+      setConfirmDelActive(null)
+      setWorking(null)
     }
-    setConfirmDelActive(null)
-    setWorking(null)
   }
 
   async function changeRole(profileId, role) {
@@ -484,30 +490,25 @@ export default function UserManagement() {
           </div>
         )}
 
-        {/* ── Lösch-Modal für aktive Accounts ── */}
+        {/* ── Zugang sperren ── */}
       {confirmDelActive && (
         <div className="modal-overlay" onClick={() => setConfirmDelActive(null)}>
-          <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title">🗑 Account löschen</div>
+              <div className="modal-title">🔒 App-Zugang sperren?</div>
               <button className="btn btn-sm" onClick={() => setConfirmDelActive(null)}>✕</button>
             </div>
-            <div className="modal-body">
-              <div className="alert alert-danger" style={{ marginBottom:12 }}>
-                Account <strong>{confirmDelActive.first_name} {confirmDelActive.last_name}</strong><br/>
-                <small style={{ color:'var(--text-muted)' }}>{confirmDelActive.email}</small><br/><br/>
-                wirklich löschen?
-              </div>
-              <div style={{ fontSize:12, color:'var(--text-secondary)', background:'var(--bg)', borderRadius:8, padding:'10px 12px' }}>
-                ⚠️ Der Login-Account bleibt in Supabase bestehen. Für vollständige Löschung bitte zusätzlich unter:<br/>
-                <strong>Supabase → Authentication → Users</strong> entfernen.
+            <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
+              <strong>{confirmDelActive.first_name} {confirmDelActive.last_name}</strong> ({confirmDelActive.email})
+              kann sich danach nicht mehr anmelden.
+              <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:8 }}>
+                Stunden, Lohn, Urlaub und Dokumente bleiben erhalten. Du kannst den Zugang jederzeit wieder freigeben.
+                Scheidet die Person aus, deaktiviere sie zusätzlich unter <strong>Mitarbeiter</strong>.
               </div>
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setConfirmDelActive(null)}>Abbrechen</button>
-              <button className="btn btn-danger" onClick={() => deleteActiveUser(confirmDelActive)}>
-                🗑 Ja, löschen
-              </button>
+              <button className="btn btn-danger" onClick={() => setUserLocked(confirmDelActive, true)}>🔒 Sperren</button>
             </div>
           </div>
         </div>
@@ -586,9 +587,11 @@ export default function UserManagement() {
             <div className="card-header">
               <div className="card-title">
                 👤 Mitarbeiter ohne Account
-                <span style={{ background:'#DC2626', color:'#fff', borderRadius:10, fontSize:11, fontWeight:700, padding:'2px 8px', marginLeft:8 }}>
-                  {employeesWithoutAccount.length}
-                </span>
+                {employeesWithoutAccount.length > 0 && (
+                  <span style={{ background:'#DC2626', color:'#fff', borderRadius:10, fontSize:11, fontWeight:700, padding:'2px 8px', marginLeft:8 }}>
+                    {employeesWithoutAccount.length}
+                  </span>
+                )}
               </div>
             </div>
             <div style={{ padding:'0 4px' }}>
@@ -681,8 +684,8 @@ export default function UserManagement() {
           </div>
         )}
 
-        {/* ── 3. Ausstehende Genehmigungen ── */}
-        <div className="card" style={{ marginBottom:20 }}>
+        {/* ── 3. Ausstehende Genehmigungen (nur alte Registrierungen ohne Einladung) ── */}
+        {pending.length > 0 && <div className="card" style={{ marginBottom:20 }}>
           <div className="card-header">
             <div className="card-title">
               ⏳ Ausstehende Genehmigungen
@@ -733,7 +736,7 @@ export default function UserManagement() {
               </table>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* ── 4. Aktive Benutzer ── */}
         <div className="card">
@@ -801,10 +804,10 @@ export default function UserManagement() {
                             <button
                               className="btn btn-sm btn-danger"
                               onClick={() => setConfirmDelActive(p)}
-                              title="Account löschen"
+                              title="App-Zugang sperren"
                               style={{ fontSize:11 }}
                             >
-                              🗑
+                              🔒 Sperren
                             </button>
                           )}
                         </td>
@@ -816,8 +819,32 @@ export default function UserManagement() {
             )}
           </div>
           <div style={{ padding:'10px 16px', fontSize:12, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>
-            💡 💶 Stammdaten = Lohn & persönliche Daten bearbeiten · 🔗 = Login mit anderem Mitarbeiter verknüpfen · ⚠️ Rot = kein Mitarbeiter verknüpft
+            💡 💶 Stammdaten = Lohn & persönliche Daten bearbeiten · 🔗 = Login mit anderem Mitarbeiter verknüpfen · 🔒 = Anmeldung sperren · ⚠️ Rot = kein Mitarbeiter verknüpft
+            {disabledUsers.length > 0 && (
+              <button className="btn btn-sm" style={{ marginLeft:8 }} onClick={() => setShowDisabled(v => !v)}>
+                {showDisabled ? 'Gesperrte ausblenden' : `Gesperrte Zugänge (${disabledUsers.length})`}
+              </button>
+            )}
           </div>
+          {showDisabled && disabledUsers.map(p => {
+            const emp = employees.find(e => e.id === p.employee_id)
+            return (
+              <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 16px', borderTop:'1px solid var(--border)', flexWrap:'wrap' }}>
+                <div style={{ flex:1, minWidth:180 }}>
+                  <div style={{ fontWeight:500, fontSize:13 }}>
+                    {`${p.first_name || ''} ${p.last_name || ''}`.trim() || p.email}
+                    <span className="badge badge-red" style={{ marginLeft:6 }}>🔒 gesperrt</span>
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--text-muted)' }}>
+                    {p.email}{emp ? ` · Mitarbeiter: ${emp.first_name} ${emp.last_name}${emp.is_active === false ? ' (archiviert)' : ''}` : ' · Registrierung abgelehnt'}
+                  </div>
+                </div>
+                {p.employee_id && (
+                  <button className="btn btn-sm" disabled={working === p.id} onClick={() => setUserLocked(p, false)}>🔓 Entsperren</button>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </>

@@ -120,8 +120,13 @@ export default function Shifts() {
     setSwaps(merged)
   }
 
+  // Guards werden immer freigegeben — vorher reagierte „Speichern“ nach einer Warnung nicht mehr
   async function addShift() {
     if (!addGuard.begin()) return
+    try { await doAddShift() } finally { addGuard.end(); setSaving(false) }
+  }
+
+  async function doAddShift() {
     if (!form.employee_id || !form.date || !form.start_time || !form.end_time) {
       toast.warn('Bitte alle Pflichtfelder ausfüllen.'); return
     }
@@ -138,9 +143,9 @@ export default function Shifts() {
               return (e2 - s2) / 3600000
             })())
     const { error } = await supabase.from('shifts').insert([{ ...form, planned_hours: hrs }])
-    if (error) { toast.error(translateSupabaseError(error, 'Schicht speichern')); setSaving(false); addGuard.end(); return }
+    if (error) { toast.error(translateSupabaseError(error, 'Schicht speichern')); return }
     toast.success('Schicht gespeichert ✅')
-    setModal(false); setSaving(false); addGuard.end(); fetchData()
+    setModal(false); fetchData()
   }
 
   async function openEditModal(shift) {
@@ -158,7 +163,11 @@ export default function Shifts() {
 
   async function updateShift() {
     if (!updateGuard.begin()) return
-    if (!form.start_time || !form.end_time) { toast.warn('Zeiten eingeben'); updateGuard.end(); return }
+    try { await doUpdateShift() } finally { updateGuard.end(); setSaving(false) }
+  }
+
+  async function doUpdateShift() {
+    if (!form.start_time || !form.end_time) { toast.warn('Zeiten eingeben'); return }
     const isNight = form.start_time >= '20:00' && form.end_time <= '10:00'
     if (!isNight && form.end_time <= form.start_time) { toast.warn('Endzeit nach Startzeit'); return }
     setSaving(true)
@@ -166,9 +175,10 @@ export default function Shifts() {
     let e2   = new Date(`2000-01-01T${form.end_time}`).getTime()
     if (e2 <= s2) e2 += 86400000
     const hrs = Math.max(0, (e2 - s2) / 3600000)
-    await supabase.from('shifts').update({ ...form, planned_hours: hrs }).eq('id', editModal.id)
+    const { error } = await supabase.from('shifts').update({ ...form, planned_hours: hrs }).eq('id', editModal.id)
+    if (error) { toast.error(translateSupabaseError(error, 'Schicht speichern')); return }
     toast.success('Schicht aktualisiert ✅')
-    setEditModal(null); setSaving(false); updateGuard.end(); fetchData()
+    setEditModal(null); fetchData()
   }
 
   async function deleteShift(id) {

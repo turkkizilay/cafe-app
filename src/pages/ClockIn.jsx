@@ -115,12 +115,17 @@ export default function ClockIn({ session }) {
     const totalH = (now - new Date(openEntry.clock_in)) / 3600000
     const breakMin = totalH > 9 ? 45 : totalH > 6 ? 30 : 0
     const netH = Math.max(0, totalH - breakMin / 60)
-    const { error } = await supabase.from('time_entries').update({
+    const { data: saved, error } = await supabase.from('time_entries').update({
       clock_out: now.toISOString(),
       gps_lat_out: gps.lat || null, gps_lng_out: gps.lng || null, gps_ok_out: gps.status === 'ok',
       break_minutes: breakMin, hours_worked: parseFloat(netH.toFixed(2)),
-    }).eq('id', openEntry.id)
+    }).eq('id', openEntry.id).select('hours_worked, notes').maybeSingle()
     if (error) { toast.error(translateSupabaseError(error, 'Zeiterfassung')); setWorking(false); return }
+    // Server markiert Schichten > 12 Std. als „Ausstempeln vergessen“ (werden erst nach Korrektur bezahlt)
+    if (saved?.notes?.includes('AUSSTEMPELN VERGESSEN')) {
+      toast.warn('Du warst über 12 Stunden eingestempelt — vermutlich vergessen auszustempeln. Bitte sag der Schichtleitung Bescheid, sie trägt die richtige Zeit ein.', 12000)
+      await fetchData(); setWorking(false); return
+    }
     toast.success(`✅ Ausgeclockt — ${netH.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h gearbeitet${breakMin ? ` (${breakMin}min Pause abgezogen)` : ''}`)
     await fetchData()
     setWorking(false)

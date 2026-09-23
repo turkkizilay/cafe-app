@@ -270,6 +270,19 @@ export default function InvitationAccept({ token }) {
               {info?.new_employee ? ' und füllst deine Personaldaten aus.' : '.'}
               <br />Keine E-Mail da? Schau bitte auch im Spam-Ordner nach.
             </div>
+            <div style={{ marginBottom:16 }}>
+              <button type="button" disabled={saving} onClick={async () => {
+                  if (saving) return
+                  setSaving(true)
+                  const { error } = await supabase.auth.resend({ type:'signup', email: info.email, options:{ emailRedirectTo: window.location.origin } })
+                  setSaving(false)
+                  setErrMsg(error ? 'Senden gerade nicht möglich — bitte in ein paar Minuten erneut versuchen.' : '✓ E-Mail wurde erneut gesendet.')
+                }}
+                style={{ background:'none', border:'1px solid #E7E4DF', borderRadius:8, padding:'8px 14px', fontSize:13, cursor:'pointer', color:'#44403C' }}>
+                {saving ? 'Wird gesendet…' : '📬 E-Mail erneut senden'}
+              </button>
+              {errMsg && <div style={{ fontSize:12.5, color: errMsg.startsWith('✓') ? '#16A34A' : '#DC2626', marginTop:8 }}>{errMsg}</div>}
+            </div>
             <a href="/" style={{ display:'inline-block', padding:'10px 22px', background:'#C2793A', color:'#fff', borderRadius:8, textDecoration:'none', fontSize:14, fontWeight:600 }}>
               → Zur Anmeldung
             </a>

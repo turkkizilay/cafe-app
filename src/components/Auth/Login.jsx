@@ -87,6 +87,8 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(true)
   const [error,      setError]      = useState('')
   const [info,       setInfo]       = useState('')
+  const [unconfirmed, setUnconfirmed] = useState('')   // E-Mail, deren Bestätigung noch fehlt
+  const [resending,   setResending]   = useState(false)
   const emailRef    = useRef(null)
   const passwordRef = useRef(null)
 
@@ -150,8 +152,11 @@ export default function Login() {
     })
     if (error) {
       setPassword('')
+      const notConfirmed = (error.message || '').toLowerCase().includes('email not confirmed')
+      setUnconfirmed(notConfirmed ? email.trim().toLowerCase() : '')
       setErrorWithShake(translateError(error.message))
     } else {
+      setUnconfirmed('')
       sessionStorage.setItem('cafe_session_active', '1')
       if (rememberMe) {
         localStorage.removeItem('cafe_no_remember')
@@ -295,6 +300,24 @@ export default function Login() {
             style={{ marginBottom:14, fontSize:13 }}
           >
             {error}
+            {unconfirmed && (
+              <div style={{ marginTop:8 }}>
+                <button type="button" className="btn btn-sm" disabled={resending}
+                  onClick={async () => {
+                    if (resending) return
+                    setResending(true)
+                    const { error: rErr } = await supabase.auth.resend({
+                      type: 'signup', email: unconfirmed, options: { emailRedirectTo: window.location.origin },
+                    })
+                    setResending(false)
+                    setError('')
+                    if (rErr) setErrorWithShake('Die E-Mail konnte gerade nicht gesendet werden. Bitte in ein paar Minuten erneut versuchen.')
+                    else { setUnconfirmed(''); setInfo('📬 Bestätigungs-E-Mail wurde erneut gesendet. Bitte auch im Spam-Ordner nachsehen.') }
+                  }}>
+                  {resending ? 'Wird gesendet…' : '📬 Bestätigungs-E-Mail erneut senden'}
+                </button>
+              </div>
+            )}
           </div>
         )}
         {info && (

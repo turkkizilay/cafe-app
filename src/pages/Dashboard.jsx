@@ -61,6 +61,7 @@ export default function Dashboard() {
   const [nextShift,   setNextShift]   = useState(null)
   const [todayShifts, setTodayShifts] = useState([])  // Alle Schichten heute (Admin)
   const [liveClockIns,setLiveClockIns]= useState([])
+  const [forgotten,   setForgotten]   = useState(0)   // Zeiteinträge „Ausstempeln vergessen“ (nur Admin)
   const [stats,       setStats]       = useState({ employees:0, pendingVac:0, pendingUsers:0, pendingSwaps:0 })
   const [birthdays,   setBirthdays]   = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -108,6 +109,11 @@ export default function Dashboard() {
         ])
         setStats({ employees: empCount.count||0, pendingVac: vacPending.count||0, pendingUsers: usersPending.count||0, pendingSwaps: swapsPending.count||0 })
         setTodayShifts(todayShiftRes.data || [])
+        if (isAdmin) {
+          const { count: fCount } = await supabase.from('time_entries').select('id', { count:'exact', head:true })
+            .like('notes', '%AUSSTEMPELN VERGESSEN%')
+          setForgotten(fCount || 0)
+        }
 
         // Live-Personalkosten berechnen
         const nowMs = Date.now()
@@ -235,6 +241,13 @@ export default function Dashboard() {
           </div>
         )}
 
+        {isAdmin && forgotten > 0 && (
+          <div className="alert alert-warn" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <span>⚠️ {forgotten} Zeiteintrag{forgotten === 1 ? '' : 'e'} mit „Ausstempeln vergessen“ — wird erst nach deiner Korrektur bezahlt.</span>
+            <Link to="/zeitkorrekturen" style={{ color:'inherit', fontWeight:600 }}>→ Jetzt korrigieren</Link>
+          </div>
+        )}
+
         {/* ── Warnung wenn kein Mitarbeiter verknüpft ── */}
         {!loading && !profile?.employee_id && (
           <div className="alert alert-danger" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -304,7 +317,7 @@ export default function Dashboard() {
               { icon:'⏱', label:'Eingeclockt',  value: liveClockIns.length, color: liveClockIns.length > 0 ? '#059669' : 'var(--text-secondary)', to:'/einclocken' },
               { icon:'🌴', label:'Urlaub offen', value: stats.pendingVac, color: stats.pendingVac > 0 ? '#D97706' : 'var(--text-secondary)', to:'/urlaub', badge: stats.pendingVac > 0 },
               { icon:'🔄', label:'Schichttausch', value: stats.pendingSwaps, color: stats.pendingSwaps > 0 ? '#D97706' : 'var(--text-secondary)', to:'/schichten', badge: stats.pendingSwaps > 0 },
-              { icon:'🔑', label:'Neue Accounts', value: pendingCount || 0, color: pendingCount > 0 ? '#DC2626' : 'var(--text-secondary)', to:'/benutzer', badge: pendingCount > 0 },
+              ...(isAdmin ? [{ icon:'🔑', label:'Neue Mitarbeiter', value: pendingCount || 0, color: pendingCount > 0 ? '#DC2626' : 'var(--text-secondary)', to:'/benutzer', badge: pendingCount > 0 }] : []),
             ].map(s => (
               <Link key={s.label} to={s.to} style={{ textDecoration:'none' }}>
                 <div className="card" style={{ padding:'16px 18px', cursor:'pointer', transition:'transform 0.1s', position:'relative' }}

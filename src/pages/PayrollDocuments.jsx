@@ -152,13 +152,20 @@ export default function PayrollDocuments() {
   }
 
   async function handleDelete(doc) {
-    if (!deleteGuard.begin()) return
     const emp = employees.find(e => e.id === doc.employee_id)
     const monthName = MONTHS.find(m => m.v === doc.month)?.l
-    // confirm replaced
-    await supabase.storage.from('payroll-docs').remove([doc.file_path])
-    await supabase.from('payroll_documents').delete().eq('id', doc.id)
-    fetchAll()
+    const who = emp ? `${emp.first_name} ${emp.last_name}` : 'diesen Mitarbeiter'
+    if (!window.confirm(`Lohnabrechnung ${monthName || ''} ${doc.year || ''} von ${who} wirklich löschen?\n\nDie Datei wird endgültig entfernt.`)) return
+    if (!deleteGuard.begin()) return
+    try {
+      const { error } = await supabase.from('payroll_documents').delete().eq('id', doc.id)
+      if (error) { toast.error('Löschen fehlgeschlagen. Bitte erneut versuchen.'); return }
+      await supabase.storage.from('payroll-docs').remove([doc.file_path])
+      toast.success('Lohnabrechnung gelöscht.')
+    } finally {
+      deleteGuard.end()
+      fetchAll()
+    }
   }
 
   function formatBytes(b) {

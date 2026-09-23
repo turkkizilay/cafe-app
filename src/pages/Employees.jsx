@@ -8,6 +8,7 @@ import { MINDESTLOHN } from '../lib/constants'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
+import { logActivity } from '../lib/activityLog'
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS } from '../lib/personalData'
 
 const EMPTY = {
@@ -59,6 +60,7 @@ export default function Employees() {
   const [access,        setAccess]        = useState({})     // employee_id → 'active' | 'invited' | 'disabled' | 'pending'
   const [addChoice,     setAddChoice]     = useState(false)  // Auswahl: einladen oder selbst anlegen
   const [justCreated,   setJustCreated]   = useState(null)   // nach „Selbst anlegen“: App-Zugang anbieten
+  const [lockLogin,     setLockLogin]     = useState(true)   // beim Deaktivieren auch App-Zugang sperren
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -348,17 +350,46 @@ export default function Employees() {
   async function doDeactivate() {
     if (!deactGuard.begin()) return
     if (!confirmDeact) { deactGuard.end(); return }
-    await supabase.from('employees').update({ is_active: false, end_date: toLocalDateStr(new Date()) }).eq('id', confirmDeact.id)
-    setConfirmDeact(null)
-    deactGuard.end()
-    fetchEmployees()
+    try {
+      const { error } = await supabase.from('employees').update({ is_active: false, end_date: toLocalDateStr(new Date()) }).eq('id', confirmDeact.id)
+      if (error) { toast.error(translateSupabaseError(error, 'Deaktivieren')); return }
+      // Ehemalige sollen sich nicht mehr anmelden können (eigener Admin-Zugang wird nie gesperrt)
+      if (lockLogin && access[confirmDeact.id]) {
+        await supabase.from('profiles').update({ status: 'disabled' })
+          .eq('employee_id', confirmDeact.id).neq('id', profile?.id || '')
+      }
+      toast.success(`${confirmDeact.name} deaktiviert${lockLogin && access[confirmDeact.id] ? ' — App-Zugang gesperrt' : ''}.`)
+      logActivity({
+        action: 'employee.deactivated', category: 'employee',
+        summary: `hat ${confirmDeact.name} deaktiviert${lockLogin && access[confirmDeact.id] ? ' und den App-Zugang gesperrt' : ''}.`,
+        targetType: 'employee', targetId: confirmDeact.id, targetName: confirmDeact.name,
+      })
+    } finally {
+      setConfirmDeact(null)
+      setLockLogin(true)
+      deactGuard.end()
+      fetchEmployees()
+    }
   }
 
   async function doReactivate(id, name) {
     if (!saveGuard.begin()) return
-    await supabase.from('employees').update({ is_active: true, end_date: null }).eq('id', id)
-    toast.success(`✅ ${name} wurde reaktiviert`)
-    saveGuard.end(); fetchEmployees()
+    try {
+      const { error } = await supabase.from('employees').update({ is_active: true, end_date: null }).eq('id', id)
+      if (error) { toast.error(translateSupabaseError(error, 'Reaktivieren')); return }
+      // War der App-Zugang beim Deaktivieren gesperrt worden → wieder freigeben
+      let unlocked = false
+      if (access[id] === 'disabled') {
+        const { error: pErr } = await supabase.from('profiles').update({ status: 'approved' }).eq('employee_id', id).eq('status', 'disabled')
+        unlocked = !pErr
+      }
+      toast.success(`✅ ${name} wurde reaktiviert${unlocked ? ' — App-Zugang wieder frei' : ''}`)
+      logActivity({
+        action: 'employee.reactivated', category: 'employee',
+        summary: `hat ${name} reaktiviert${unlocked ? ' und den App-Zugang wieder freigegeben' : ''}.`,
+        targetType: 'employee', targetId: id, targetName: name,
+      })
+    } finally { saveGuard.end(); fetchEmployees() }
   }
 
   function f(k, v) { setForm(x => ({ ...x, [k]: v })) }
@@ -519,8 +550,18 @@ export default function Employees() {
                 </div>
               )}
               <div className="alert alert-danger">
-                {confirmDeact.name} wirklich deaktivieren?{openClockIn ? ' Trotz offenem Clock-In?' : ''} Der Eintrag bleibt im Archiv erhalten.
+                {confirmDeact.name} wirklich deaktivieren?{openClockIn ? ' Trotz offenem Clock-In?' : ''} Der Eintrag bleibt im Archiv erhalten
+                (Stunden, Lohn, Dokumente) und lässt sich jederzeit reaktivieren.
               </div>
+              {access[confirmDeact.id] && access[confirmDeact.id] !== 'invited' && (
+                <label style={{ display:'flex', gap:8, alignItems:'flex-start', fontSize:13, cursor:'pointer', marginTop:4 }}>
+                  <input type="checkbox" checked={lockLogin} onChange={e => setLockLogin(e.target.checked)} style={{ width:16, height:16, marginTop:2 }} />
+                  <span>Auch den App-Zugang sperren <span style={{ color:'var(--text-muted)' }}>(empfohlen — ehemalige Mitarbeiter können sich dann nicht mehr anmelden)</span></span>
+                </label>
+              )}
+              {access[confirmDeact.id] === 'invited' && (
+                <div style={{ fontSize:12.5, color:'var(--text-secondary)' }}>Die offene Einladung wird automatisch zurückgezogen.</div>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>Abbrechen</button>

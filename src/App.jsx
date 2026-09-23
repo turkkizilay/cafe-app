@@ -204,7 +204,7 @@ export default function App() {
         // sick_leave hat keine status-Spalte — Krankmeldungen separat zählen
         const { count: sCount } = await supabase
           .from('sick_leave').select('*', { count:'exact', head:true }).is('end_date', null)
-        setPending(pCount  || 0)
+        setPending(data.role === 'admin' ? (pCount || 0) : 0)   // Freischalten kann nur der Admin
         setVacPending(vCount || 0)
         setSickPending(sCount || 0)
       }

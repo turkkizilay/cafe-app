@@ -1,0 +1,5 @@
+-- Bereits live angewendet am 23.09.2026 — NICHT erneut ausführen, nur Dokumentation.
+--  * prevent_time_entry_backdating: Schicht > 12 Std. offen → hours_worked = 0 und Notiz
+--    „⚠️ AUSSTEMPELN VERGESSEN – Zeit bitte korrigieren“ (wird erst nach Admin-Korrektur bezahlt).
+--  * Alle Schutz-Trigger (Zeiten, Urlaub, Krankmeldung, Schichttausch) greifen nur bei Browser-
+--    Anfragen (auth.uid() gesetzt); reiner Server-/Systemkontext wird nicht umgeschrieben.

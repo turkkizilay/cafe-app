@@ -101,15 +101,20 @@ export default function TimeManagement() {
       clock_in_time:  toTime(entry.clock_in),
       clock_out_time: entry.clock_out ? toTime(entry.clock_out) : '',
       break_minutes:  entry.break_minutes || 0,
-      notes:          entry.notes?.replace('[ADMIN-KORREKTUR]','').trim() || '',
+      notes:          entry.notes?.replace('[ADMIN-KORREKTUR]','').replace(/⚠️ AUSSTEMPELN VERGESSEN[^)]*\)/, '').trim() || '',
       reason:         '',
     })
     setModal('edit')
   }
 
+  // Guard wird immer freigegeben — vorher blieb „Speichern“ nach einem Fehler tot
   async function handleSave() {
     if (!saveGuard.begin()) return
-    if (!form.reason.trim()) { toast.warn('Bitte Grund für Korrektur angeben!'); saveGuard.end(); return }
+    try { await doSave() } finally { saveGuard.end(); setSaving(false) }
+  }
+
+  async function doSave() {
+    if (!form.reason.trim()) { toast.warn('Bitte Grund für Korrektur angeben!'); return }
     if (!form.clock_in_time)  { toast.warn('Bitte Einlogzeit angeben!'); return }
     if (form.clock_out_time && form.clock_out_time <= form.clock_in_time) {
       toast.warn('Auslogzeit muss nach Einlogzeit liegen!'); return
@@ -155,7 +160,7 @@ export default function TimeManagement() {
       targetType: 'time_entry', targetId: entryId, targetName: tEmpName,
     })
 
-    setModal(null); setSaving(false); saveGuard.end(); fetchEntries()
+    setModal(null); fetchEntries()
   }
 
   async function confirmDelete() {
