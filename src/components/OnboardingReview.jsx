@@ -52,7 +52,9 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
   const setJ = (k, v) => setJob(j => ({ ...j, [k]: v }))
 
   const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || row.email
-  const canAct = isAdmin && row.status === 'submitted'
+  const canAct    = isAdmin && row.status === 'submitted'
+  // Auch unfertige Registrierungen (Entwurf / Korrektur) kann der Admin abbrechen
+  const canCancel = isAdmin && ['draft', 'changes_requested'].includes(row.status)
   const rate = parseFloat(String(job.hourly_rate).replace(',', '.'))
 
   async function approve() {
@@ -203,7 +205,17 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
               <textarea rows={3} value={note} onChange={e => setNote(e.target.value)}
                 placeholder={mode === 'changes' ? 'z. B. Die IBAN stimmt nicht, bitte noch einmal prüfen.' : ''} />
               {mode === 'changes' && <div style={{ fontSize:11.5, color:'var(--text-muted)', marginTop:4 }}>Diese Notiz sieht der Mitarbeiter.</div>}
-              {mode === 'reject' && <div className="alert alert-danger" style={{ fontSize:12.5, marginTop:8 }}>Der Account wird gesperrt. Das lässt sich nur manuell rückgängig machen.</div>}
+              {mode === 'reject' && <div className="alert alert-danger" style={{ fontSize:12.5, marginTop:8 }}>Der Account wird gesperrt und die eingegebenen Personaldaten werden gelöscht. Das lässt sich nicht rückgängig machen.</div>}
+            </div>
+          )}
+
+          {canCancel && mode === 'reject' && (
+            <div className="form-group" style={{ marginTop:8 }}>
+              <label>Grund (optional, nur intern)</label>
+              <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} />
+              <div className="alert alert-danger" style={{ fontSize:12.5, marginTop:8 }}>
+                Die Registrierung wird abgebrochen und der Zugang gesperrt. Bereits eingegebene Personaldaten (Bank, Steuer, Adresse …) werden dabei gelöscht.
+              </div>
             </div>
           )}
 
@@ -212,6 +224,17 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
           )}
           {err && <div role="alert" className="alert alert-danger" style={{ fontSize:13, marginTop:10 }}>{err}</div>}
         </div>
+
+        {canCancel && (
+          <div className="modal-footer" style={{ flexWrap:'wrap' }}>
+            {mode !== 'reject'
+              ? <button className="btn btn-danger" onClick={() => { setMode('reject'); setErr('') }}>Registrierung abbrechen</button>
+              : <>
+                  <button className="btn" onClick={() => { setMode('view'); setErr('') }} disabled={busy}>Zurück</button>
+                  <button className="btn btn-danger" onClick={reject} disabled={busy}>{busy ? '…' : 'Endgültig abbrechen'}</button>
+                </>}
+          </div>
+        )}
 
         {canAct && (
           <div className="modal-footer" style={{ flexWrap:'wrap' }}>

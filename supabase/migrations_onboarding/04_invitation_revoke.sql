@@ -1,0 +1,13 @@
+-- Bereits live angewendet am 23.09.2026 (Migrationen "invitation_revoke" und
+-- "reject_onboarding_wipe_data"). NICHT erneut ausführen — nur zur Dokumentation.
+--
+-- Inhalt:
+--  * invitations.revoked_at / revoked_by, employees.app_access_hidden
+--  * RPC revoke_invitation(p_id)  – nur Admin, nur offene Einladungen, mit Protokoll
+--  * get_invitation_info          – eigene Meldungen für zurückgezogen / abgelaufen / benutzt;
+--                                   Einladung zu archiviertem Mitarbeiter gilt als zurückgezogen
+--  * handle_new_user / accept_invitation – lösen zurückgezogene Einladungen und Einladungen
+--                                   zu archivierten Mitarbeitern nie ein
+--  * Trigger trg_revoke_invites_on_deactivate – Archivieren zieht offene Einladungen zurück
+--  * reject_onboarding            – löscht beim Ablehnen/Abbrechen die sensiblen Angaben
+--                                   (Bank, Steuer, SV, Adresse …); Name/E-Mail/Status bleiben

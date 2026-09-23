@@ -28,6 +28,8 @@ export default function UserManagement() {
   const [invitations,  setInvitations]  = useState([])
   const [onboardings,  setOnboardings]  = useState([])
   const [reviewRow,    setReviewRow]    = useState(null)
+  const [confirmRevoke, setConfirmRevoke] = useState(null) // Einladung, die zurückgezogen werden soll
+  const [showHidden,   setShowHidden]   = useState(false)
   const [loading,      setLoading]      = useState(true)
   const [working,      setWorking]      = useState(null)
   const [pendingForms, setPendingForms] = useState({})
@@ -48,8 +50,8 @@ export default function UserManagement() {
     try {
     const [{ data: profiles }, { data: emps }, { data: invs }, { data: onbs }] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('id, first_name, last_name, email, position, avatar_url, avatar_color').order('last_name'),
-      supabase.from('invitations').select('*, employees!employee_id(first_name, last_name)').is('used_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
+      supabase.from('employees').select('id, first_name, last_name, email, position, avatar_url, avatar_color, is_active, app_access_hidden').order('last_name'),
+      supabase.from('invitations').select('*, employees!employee_id(first_name, last_name)').is('used_at', null).is('revoked_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('employee_onboarding').select('*').order('created_at', { ascending: false }),
     ])
     const onbIds = new Set((onbs || []).map(o => o.profile_id))
@@ -89,10 +91,13 @@ export default function UserManagement() {
             : 'Diese E-Mail gehört bereits zu einem Mitarbeiter. Bitte dort unter „Mitarbeiter ohne Account" einladen.')
           return
         }
-        // Alte, offene Einladungen für dieselbe Adresse schließen (nur ein gültiger Link)
-        await supabase.from('invitations').update({ used_at: new Date().toISOString() })
-          .is('employee_id', null).is('used_at', null).eq('email', email)
       }
+      // Nur EIN gültiger Link pro Person: ältere offene Einladungen zurückziehen
+      // (danach zeigt der alte Link „Einladung wurde zurückgezogen“)
+      const old = invitations.filter(i => isNew
+        ? (!i.employee_id && (i.email || '').toLowerCase() === email)
+        : i.employee_id === inviteModal.id)
+      for (const o of old) await supabase.rpc('revoke_invitation', { p_id: o.id })
 
       const { data: inv, error } = await supabase.from('invitations').insert([{
         employee_id: isNew ? null : inviteModal.id,
@@ -133,10 +138,36 @@ export default function UserManagement() {
     return `https://wa.me/?text=${msg}`
   }
 
-  async function revokeInvitation(id) {
+  // Einladung zurückziehen: Link wird sofort ungültig. Öffnet die Person ihn trotzdem,
+  // sieht sie „Diese Einladung wurde zurückgezogen“. Protokoll schreibt die Datenbank.
+  async function revokeInvitation(inv) {
     if (!revokeGuard.begin()) return
-    await supabase.from('invitations').update({ used_at: new Date().toISOString() }).eq('id', id)
-    toast.info('Einladung widerrufen.')
+    try {
+      const { data, error } = await supabase.rpc('revoke_invitation', { p_id: inv.id })
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Die Einladung konnte nicht zurückgezogen werden. Bitte erneut versuchen.', 9000)
+      } else {
+        toast.success('Einladung zurückgezogen. Der Link funktioniert nicht mehr.')
+      }
+    } finally {
+      revokeGuard.end()
+      setConfirmRevoke(null)
+      fetchAll()
+    }
+  }
+
+  // Mitarbeiter ohne App-Zugang aus der Liste ausblenden (z. B. Aushilfe ohne Smartphone).
+  // Der Mitarbeiter bleibt aktiv — Schichtplan, Stunden und Lohn sind davon unberührt.
+  async function setAccessHidden(emp, hidden) {
+    const { error } = await supabase.from('employees').update({ app_access_hidden: hidden }).eq('id', emp.id)
+    if (error) { toast.error('Das hat nicht geklappt. Bitte erneut versuchen.'); return }
+    toast.info(hidden ? `${emp.first_name} ${emp.last_name} ausgeblendet.` : `${emp.first_name} ${emp.last_name} wieder eingeblendet.`)
+    logActivity({
+      action: hidden ? 'employee.app_access_hidden' : 'employee.app_access_shown', category: 'employee',
+      summary: hidden ? `hat ${emp.first_name} ${emp.last_name} als „kein App-Zugang nötig“ markiert.`
+                      : `hat ${emp.first_name} ${emp.last_name} wieder zur Einladungsliste hinzugefügt.`,
+      targetType: 'employee', targetId: emp.id, targetName: `${emp.first_name} ${emp.last_name}`,
+    })
     fetchAll()
   }
 
@@ -244,10 +275,14 @@ export default function UserManagement() {
   }
 
   // Mitarbeiter ohne Account
-  const employeesWithoutAccount = employees.filter(emp =>
+  // Archivierte (inaktive) Mitarbeiter brauchen keinen Zugang → nicht anzeigen
+  const noAccountAll = employees.filter(emp =>
+    emp.is_active !== false &&
     !approved.find(p => p.employee_id === emp.id) &&
     !pending.find(p => p.employee_id === emp.id)
   )
+  const employeesWithoutAccount = noAccountAll.filter(e => !e.app_access_hidden)
+  const hiddenNoAccount         = noAccountAll.filter(e =>  e.app_access_hidden)
 
   if (loading) return <div style={{ padding: 24 }}>Lädt...</div>
 
@@ -399,6 +434,29 @@ export default function UserManagement() {
         </div>
       )}
 
+      {confirmRevoke && (
+        <div className="modal-overlay" onClick={() => setConfirmRevoke(null)}>
+          <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Einladung zurückziehen?</div>
+              <button className="btn btn-sm" onClick={() => setConfirmRevoke(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
+              Die Einladung für <strong>{confirmRevoke._name || confirmRevoke.email}</strong>
+              {confirmRevoke._name ? <> ({confirmRevoke.email})</> : null} wird sofort ungültig.
+              Öffnet die Person den Link trotzdem, sieht sie: <em>„Diese Einladung wurde zurückgezogen.“</em>
+              <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:8 }}>
+                Du kannst jederzeit eine neue Einladung verschicken.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setConfirmRevoke(null)}>Abbrechen</button>
+              <button className="btn btn-danger" onClick={() => revokeInvitation(confirmRevoke)}>Zurückziehen</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {reviewRow && (
         <OnboardingReview
           row={reviewRow} isAdmin={profile?.role === 'admin'}
@@ -444,7 +502,7 @@ export default function UserManagement() {
       })()}
 
       {/* ── 1. Mitarbeiter ohne Account ── */}
-        {employeesWithoutAccount.length > 0 && (
+        {(employeesWithoutAccount.length > 0 || hiddenNoAccount.length > 0) && (
           <div className="card" style={{ marginBottom:20 }}>
             <div className="card-header">
               <div className="card-title">
@@ -464,22 +522,44 @@ export default function UserManagement() {
                       <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{emp.email || 'Keine E-Mail'}{emp.position ? ` · ${emp.position}` : ''}</div>
                     </div>
                     {hasInvite ? (
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}>
                         <span style={{ fontSize:11, color:'#D97706', background:'#FEF3C7', borderRadius:99, padding:'3px 10px', fontWeight:600 }}>⏳ Einladung ausstehend</span>
-                        <button className="btn btn-sm" onClick={() => openInvite(emp)}>Erneut einladen</button>
+                        <button className="btn btn-sm" onClick={() => openInvite(emp)}>Neuer Link</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => setConfirmRevoke({ ...hasInvite, _name: `${emp.first_name} ${emp.last_name}` })}>Zurückziehen</button>
                       </div>
                     ) : (
-                      <button className="btn btn-primary btn-sm" onClick={() => openInvite(emp)}>
-                        📨 Einladen
-                      </button>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}>
+                        <button className="btn btn-sm" onClick={() => setAccessHidden(emp, true)}
+                          title="Für Mitarbeiter, die die App nicht nutzen. Sie bleiben im Schichtplan und in der Lohnabrechnung.">
+                          Kein Zugang nötig
+                        </button>
+                        <button className="btn btn-primary btn-sm" onClick={() => openInvite(emp)}>
+                          📨 Einladen
+                        </button>
+                      </div>
                     )}
                   </div>
                 )
               })}
             </div>
             <div style={{ padding:'10px 16px', fontSize:12, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>
-              💡 Diese Mitarbeiter haben noch keinen App-Zugang. Klicke "Einladen" um einen Link zu generieren.
+              💡 Diese Mitarbeiter haben noch keinen App-Zugang. „Einladen“ erzeugt einen Link. „Kein Zugang nötig“ blendet sie hier aus —
+              sie bleiben aktiv im Schichtplan und in der Lohnabrechnung. Ehemalige Mitarbeiter bitte unter <strong>Mitarbeiter → Deaktivieren</strong> archivieren.
+              {hiddenNoAccount.length > 0 && (
+                <button className="btn btn-sm" style={{ marginLeft:8 }} onClick={() => setShowHidden(v => !v)}>
+                  {showHidden ? 'Ausgeblendete verbergen' : `Ausgeblendete anzeigen (${hiddenNoAccount.length})`}
+                </button>
+              )}
             </div>
+            {showHidden && hiddenNoAccount.map(emp => (
+              <div key={emp.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 16px', borderTop:'1px solid var(--border)', opacity:0.75 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:500, fontSize:13 }}>{emp.first_name} {emp.last_name} <span className="badge badge-gray" style={{ marginLeft:6 }}>kein Zugang nötig</span></div>
+                  <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{emp.email || 'Keine E-Mail'}</div>
+                </div>
+                <button className="btn btn-sm" onClick={() => setAccessHidden(emp, false)}>Wieder einblenden</button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -500,7 +580,7 @@ export default function UserManagement() {
                         : <span className="badge badge-accent">Neuer Mitarbeiter</span>}</td>
                       <td>{inv.email}</td>
                       <td style={{ fontSize:12, color:'var(--text-secondary)' }}>
-                        {formatDate(inv.expires_at.split('T')[0])}
+                        {new Date(inv.expires_at).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })}
                         {(new Date(inv.expires_at).getTime() - Date.now()) < 86400000 * 2 && (
                           <span style={{ color:'#DC2626', marginLeft:6, fontSize:11 }}>⚠️ Bald</span>
                         )}
@@ -511,7 +591,7 @@ export default function UserManagement() {
                             const link = `${window.location.origin}/?invite=${inv.token}`
                             copyLink(link)
                           }}>📋 Link kopieren</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => revokeInvitation(inv.id)}>✗ Widerrufen</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => setConfirmRevoke({ ...inv, _name: inv.employee_id ? `${inv.employees?.first_name || ''} ${inv.employees?.last_name || ''}`.trim() : '' })}>✗ Zurückziehen</button>
                         </div>
                       </td>
                     </tr>

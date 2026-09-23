@@ -21,6 +21,7 @@ export default function InvitationAccept({ token }) {
   const [pw,       setPw]       = useState('')
   const [pw2,      setPw2]      = useState('')
   const [errMsg,   setErrMsg]   = useState('')
+  const [reason,   setReason]   = useState('')
   const [saving,   setSaving]   = useState(false)
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function InvitationAccept({ token }) {
   async function validateToken() {
     const { data, error } = await supabase.rpc('get_invitation_info', { p_token: token })
     if (error || !data) { setStep('error'); setErrMsg('Verbindungsfehler. Bitte nochmal versuchen.'); return }
-    if (!data.valid) { setStep('error'); setErrMsg(data.error); return }
+    if (!data.valid) { setStep('error'); setReason(data.reason || ''); setErrMsg(data.error); return }
     setInfo(data)
     setStep('password')
   }
@@ -133,9 +134,13 @@ export default function InvitationAccept({ token }) {
         {/* ── Fehler ── */}
         {step === 'error' && (
           <div style={{ textAlign:'center' }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>❌</div>
-            <div style={{ fontWeight:600, fontSize:16, marginBottom:8, color:'#1C1917' }}>Einladung ungültig</div>
-            <div style={{ color:'#DC2626', fontSize:13, marginBottom:20, lineHeight:1.6 }}>{errMsg}</div>
+            <div style={{ fontSize:40, marginBottom:12 }}>
+              {{ revoked:'🚫', expired:'⏱️', used:'✅' }[reason] || '❌'}
+            </div>
+            <div style={{ fontWeight:600, fontSize:16, marginBottom:8, color:'#1C1917' }}>
+              {{ revoked:'Einladung zurückgezogen', expired:'Einladung abgelaufen', used:'Einladung bereits verwendet' }[reason] || 'Einladung ungültig'}
+            </div>
+            <div style={{ color: reason === 'used' ? '#57534E' : '#DC2626', fontSize:13, marginBottom:20, lineHeight:1.6 }}>{errMsg}</div>
             <a href="/" style={{ display:'inline-block', padding:'9px 20px', background:'#C2793A', color:'#fff', borderRadius:8, textDecoration:'none', fontSize:13, fontWeight:600 }}>
               → Zur Anmeldung
             </a>
