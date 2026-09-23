@@ -1,0 +1,8 @@
+-- Bereits live angewendet am 23.09.2026 — NICHT erneut ausführen, nur Dokumentation.
+--  * invitations.job (jsonb): optionaler Arbeitsvertrag beim Einladen (Lohn, Stunden, Art, Eintritt,
+--    Position, Rolle) → wird beim Freischalten vorausgefüllt. Nur Admins lesen/schreiben (RLS invitations).
+--  * handle_new_user: bei Einladung eines bestehenden Mitarbeiters werden Vor-/Nachname,
+--    approved_at und approved_by ins Profil übernommen.
+--  * approve_user: prüft Rolle, setzt approved_at/approved_by und Namen aus dem Mitarbeiter.
+--  * Backfill: Profile ohne Namen erhalten die Namen des verknüpften Mitarbeiters.
+--  * Trigger trg_sync_profile_names: Namensänderung unter „Mitarbeiter“ wird ins Login-Profil übernommen.

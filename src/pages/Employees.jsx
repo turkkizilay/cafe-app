@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/UI/Avatar'
 import { supabase, getInitials, getAvatarColor, formatDate, formatCurrency, toLocalDateStr } from '../lib/supabase'
 import { openSignedFile } from '../lib/openFile'
@@ -55,6 +56,11 @@ export default function Employees() {
   const [confirmDeact,   setConfirmDeact]   = useState(null)
   const [openClockIn,    setOpenClockIn]    = useState(false)
   const [showInactive,  setShowInactive]  = useState(false)
+  const [access,        setAccess]        = useState({})     // employee_id → 'active' | 'invited' | 'disabled' | 'pending'
+  const [addChoice,     setAddChoice]     = useState(false)  // Auswahl: einladen oder selbst anlegen
+  const [justCreated,   setJustCreated]   = useState(null)   // nach „Selbst anlegen“: App-Zugang anbieten
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // ── Dokumente (nur im Edit-Modal, Admin only) ──────────────
   const [empDocs,     setEmpDocs]     = useState([])
@@ -184,6 +190,31 @@ export default function Employees() {
     }
     setEmployees(data || [])
     setLoading(false)
+    if (isAdmin) fetchAccess()
+    // Direktsprung aus der Benutzerverwaltung: /mitarbeiter?edit=<id>
+    const editId = searchParams.get('edit')
+    if (editId) {
+      searchParams.delete('edit'); setSearchParams(searchParams, { replace: true })
+      let emp = (data || []).find(e => e.id === editId)
+      if (!emp) {   // evtl. archiviert → direkt laden
+        const { data: one } = await supabase.from('employees').select('*').eq('id', editId).maybeSingle()
+        emp = one
+      }
+      if (emp) openEdit(emp)
+    }
+  }
+
+  // App-Zugang je Mitarbeiter (nur Admin darf Logins/Einladungen sehen)
+  async function fetchAccess() {
+    const [{ data: profs }, { data: invs }] = await Promise.all([
+      supabase.from('profiles').select('employee_id, status').not('employee_id', 'is', null),
+      supabase.from('invitations').select('employee_id').is('used_at', null).is('revoked_at', null)
+        .gt('expires_at', new Date().toISOString()).not('employee_id', 'is', null),
+    ])
+    const map = {}
+    for (const i of invs || []) map[i.employee_id] = 'invited'
+    for (const p of profs || []) map[p.employee_id] = p.status === 'approved' ? 'active' : p.status === 'disabled' ? 'disabled' : 'pending'
+    setAccess(map)
   }
 
   function openAdd() { setForm({ ...EMPTY }); setError(''); setEmpDocs([]); setModal('add') }
@@ -284,14 +315,16 @@ export default function Employees() {
         ...(modal === 'add' && { is_active: true }),
       }
 
-      const { error: err } = modal === 'add'
-        ? await supabase.from('employees').insert([payload])
-        : await supabase.from('employees').update(payload).eq('id', form.id)
+      const { data: saved, error: err } = modal === 'add'
+        ? await supabase.from('employees').insert([payload]).select('id, first_name, last_name, email').maybeSingle()
+        : await supabase.from('employees').update(payload).eq('id', form.id).select('id').maybeSingle()
 
       if (err) {
         setError(translateSupabaseError(err, 'Mitarbeiter speichern'))
         return
       }
+      if (modal === 'add' && saved) setJustCreated(saved)
+      else toast.success('✅ Stammdaten gespeichert')
       setModal(null)
       fetchEmployees()
     } finally {
@@ -344,13 +377,13 @@ export default function Employees() {
             style={{ borderColor: showInactive ? 'var(--accent)' : undefined, color: showInactive ? 'var(--accent)' : undefined }}>
             {showInactive ? '👥 Alle' : '📦 Archiv anzeigen'}
           </button>
-          {isAdmin && <button className="btn btn-primary" onClick={openAdd}>+ Neuer Mitarbeiter</button>}
+          {isAdmin && <button className="btn btn-primary" onClick={() => setAddChoice(true)}>+ Neuer Mitarbeiter</button>}
         </div>
       </div>
 
       <div className="content">
         {loading ? <div className="text-muted">Lädt...</div> : fetchError ? (
-          <div className="alert alert-danger">{fetchError}<br/><small>Bitte update_v5.sql in Supabase ausführen falls noch nicht geschehen.</small></div>
+          <div className="alert alert-danger">{fetchError}</div>
         ) : (
           <div className="card">
             <div className="table-wrap">
@@ -362,7 +395,7 @@ export default function Employees() {
               ) : (
                 <table>
                   <thead>
-                    <tr><th>Name</th><th>Position</th><th>Art</th><th>Std/Wo</th><th>Stundenlohn</th><th>Urlaub</th><th>Dabei seit</th><th>Aktionen</th></tr>
+                    <tr><th>Name</th><th>Position</th><th>Art</th><th>Std/Wo</th><th>Stundenlohn</th><th>Urlaub</th><th>Dabei seit</th>{isAdmin && <th>App-Zugang</th>}<th>Aktionen</th></tr>
                   </thead>
                   <tbody>
                     {filtered.map(emp => (
@@ -389,6 +422,19 @@ export default function Employees() {
                         </td>
                         <td>{emp.vacation_days_per_year} Tage</td>
                         <td className="text-muted">{formatDate(emp.start_date)}</td>
+                        {isAdmin && (
+                          <td>
+                            {access[emp.id] === 'active'   && <span className="badge badge-green">✅ Aktiv</span>}
+                            {access[emp.id] === 'pending'  && <span className="badge badge-amber">⏳ Wartet</span>}
+                            {access[emp.id] === 'disabled' && <span className="badge badge-red">🔒 Gesperrt</span>}
+                            {access[emp.id] === 'invited'  && <span className="badge badge-blue">📨 Eingeladen</span>}
+                            {!access[emp.id] && emp.is_active && (
+                              <button className="btn btn-sm" onClick={() => navigate(`/benutzer?invite=${emp.id}`)}
+                                title="Einladungslink für den App-Zugang erstellen">📨 Einladen</button>
+                            )}
+                            {!access[emp.id] && !emp.is_active && <span className="text-muted">–</span>}
+                          </td>
+                        )}
                         <td>
                           <div className="flex gap-2">
                             <button className="btn btn-sm" onClick={() => openEdit(emp)}>{isAdmin ? '✏️ Bearbeiten' : '👁️ Ansehen'}</button>
@@ -407,6 +453,55 @@ export default function Employees() {
           </div>
         )}
       </div>
+
+      {/* ── Neuer Mitarbeiter: Weg wählen ── */}
+      {addChoice && (
+        <div className="modal-overlay" onClick={() => setAddChoice(false)}>
+          <div className="modal" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Neuen Mitarbeiter hinzufügen</div>
+              <button className="btn btn-sm" onClick={() => setAddChoice(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <button className="btn" style={{ justifyContent:'flex-start', textAlign:'left', padding:'14px 16px', height:'auto', whiteSpace:'normal' }}
+                onClick={() => { setAddChoice(false); navigate('/benutzer?new=1') }}>
+                <div>
+                  <div style={{ fontWeight:600, fontSize:14 }}>📨 Einladen <span className="badge badge-accent" style={{ marginLeft:6 }}>empfohlen</span></div>
+                  <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:4, lineHeight:1.5 }}>
+                    Du gibst nur die E-Mail ein (Lohn & Stunden optional gleich mit). Der Mitarbeiter trägt Adresse, Bank, Steuer-ID usw. selbst ein — du prüfst und schaltest frei.
+                  </div>
+                </div>
+              </button>
+              <button className="btn" style={{ justifyContent:'flex-start', textAlign:'left', padding:'14px 16px', height:'auto', whiteSpace:'normal' }}
+                onClick={() => { setAddChoice(false); openAdd() }}>
+                <div>
+                  <div style={{ fontWeight:600, fontSize:14 }}>✍️ Selbst anlegen</div>
+                  <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:4, lineHeight:1.5 }}>
+                    Du trägst alle Daten selbst ein — z. B. für Aushilfen ohne Smartphone. Einen App-Zugang kannst du danach jederzeit schicken.
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Nach „Selbst anlegen“: App-Zugang anbieten ── */}
+      {justCreated && (
+        <div className="modal-overlay" onClick={() => setJustCreated(null)}>
+          <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><div className="modal-title">✅ {justCreated.first_name} {justCreated.last_name} angelegt</div></div>
+            <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
+              Soll {justCreated.first_name} auch die App nutzen (einstempeln, Schichtplan, Urlaub)?
+              Dann schicke jetzt einen Einladungslink an <strong>{justCreated.email}</strong>.
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setJustCreated(null)}>Später</button>
+              <button className="btn btn-primary" onClick={() => { const id = justCreated.id; setJustCreated(null); navigate(`/benutzer?invite=${id}`) }}>📨 Jetzt einladen</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Inline Bestätigungsdialog */}
       {confirmDeact && (
@@ -445,6 +540,16 @@ export default function Employees() {
             <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
               {error && <div className="alert alert-danger">❌ {error}</div>}
               {!isAdmin && <div className="alert alert-info" style={{ fontSize:12 }}>🔒 Nur ansehen — Änderungen kann nur der Admin vornehmen.</div>}
+              {isAdmin && modal === 'edit' && (
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', background:'var(--bg)', borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12.5 }}>
+                  <span style={{ color:'var(--text-secondary)' }}>App-Zugang:</span>
+                  <strong>{{ active:'✅ Aktiv', pending:'⏳ Wartet auf Freigabe', disabled:'🔒 Gesperrt', invited:'📨 Eingeladen' }[access[form.id]] || '– keiner'}</strong>
+                  <button type="button" className="btn btn-sm" style={{ marginLeft:'auto' }}
+                    onClick={() => { const id = form.id; setModal(null); navigate(access[id] ? '/benutzer' : `/benutzer?invite=${id}`) }}>
+                    {access[form.id] ? 'Login & Rolle verwalten →' : '📨 App-Zugang einladen'}
+                  </button>
+                </div>
+              )}
               <fieldset disabled={!isAdmin} style={{ border:'none', padding:0, margin:0, minWidth:0 }}>
               <div className="two-col">
                 <div className="form-group"><label>Vorname *</label><input value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="Max" /></div>

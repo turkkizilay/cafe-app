@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase, formatDate, formatDateTime, toLocalDateStr } from '../lib/supabase'
 import { useToast } from './UI/Toast'
 import { formatIBAN, isValidIBAN, taxIdChecksumOk } from '../lib/personalData'
@@ -50,6 +50,27 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
     hourly_rate:'', start_date: toLocalDateStr(), vacation_days:28,
   })
   const setJ = (k, v) => setJob(j => ({ ...j, [k]: v }))
+  const [prefilled, setPrefilled] = useState(false)
+
+  // Wurde der Arbeitsvertrag schon beim Einladen festgelegt? → vorausfüllen
+  useEffect(() => {
+    if (!isAdmin || !row.invitation_id || row.status !== 'submitted') return
+    supabase.from('invitations').select('job').eq('id', row.invitation_id).maybeSingle().then(({ data }) => {
+      const j = data?.job
+      if (!j) return
+      setJob(cur => ({
+        ...cur,
+        role: ['employee','manager'].includes(j.role) ? j.role : cur.role,
+        position: j.position || cur.position,
+        employment_type: j.employment_type || cur.employment_type,
+        hours_per_week: j.hours_per_week ?? cur.hours_per_week,
+        hourly_rate: j.hourly_rate != null ? String(j.hourly_rate).replace('.', ',') : cur.hourly_rate,
+        start_date: j.start_date || cur.start_date,
+        vacation_days: j.vacation_days ?? cur.vacation_days,
+      }))
+      setPrefilled(true)
+    })
+  }, [row.invitation_id, row.status, isAdmin])
 
   const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || row.email
   const canAct    = isAdmin && row.status === 'submitted'
@@ -149,7 +170,13 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
 
           {canAct && mode === 'view' && (
             <div style={{ background:'var(--bg)', borderRadius:10, padding:'14px 14px 2px', marginTop:6 }}>
-              <div style={{ fontWeight:600, fontSize:13.5, marginBottom:10 }}>Arbeitsvertrag (legst nur du fest)</div>
+              <div style={{ fontWeight:600, fontSize:13.5, marginBottom:10 }}>
+                Arbeitsvertrag (legst nur du fest)
+                {prefilled && <span style={{ fontWeight:400, fontSize:12, color:'var(--text-muted)', marginLeft:8 }}>— aus der Einladung übernommen, bitte prüfen</span>}
+              </div>
+              <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:-6, marginBottom:10 }}>
+                Alles lässt sich später jederzeit unter <strong>Mitarbeiter → Bearbeiten</strong> ändern.
+              </div>
               <div className="two-col">
                 <div className="form-group">
                   <label>Rolle</label>

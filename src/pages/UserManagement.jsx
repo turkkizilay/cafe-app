@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase, formatDate } from '../lib/supabase'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { MINDESTLOHN } from '../lib/constants'
+import { supabase, formatDate, toLocalDateStr } from '../lib/supabase'
 import Avatar from '../components/UI/Avatar'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
@@ -40,6 +42,9 @@ export default function UserManagement() {
   // Einladungs-Modal
   const [inviteModal,  setInviteModal]  = useState(null) // { employee } | null
   const [inviteForm,   setInviteForm]   = useState({ email:'', role:'employee' })
+  const [inviteJob,    setInviteJob]    = useState(null)   // optionaler Arbeitsvertrag bei neuer Einladung
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [inviteResult, setInviteResult] = useState(null) // generierter Link
   const [inviteSaving, setInviteSaving] = useState(false)
 
@@ -61,6 +66,16 @@ export default function UserManagement() {
     setApproved((profiles || []).filter(p => p.status === 'approved'))
     setEmployees(emps || [])
     setInvitations(invs || [])
+    // Direktsprünge aus „Mitarbeiter“: ?invite=<employee_id> oder ?new=1
+    const invId = searchParams.get('invite'), isNewParam = searchParams.get('new')
+    if (invId || isNewParam) {
+      searchParams.delete('invite'); searchParams.delete('new'); setSearchParams(searchParams, { replace: true })
+      if (isNewParam) openInvite(null)
+      else {
+        const emp = (emps || []).find(e => e.id === invId)
+        if (emp) openInvite(emp)
+      }
+    }
     } catch(err) { toast.error('Fehler beim Laden: ' + err.message) }
     setLoading(false)
   }
@@ -70,6 +85,7 @@ export default function UserManagement() {
   function openInvite(emp) {
     setInviteModal(emp || { isNew: true })
     setInviteForm({ email: emp?.email || '', role: 'employee' })
+    setInviteJob(null)
     setInviteResult(null)
   }
 
@@ -79,6 +95,22 @@ export default function UserManagement() {
     if (!email) { toast.warn('Bitte E-Mail eingeben'); inviteGuard.end(); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast.warn('Bitte eine gültige E-Mail-Adresse eingeben.'); inviteGuard.end(); return }
     const isNew = !!inviteModal.isNew
+    let job = null
+    if (isNew && inviteJob) {
+      const rate = parseFloat(String(inviteJob.hourly_rate || '').replace(',', '.'))
+      const hours = parseFloat(String(inviteJob.hours_per_week || '').replace(',', '.'))
+      if (inviteJob.hourly_rate && (!rate || rate <= 0)) { toast.warn('Bitte einen gültigen Stundenlohn eingeben (oder leer lassen).'); inviteGuard.end(); return }
+      if (inviteJob.hours_per_week && (!hours || hours <= 0 || hours > 60)) { toast.warn('Bitte die Wochenstunden prüfen (1–60).'); inviteGuard.end(); return }
+      job = {
+        role: inviteJob.role || 'employee',
+        position: (inviteJob.position || '').trim(),
+        employment_type: inviteJob.employment_type || 'minijob',
+        hours_per_week: hours || null,
+        hourly_rate: rate || null,
+        start_date: inviteJob.start_date || null,
+        vacation_days: inviteJob.vacation_days === '' || inviteJob.vacation_days == null ? 28 : parseInt(inviteJob.vacation_days, 10),
+      }
+    }
     setInviteSaving(true)
 
     try {
@@ -104,6 +136,7 @@ export default function UserManagement() {
         email,
         role:        isNew ? 'employee' : inviteForm.role,
         created_by:  profile?.id,
+        job,
       }]).select().maybeSingle()
 
       if (error || !inv) { toast.error('Einladung konnte nicht erstellt werden. Bitte erneut versuchen.'); return }
@@ -296,6 +329,10 @@ export default function UserManagement() {
       </div>
 
       <div className="content">
+        <div style={{ fontSize:12.5, color:'var(--text-secondary)', background:'var(--bg-white)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px', marginBottom:16, lineHeight:1.6 }}>
+          🔑 <strong>Hier:</strong> Logins, Einladungen, Freischaltung und Rollen.
+          💶 <strong>Lohn, Stunden, Urlaub, Adresse, Bank:</strong> unter <a href="/mitarbeiter" onClick={e => { e.preventDefault(); navigate('/mitarbeiter') }}>Mitarbeiter</a> — oder direkt über „Stammdaten“ in der Liste unten.
+        </div>
 
         {/* ── Inline Bestätigungsdialog ── */}
         {confirmDel && (
@@ -350,6 +387,48 @@ export default function UserManagement() {
                         {ROLES.filter(r => r.value !== 'admin').map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
                     </div>}
+
+                    {inviteModal.isNew && (
+                      <div style={{ border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px', marginBottom:14 }}>
+                        {!inviteJob ? (
+                          <button type="button" className="btn btn-sm" onClick={() => setInviteJob({ role:'employee', position:'', employment_type:'minijob', hours_per_week:10, hourly_rate:'', start_date: toLocalDateStr(), vacation_days:28 })}>
+                            💶 Lohn & Stunden schon jetzt festlegen (optional)
+                          </button>
+                        ) : (
+                          <>
+                            <div style={{ fontWeight:600, fontSize:13, marginBottom:8 }}>💶 Arbeitsvertrag (wird beim Freischalten vorausgefüllt)</div>
+                            <div className="two-col">
+                              <div className="form-group"><label>Beschäftigung</label>
+                                <select value={inviteJob.employment_type} onChange={e => { const t = e.target.value; setInviteJob(j => ({ ...j, employment_type:t, hours_per_week:{ vollzeit:40, teilzeit:20, werkstudent:20, minijob:10 }[t] })) }}>
+                                  <option value="vollzeit">Vollzeit</option><option value="teilzeit">Teilzeit</option>
+                                  <option value="werkstudent">Werkstudent</option><option value="minijob">Minijob</option>
+                                </select></div>
+                              <div className="form-group"><label>Stunden/Woche</label>
+                                <input type="number" min="1" max="60" value={inviteJob.hours_per_week} onChange={e => setInviteJob(j => ({ ...j, hours_per_week:e.target.value }))} /></div>
+                            </div>
+                            <div className="two-col">
+                              <div className="form-group"><label>Stundenlohn (€)</label>
+                                <input inputMode="decimal" value={inviteJob.hourly_rate} placeholder={String(MINDESTLOHN).replace('.', ',')}
+                                  onChange={e => setInviteJob(j => ({ ...j, hourly_rate:e.target.value.replace(/[^0-9.,]/g, '') }))} />
+                                {parseFloat(String(inviteJob.hourly_rate).replace(',', '.')) < MINDESTLOHN && (
+                                  <div style={{ fontSize:11.5, color:'var(--danger)', marginTop:3 }}>⚠️ Unter Mindestlohn</div>)}
+                              </div>
+                              <div className="form-group"><label>Eintrittsdatum</label>
+                                <input type="date" value={inviteJob.start_date} onChange={e => setInviteJob(j => ({ ...j, start_date:e.target.value }))} /></div>
+                            </div>
+                            <div className="two-col">
+                              <div className="form-group"><label>Position</label>
+                                <input value={inviteJob.position} placeholder="Barista, Service, Küche…" onChange={e => setInviteJob(j => ({ ...j, position:e.target.value }))} /></div>
+                              <div className="form-group"><label>Rolle in der App</label>
+                                <select value={inviteJob.role} onChange={e => setInviteJob(j => ({ ...j, role:e.target.value }))}>
+                                  <option value="employee">👤 Mitarbeiter</option><option value="manager">🔧 Manager</option>
+                                </select></div>
+                            </div>
+                            <button type="button" className="btn btn-sm" onClick={() => setInviteJob(null)}>Doch erst beim Freischalten festlegen</button>
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     <div className="alert alert-info" style={{ fontSize:12 }}>
                       📋 Der Einladungslink ist <strong>7 Tage gültig</strong> und funktioniert nur mit dieser E-Mail-Adresse. {inviteModal.isNew
@@ -694,7 +773,14 @@ export default function UserManagement() {
                                 ? <span style={{ fontSize:13 }}>{emp.first_name} {emp.last_name}</span>
                                 : <span style={{ fontSize:12, color:'#DC2626', fontWeight:500 }}>⚠️ Nicht verknüpft</span>
                               }
-                              <button className="btn btn-sm" style={{ fontSize:10, padding:'2px 8px' }} onClick={() => setEditState(e => ({...e, [p.id]: p.employee_id||''}))}>✏️</button>
+                              {emp && (
+                                <button className="btn btn-sm" style={{ fontSize:11, padding:'2px 8px' }}
+                                  onClick={() => navigate(`/mitarbeiter?edit=${emp.id}`)}
+                                  title="Lohn, Stunden, Urlaub, Adresse, Bank bearbeiten">💶 Stammdaten</button>
+                              )}
+                              <button className="btn btn-sm" style={{ fontSize:10, padding:'2px 8px' }}
+                                title="Login mit einem anderen Mitarbeiter-Datensatz verknüpfen"
+                                onClick={() => setEditState(e => ({...e, [p.id]: p.employee_id||''}))}>🔗</button>
                             </div>
                           )}
                         </td>
@@ -730,7 +816,7 @@ export default function UserManagement() {
             )}
           </div>
           <div style={{ padding:'10px 16px', fontSize:12, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>
-            💡 ✏️ = Mitarbeiter-Verknüpfung ändern · ⚠️ Rot = kein Mitarbeiter verknüpft
+            💡 💶 Stammdaten = Lohn & persönliche Daten bearbeiten · 🔗 = Login mit anderem Mitarbeiter verknüpfen · ⚠️ Rot = kein Mitarbeiter verknüpft
           </div>
         </div>
       </div>
