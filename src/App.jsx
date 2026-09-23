@@ -349,7 +349,7 @@ export default function App() {
         <ToastProvider>
           <BrowserRouter>
             <div className="app-shell">
-              <Sidebar session={session} isAdmin={isAdmin} isManager={isManager} pendingCount={pending} />
+              <Sidebar session={session} isAdmin={isAdmin} isManager={isManager} pendingCount={pending} vacPendingCount={vacPending} sickPendingCount={sickPending} />
               <div className="main">
 
                 {(() => {

@@ -25,7 +25,7 @@ function signOut() {
 
 function Shell({ children, wide }) {
   return (
-    <div style={{ minHeight:'100vh', background:'var(--bg)', padding:'24px 16px calc(40px + env(safe-area-inset-bottom))' }}>
+    <div style={{ minHeight:'100vh', background:'var(--bg)', padding:'calc(24px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom))' }}>
       <div style={{ maxWidth: wide ? 620 : 460, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>

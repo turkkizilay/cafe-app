@@ -1,6 +1,6 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import Avatar from '../UI/Avatar'
 import { useDarkMode } from '../../context/DarkModeContext'
 import { logActivity } from '../../lib/activityLog'
 
@@ -27,27 +27,59 @@ const ADMIN_ITEMS = [
   { label: 'Einstellungen',    icon: '⚙️', path: '/einstellungen'  },
 ]
 
+// Eingeklappt-Zustand (nur Desktop) pro Gerät merken — reine Komfort-Einstellung
+const COLLAPSE_KEY = 'cafe_sidebar_collapsed'
+function readCollapsed() {
+  try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+}
+function writeCollapsed(v) {
+  try { localStorage.setItem(COLLAPSE_KEY, v ? '1' : '0') } catch { /* egal */ }
+}
+
+/**
+ * Navigation.
+ * Desktop (> 768px): feste Seitenleiste, per « / » einklappbar (nur Symbole).
+ * Mobile  (≤ 768px): Leiste ist ausgeblendet; oben erscheint eine schmale Kopfzeile
+ *                    mit ☰ — ein Tipp öffnet die Navigation als Schublade von links.
+ */
 export default function Sidebar({ session, isAdmin, isManager, pendingCount, vacPendingCount, sickPendingCount }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { dark, toggle } = useDarkMode()
+  const [open,      setOpen]      = useState(false)          // Mobile-Schublade
+  const [collapsed, setCollapsed] = useState(readCollapsed)  // Desktop eingeklappt
+
+  // Nach jedem Seitenwechsel Schublade schließen
+  useEffect(() => { setOpen(false) }, [location.pathname])
+
+  // Escape schließt die Schublade
+  useEffect(() => {
+    if (!open) return
+    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  function toggleCollapsed() {
+    setCollapsed(c => { writeCollapsed(!c); return !c })
+  }
 
   async function logout() {
     await logActivity({ action: 'auth.logout', category: 'auth', summary: 'hat sich abgemeldet.' })
     await supabase.auth.signOut(); navigate('/')
   }
 
+  const vacTotal = (vacPendingCount || 0) + (sickPendingCount || 0)
+  const totalBadge = (isAdmin ? (pendingCount || 0) : 0) + (isManager ? vacTotal : 0)
+
   const NavItem = ({ item }) => {
-    const vacTotal = (vacPendingCount || 0) + (sickPendingCount || 0)
-    const badge = item.badge || (item.vacBadge && vacTotal > 0 ? vacTotal : null)
+    const badge = item.badge || (item.vacBadge && isManager && vacTotal > 0 ? vacTotal : null)
     return (
-      <NavLink to={item.path} end={item.end} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+      <NavLink to={item.path} end={item.end} title={collapsed ? item.label : undefined}
+        className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
         <span className="nav-icon">{item.icon}</span>
-        <span style={{ flex:1 }}>{item.label}</span>
-        {badge && (
-          <span style={{ background:'#C2793A', color:'#fff', borderRadius:10, fontSize:10, fontWeight:700, padding:'1px 6px', minWidth:18, textAlign:'center' }}>
-            {badge}
-          </span>
-        )}
+        <span className="nav-label">{item.label}</span>
+        {badge && <span className="nav-badge">{badge}</span>}
       </NavLink>
     )
   }
@@ -57,47 +89,68 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
   )
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-logo">
-        <span className="sidebar-logo-icon">☕</span>
-        <div className="sidebar-logo-name">Café Buur</div>
-        <div className="sidebar-logo-sub" style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-          {session?.user?.email}
-        </div>
-      </div>
+    <>
+      {/* ── Mobile-Kopfzeile ── */}
+      <header className="mobile-bar">
+        <button className="mobile-menu-btn" onClick={() => setOpen(true)} aria-label="Menü öffnen" aria-expanded={open}>
+          <span aria-hidden="true">☰</span>
+          {totalBadge > 0 && <span className="mobile-menu-dot" aria-hidden="true" />}
+        </button>
+        <div className="mobile-bar-title">☕ Café Buur</div>
+      </header>
 
-      <nav style={{ padding:'8px', flex:1, overflowY:'auto' }}>
-        {SECTIONS.map(sec => (
-          <div key={sec.label}>
-            <div className="sidebar-section-label">{sec.label}</div>
-            {sec.items.map(item => <NavItem key={item.path} item={item} />)}
+      {/* ── Abdunkelung hinter der Schublade (nur Mobile) ── */}
+      <div className={`sidebar-backdrop${open ? ' show' : ''}`} onClick={() => setOpen(false)} aria-hidden="true" />
+
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${open ? ' open' : ''}`} aria-label="Navigation">
+        <div className="sidebar-logo">
+          <span className="sidebar-logo-icon">☕</span>
+          <div className="sidebar-logo-text">
+            <div className="sidebar-logo-name">Café Buur</div>
+            <div className="sidebar-logo-sub">{session?.user?.email}</div>
           </div>
-        ))}
-
-        {isManager && (<>
-          <div className="sidebar-section-label">Verwaltung</div>
-          {MANAGER_ITEMS.map(item => <NavItem key={item.path} item={item} />)}
-        </>)}
-
-        {isAdmin && (<>
-          <div className="sidebar-section-label">Administration</div>
-          {adminWithBadge.map(item => <NavItem key={item.path} item={item} />)}
-        </>)}
-      </nav>
-
-      <div style={{ padding:'10px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
-        {/* Dark Mode Toggle */}
-        <button className="dark-toggle" onClick={toggle} title="Design wechseln">
-          {dark ? '☀️' : '🌙'} {dark ? 'Hell' : 'Dunkel'}
-        </button>
-
-        <div style={{ fontSize:10, color:'rgba(255,255,255,0.2)', padding:'2px 10px', marginBottom:2 }}>
-          {isAdmin ? '👑 Administrator' : isManager ? '🔧 Manager' : '👤 Mitarbeiter'}
+          <button className="sidebar-close" onClick={() => setOpen(false)} aria-label="Menü schließen">✕</button>
         </div>
-        <button className="nav-item" style={{ width:'100%', border:'none', background:'none', cursor:'pointer' }} onClick={logout}>
-          <span className="nav-icon">🚪</span> Abmelden
-        </button>
-      </div>
-    </div>
+
+        <nav className="sidebar-nav">
+          {SECTIONS.map(sec => (
+            <div key={sec.label}>
+              <div className="sidebar-section-label">{sec.label}</div>
+              {sec.items.map(item => <NavItem key={item.path} item={item} />)}
+            </div>
+          ))}
+
+          {isManager && (<>
+            <div className="sidebar-section-label">Verwaltung</div>
+            {MANAGER_ITEMS.map(item => <NavItem key={item.path} item={item} />)}
+          </>)}
+
+          {isAdmin && (<>
+            <div className="sidebar-section-label">Administration</div>
+            {adminWithBadge.map(item => <NavItem key={item.path} item={item} />)}
+          </>)}
+        </nav>
+
+        <div className="sidebar-footer">
+          <button className="dark-toggle" onClick={toggle} title="Design wechseln">
+            <span>{dark ? '☀️' : '🌙'}</span><span className="nav-label">{dark ? 'Hell' : 'Dunkel'}</span>
+          </button>
+
+          <div className="sidebar-role nav-label">
+            {isAdmin ? '👑 Administrator' : isManager ? '🔧 Manager' : '👤 Mitarbeiter'}
+          </div>
+          <button className="nav-item" style={{ width:'calc(100% - 12px)', border:'none', background:'none', cursor:'pointer' }}
+            onClick={logout} title={collapsed ? 'Abmelden' : undefined}>
+            <span className="nav-icon">🚪</span><span className="nav-label">Abmelden</span>
+          </button>
+
+          <button className="sidebar-collapse-btn" onClick={toggleCollapsed}
+            aria-label={collapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen'}
+            title={collapsed ? 'Ausklappen' : 'Einklappen'}>
+            {collapsed ? '»' : '« Einklappen'}
+          </button>
+        </div>
+      </aside>
+    </>
   )
 }
