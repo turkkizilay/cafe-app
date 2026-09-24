@@ -27,6 +27,7 @@ import ResetPassword    from './pages/ResetPassword'
 import AccessDenied    from './pages/AccessDenied'
 import ActivityLog     from './pages/ActivityLog'
 import Onboarding      from './pages/Onboarding'
+import DeleteAccountCard from './components/DeleteAccountCard'
 
 // ── Passwort-Reset-Link erkennen ──────────────────────────────
 const RECOVERY_LINK_DETECTED =
@@ -307,6 +308,7 @@ export default function App() {
         <h2 style={{ fontSize:20, fontWeight:700, margin:0 }}>Account deaktiviert</h2>
         <p style={{ fontSize:14, color:'var(--text-secondary)', maxWidth:360, margin:0 }}>Dein Account wurde deaktiviert. Bitte wende dich an deinen Administrator.</p>
         <button className="btn" onClick={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }}>Abmelden</button>
+        <div style={{ maxWidth:420, width:'100%' }}><DeleteAccountCard email={session?.user?.email} compact /></div>
       </div>
     </DarkModeProvider>
   )

@@ -6,6 +6,7 @@ import {
   FIELD_LABELS, PERSONAL_FIELDS,
 } from '../lib/personalData'
 import { PRIVACY_NOTICE_SECTIONS } from '../lib/privacyNotice'
+import DeleteAccountCard from '../components/DeleteAccountCard'
 
 // ── Schritte des Formulars ──────────────────────────────────
 const STEPS = [
@@ -194,6 +195,9 @@ export default function Onboarding({ session, fallback }) {
         </p>
         <button className="btn btn-primary" onClick={() => window.location.reload()}>🔄 Status aktualisieren</button>
       </div></div>
+      <div style={{ textAlign:'center', marginTop:12 }}>
+        <DeleteAccountCard email={session.user.email} variant="onboarding" compact />
+      </div>
     </Shell>
   )
 
@@ -428,6 +432,9 @@ export default function Onboarding({ session, fallback }) {
 
       <div style={{ fontSize:11.5, color:'var(--text-muted)', textAlign:'center', marginTop:14, lineHeight:1.6 }}>
         🔒 Deine Daten sehen nur die Geschäftsführung und die Schichtleitung.
+      </div>
+      <div style={{ textAlign:'center', marginTop:8 }}>
+        <DeleteAccountCard email={session.user.email} variant="onboarding" compact />
       </div>
     </Shell>
   )

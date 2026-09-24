@@ -1,0 +1,6 @@
+-- Bereits live angewendet am 24.09.2026 — NICHT erneut ausführen, nur Dokumentation.
+--  * Fremdschlüssel auf auth.users/profiles ohne Löschregel → ON DELETE SET NULL
+--    (Datensätze bleiben, nur der Verweis auf den gelöschten Nutzer wird leer).
+--  * RPC delete_own_account(): löscht Login + Profil + Profilbild + unfertige Registrierung.
+--    Blockiert: einziger Admin, noch eingestempelt. Protokolleintrag „account.deleted“.
+--    Arbeitszeiten, Lohn, Urlaub, Krankmeldungen, Dokumente bleiben (Aufbewahrungspflicht).

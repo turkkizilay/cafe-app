@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, formatDate, formatCurrency } from '../lib/supabase'
+import DeleteAccountCard from '../components/DeleteAccountCard'
 import PersonalDataCard, { missingPersonalFields } from '../components/PersonalDataCard'
 import { openSignedFile } from '../lib/openFile'
 import { logActivity } from '../lib/activityLog'
@@ -459,6 +460,11 @@ export default function Account() {
                   </button>
                 </form>
               </div>
+            </div>
+
+            {/* Konto löschen (App-Store-Pflicht, DSGVO Art. 17) */}
+            <div style={{ gridColumn:'1 / -1' }}>
+              <DeleteAccountCard email={profile?.email} />
             </div>
           </div>
         )}

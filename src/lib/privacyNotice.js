@@ -34,6 +34,6 @@ export const PRIVACY_NOTICE_SECTIONS = [
   },
   {
     title: 'Deine Rechte',
-    text: 'Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO). Wende dich dazu an die Geschäftsführung. Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim Hessischen Beauftragten für Datenschutz und Informationsfreiheit.',
+    text: 'Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO). Wende dich dazu an die Geschäftsführung. Dein App-Konto kannst du jederzeit selbst unter „Mein Konto → Sicherheit“ löschen; Daten mit gesetzlicher Aufbewahrungspflicht (z. B. Lohn- und Arbeitszeitdaten) bleiben bis zum Ablauf der Frist gespeichert. Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim Hessischen Beauftragten für Datenschutz und Informationsfreiheit.',
   },
 ]
