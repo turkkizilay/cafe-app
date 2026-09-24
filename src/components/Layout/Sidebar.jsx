@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { BrandMark } from '../UI/Brand'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useDarkMode } from '../../context/DarkModeContext'
@@ -96,7 +97,9 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
           <span aria-hidden="true">☰</span>
           {totalBadge > 0 && <span className="mobile-menu-dot" aria-hidden="true" />}
         </button>
-        <div className="mobile-bar-title">☕ Café Buur</div>
+        <div className="mobile-bar-title" style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <BrandMark size={26} /> Café Buur
+        </div>
       </header>
 
       {/* ── Abdunkelung hinter der Schublade (nur Mobile) ── */}
@@ -104,7 +107,7 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
 
       <aside className={`sidebar${collapsed ? ' collapsed' : ''}${open ? ' open' : ''}`} aria-label="Navigation">
         <div className="sidebar-logo">
-          <span className="sidebar-logo-icon">☕</span>
+          <BrandMark size={30} style={{ flexShrink:0 }} />
           <div className="sidebar-logo-text">
             <div className="sidebar-logo-name">Café Buur</div>
             <div className="sidebar-logo-sub">{session?.user?.email}</div>

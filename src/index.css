@@ -967,3 +967,8 @@ a:focus-visible {
 }
 .sidebar-footer .nav-item { text-align: left; }
 .dark-toggle .nav-label { flex: 0 0 auto; }
+
+/* ── Logo-Schriftzug: passende Variante je nach Hell/Dunkel ── */
+.brand-wm-on-dark { display: none !important; }
+html.dark .brand-wm-on-light { display: none !important; }
+html.dark .brand-wm-on-dark  { display: block !important; }

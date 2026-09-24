@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { BrandBadge, BrandWordmark } from '../UI/Brand'
 import { supabase } from '../../lib/supabase'
 import PasswordInput from '../UI/PasswordInput'
 import { logActivity } from '../../lib/activityLog'
@@ -243,7 +244,7 @@ export default function Login() {
     return (
       <div className="login-page">
         <div className="login-card" style={{ maxWidth:400, textAlign:'center' }}>
-          <div style={{ fontSize:48, marginBottom:12 }}>☕</div>
+          <BrandBadge size={64} style={{ margin:'0 auto 12px' }} />
           <h2 style={{ fontSize:18, fontWeight:700, marginBottom:10 }}>Willkommen, {firstName}!</h2>
           <p style={{ color:'var(--text-secondary)', fontSize:14, lineHeight:1.7, marginBottom:8 }}>
             Dein Account wurde erfolgreich erstellt.
@@ -278,9 +279,9 @@ export default function Login() {
       <div className="login-card" style={{ maxWidth:400 }}>
         {/* Logo */}
         <div className="login-logo">
-          <span className="login-logo-icon">☕</span>
-          <div className="login-logo-name">Café Buur</div>
-          <div className="login-logo-sub">Frankfurt · Personalverwaltung</div>
+          <BrandBadge size={76} style={{ margin:'0 auto 12px' }} />
+          <BrandWordmark height={30} style={{ margin:'0 auto' }} />
+          <div className="login-logo-sub" style={{ marginTop:8 }}>Frankfurt · Personalverwaltung</div>
         </div>
 
         {/* Mode-Überschrift */}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { BrandBadge } from '../components/UI/Brand'
 import { supabase, formatDate, formatDateTime } from '../lib/supabase'
 import { useToast } from '../components/UI/Toast'
 import {
@@ -30,7 +31,7 @@ function Shell({ children, wide }) {
       <div style={{ maxWidth: wide ? 620 : 460, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontSize:26 }}>☕</span>
+            <BrandBadge size={34} />
             <div>
               <div style={{ fontWeight:700, fontSize:16, color:'var(--text-primary)' }}>Café Buur</div>
               <div style={{ fontSize:12, color:'var(--text-muted)' }}>Personaldaten</div>

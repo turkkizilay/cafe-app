@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { BrandBadge, BrandWordmark } from '../components/UI/Brand'
 import { supabase } from '../lib/supabase'
 import PasswordInput from '../components/UI/PasswordInput'
 
@@ -118,8 +119,8 @@ export default function InvitationAccept({ token }) {
       }}>
         {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{ fontSize:48, marginBottom:8 }}>☕</div>
-          <div style={{ fontSize:20, fontWeight:700, color:'#1C1917' }}>Café Buur</div>
+          <BrandBadge size={72} style={{ margin:'0 auto 10px' }} />
+          <BrandWordmark variant="dark" height={26} style={{ margin:'0 auto 4px' }} />
           <div style={{ fontSize:13, color:'#78716C' }}>Frankfurt · Personalverwaltung</div>
         </div>
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, Component } from 'react'
+import { BrandBadge } from './components/UI/Brand'
 import { useAutoLogout } from './hooks/useAutoLogout'
 import { logActivity } from './lib/activityLog'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
@@ -78,7 +79,7 @@ function PendingScreen({ session, onRetry }) {
   return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#1C1917' }}>
       <div style={{ background:'#fff', borderRadius:14, padding:'40px 36px', maxWidth:440, textAlign:'center', boxShadow:'0 20px 40px rgba(0,0,0,0.3)' }}>
-        <div style={{ fontSize:44, marginBottom:14 }}>☕</div>
+        <BrandBadge size={64} style={{ margin:'0 auto 14px' }} />
         <h2 style={{ fontSize:20, fontWeight:600, marginBottom:10 }}>Account wartet auf Freigabe</h2>
         <p style={{ color:'#78716C', fontSize:14, lineHeight:1.7, marginBottom:8 }}>
           Dein Account <strong>{session?.user?.email}</strong> wurde erstellt und wartet auf die Genehmigung der Geschäftsführung des Café Buur.
@@ -283,7 +284,7 @@ export default function App() {
 
   if (loading && !profile) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#1C1917', color:'#fff', fontSize:18, gap:10 }}>
-      ☕ Café Buur wird geladen…
+      <BrandBadge size={40} /> Café Buur wird geladen…
     </div>
   )
 
