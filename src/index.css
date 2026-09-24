@@ -1030,3 +1030,6 @@ html.dark .brand-wm-on-dark  { display: block !important; }
   .ts-sum { grid-template-columns: repeat(4, 1fr) !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Checkboxen/Radios nie auf volle Breite ziehen (sonst stehen sie mitten in der Zeile) */
+input[type="checkbox"], input[type="radio"] { width: auto !important; flex: 0 0 auto; margin: 0; padding: 0; }

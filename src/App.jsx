@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Component } from 'react'
+import { useState, useEffect, useCallback, useRef, Component } from 'react'
 import { BrandBadge } from './components/UI/Brand'
 import { useAutoLogout } from './hooks/useAutoLogout'
 import { logActivity } from './lib/activityLog'
@@ -174,8 +174,17 @@ export default function App() {
   const { showWarning, countdown, extendSession, performLogout } =
     useAutoLogout(session, handleAutoLogout)
 
-  const fetchProfile = useCallback(async (uid) => {
-    setLoading(true)
+  // Profil + Zähler laden. Mehrfachaufrufe (z. B. „SIGNED_IN“ bei jedem Fensterwechsel)
+  // werden gedrosselt: höchstens alle 60 s, außer ausdrücklich erzwungen (force).
+  const lastFetchRef = useRef({ uid: null, at: 0 })
+  const loadedUidRef = useRef(null)
+  const pushRefreshedRef = useRef(false)
+  const fetchProfile = useCallback(async (uid, force = false) => {
+    const now = Date.now()
+    if (!force && lastFetchRef.current.uid === uid && now - lastFetchRef.current.at < 60000) return
+    lastFetchRef.current = { uid, at: now }
+    // Ist das Profil schon da, still im Hintergrund aktualisieren (kein Lade-Bildschirm)
+    if (loadedUidRef.current !== uid) setLoading(true)
     setFetchErr(null)
     try {
       const { data, error } = await supabase
@@ -189,11 +198,14 @@ export default function App() {
         setFetchErr(/JWT|token/i.test(error.message || '') ? 'Die Anmeldung konnte nicht bestätigt werden. Bitte „Erneut versuchen“ tippen.' : 'Profil konnte nicht geladen werden: ' + error.message)
         setProfile(null)
         setLoading(false)
+        lastFetchRef.current.at = 0          // „Erneut versuchen“ muss sofort gehen
+        loadedUidRef.current = null
         return
       }
 
       setProfile(data || null)
-      if (data?.status === 'approved') refreshPushSubscription()
+      loadedUidRef.current = data ? uid : null
+      if (data?.status === 'approved' && !pushRefreshedRef.current) { pushRefreshedRef.current = true; refreshPushSubscription() }
 
       if (data?.role === 'admin' || data?.role === 'manager') {
         const [{ data: pend }, { count: vCount }, { data: onb }] = await Promise.all([
@@ -253,13 +265,20 @@ export default function App() {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session)
+      // Gleiche Sitzung → altes Objekt behalten, damit nicht die ganze App neu rendert
+      setSession(prev => (prev && session && prev.access_token === session.access_token) ? prev : session)
       if (event === 'PASSWORD_RECOVERY') {
         setRecoveryEvent(true)
       }
       if (session) {
-        fetchProfile(session.user.id)
+        // Token-Erneuerung / Start: kein neues Profil nötig (Start lädt getSession oben)
+        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') return
+        // „Erneut angemeldet“ beim Fensterwechsel: gedrosselt; neue Person oder Profiländerung: sofort
+        fetchProfile(session.user.id, event === 'USER_UPDATED' || loadedUidRef.current !== session.user.id)
       } else {
+        loadedUidRef.current = null
+        lastFetchRef.current = { uid: null, at: 0 }
+        pushRefreshedRef.current = false
         setProfile(null)
         setPending(0)
         setLoading(false)
@@ -301,7 +320,7 @@ export default function App() {
 
   if (fetchErr) return (
     <DarkModeProvider>
-      <ErrorScreen error={fetchErr} onRetry={() => fetchProfile(session.user.id)} />
+      <ErrorScreen error={fetchErr} onRetry={() => fetchProfile(session.user.id, true)} />
     </DarkModeProvider>
   )
 
@@ -325,7 +344,7 @@ export default function App() {
       <ToastProvider>
         <Onboarding
           session={session}
-          fallback={<PendingScreen session={session} onRetry={() => fetchProfile(session.user.id)} />}
+          fallback={<PendingScreen session={session} onRetry={() => fetchProfile(session.user.id, true)} />}
         />
       </ToastProvider>
     </DarkModeProvider>
@@ -351,7 +370,7 @@ export default function App() {
     pendingCount:    pending,
     vacPendingCount: vacPending  || 0,
     sickPendingCount:sickPending || 0,
-    refetch: () => fetchProfile(session.user.id),
+    refetch: () => fetchProfile(session.user.id, true),
     profileFirstName: profile?.first_name || '',
     profileLastName:  profile?.last_name  || '',
   }

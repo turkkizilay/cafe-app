@@ -126,7 +126,7 @@ export default function Dashboard() {
               supabase.from('profiles').select('id', { count:'exact', head:true }).eq('role', 'admin').eq('status', 'approved'),
               supabase.rpc('retention_overview'),
             ])
-            if (ret?.success) setRetentionDue(ret.total_due || 0)
+            if (ret?.success) setRetentionDue(ret.total_due ? (ret.categories || []).filter(c => c.due > 0).map(c => `${c.due} ${c.key === 'verwaist' ? 'Datei(en) ohne Zuordnung' : c.title}`).join(', ') : 0)
             if (bl?.success) setBackupDays(bl.last_download_at ? Math.floor((Date.now() - new Date(bl.last_download_at)) / 86400000) : -1)
             setSoleAdmin(adminCount === 1)
           } catch { /* Hinweise sind optional */ }
@@ -272,10 +272,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {isAdmin && retentionDue > 0 && (
+        {isAdmin && !!retentionDue && (
           <div className="alert alert-warn" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-            <span>🗂️ {retentionDue} Datensätze/Dateien haben die Aufbewahrungsfrist erreicht und sollten gelöscht werden (Datenschutz).</span>
-            <Link to="/einstellungen#aufbewahrung" style={{ color:'inherit', fontWeight:600 }}>→ Ansehen</Link>
+            <span>🗂️ Zum Löschen fällig (Datenschutz): {retentionDue}. Bitte vorher ansehen – jede Datei ist einzeln aufgelistet.</span>
+            <Link to="/einstellungen#aufbewahrung" style={{ color:'inherit', fontWeight:600 }}>→ Ansehen & entscheiden</Link>
           </div>
         )}
 
