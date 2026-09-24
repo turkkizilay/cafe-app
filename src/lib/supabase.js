@@ -11,9 +11,33 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error('⛔ .env Datei fehlt. Bitte .env.example als .env kopieren und ausfüllen.')
 }
 
+// ── Uhrzeit-Versatz zwischen Supabase-Servern abfangen ──────
+// Direkt nach dem Login / Token-Erneuern lehnt die Datenbank-Schnittstelle
+// manchmal für Bruchteile einer Sekunde das neue Token ab („JWT issued at future"),
+// weil ihre Uhr minimal hinter der des Login-Servers liegt. Die Anfrage wurde
+// dabei NICHT ausgeführt — sie kann also gefahrlos wiederholt werden.
+async function isClockSkew401(res) {
+  if (res.status !== 401) return false
+  try {
+    const txt = await res.clone().text()
+    return /issued at future|PGRST303/i.test(txt)
+  } catch { return false }
+}
+
+export async function fetchWithSkewRetry(input, init) {
+  let res = await fetch(input, init)
+  for (const wait of [400, 900, 1600]) {
+    if (!(await isClockSkew401(res))) return res
+    await new Promise(r => setTimeout(r, wait))
+    res = await fetch(input, init)
+  }
+  return res
+}
+
 export const supabase = createClient(
   SUPABASE_URL      || 'missing-url',
-  SUPABASE_ANON_KEY || 'missing-key'
+  SUPABASE_ANON_KEY || 'missing-key',
+  { global: { fetch: (...args) => fetchWithSkewRetry(...args) } }
 )
 
 // ── Hilfsfunktionen ─────────────────────────────────────────

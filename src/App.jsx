@@ -184,7 +184,7 @@ export default function App() {
 
       if (error) {
         console.error('Profile fetch error:', error)
-        setFetchErr('Profil konnte nicht geladen werden: ' + error.message)
+        setFetchErr(/JWT|token/i.test(error.message || '') ? 'Die Anmeldung konnte nicht bestätigt werden. Bitte „Erneut versuchen“ tippen.' : 'Profil konnte nicht geladen werden: ' + error.message)
         setProfile(null)
         setLoading(false)
         return
