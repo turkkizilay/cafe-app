@@ -7,6 +7,7 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
+import { translateSupabaseError } from '../lib/errorHelper'
 import OnboardingReview, { ONB_STATUS } from '../components/OnboardingReview'
 
 const ROLES = [
@@ -40,6 +41,7 @@ export default function UserManagement() {
   const [editState,    setEditState]    = useState({})
   const [confirmDel,        setConfirmDel]        = useState(null)
   const [confirmDelActive, setConfirmDelActive] = useState(null)
+  const [roleConfirm, setRoleConfirm] = useState(null)   // { p, role } bei Admin-Rechten
 
   // Einladungs-Modal
   const [inviteModal,  setInviteModal]  = useState(null) // { employee } | null
@@ -169,8 +171,8 @@ export default function UserManagement() {
 
   function whatsappLink(link, name, isNew) {
     const msg = encodeURIComponent(isNew
-      ? `Hallo! 👋\n\nWillkommen bei Café Buur! Über diesen Link legst du deinen Zugang zur Personal-App an und trägst deine Daten für die Lohnabrechnung ein (IBAN, Steuer-ID, Sozialversicherungsnummer, Krankenkasse):\n${link}\n\nDer Link ist 7 Tage gültig. ☕`
-      : `Hallo ${name}! 👋\n\nDu wurdest zum Café Buur Personalverwaltungssystem eingeladen.\n\nBitte klicke auf diesen Link und setze dein Passwort:\n${link}\n\nDer Link ist 7 Tage gültig. ☕`)
+      ? `Hallo! 👋\n\nWillkommen bei Café Buur! Über diesen Link legst du deinen Zugang zur Personal-App an und trägst deine Daten für die Lohnabrechnung ein (IBAN, Steuer-ID, Sozialversicherungsnummer, Krankenkasse):\n${link}\n\nDer Link ist 7 Tage gültig. ☕\n\n📱 Tipp: Nach dem Anmelden die App zum Home-Bildschirm hinzufügen (iPhone: Safari → Teilen → „Zum Home-Bildschirm“) und unter „Mein Konto → App & Mitteilungen“ Benachrichtigungen einschalten.`
+      : `Hallo ${name}! 👋\n\nDu wurdest zum Café Buur Personalverwaltungssystem eingeladen.\n\nBitte klicke auf diesen Link und setze dein Passwort:\n${link}\n\nDer Link ist 7 Tage gültig. ☕\n\n📱 Tipp: Nach dem Anmelden die App zum Home-Bildschirm hinzufügen (iPhone: Safari → Teilen → „Zum Home-Bildschirm“) und unter „Mein Konto → App & Mitteilungen“ Benachrichtigungen einschalten.`)
     return `https://wa.me/?text=${msg}`
   }
 
@@ -286,10 +288,18 @@ export default function UserManagement() {
     }
   }
 
+  function requestRoleChange(p, role) {
+    if (role === p.role) return
+    // Admin-Rechte vergeben oder entziehen immer mit Rückfrage
+    if (role === 'admin' || p.role === 'admin') { setRoleConfirm({ p, role }); return }
+    changeRole(p.id, role)
+  }
+
   async function changeRole(profileId, role) {
+    setRoleConfirm(null)
     if (profileId === profile?.id) { toast.error('Eigene Rolle kann nicht geändert werden!'); return }
     const { error } = await supabase.from('profiles').update({ role }).eq('id', profileId)
-    if (error) toast.error('Fehler: ' + error.message)
+    if (error) toast.error(translateSupabaseError(error, 'Rolle'))
     else {
       toast.success('Rolle aktualisiert ✅')
       const target = [...approved, ...pending].find(u => u.id === profileId)
@@ -509,6 +519,36 @@ export default function UserManagement() {
             <div className="modal-footer">
               <button className="btn" onClick={() => setConfirmDelActive(null)}>Abbrechen</button>
               <button className="btn btn-danger" onClick={() => setUserLocked(confirmDelActive, true)}>🔒 Sperren</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {roleConfirm && (
+        <div className="modal-overlay" onClick={() => setRoleConfirm(null)}>
+          <div className="modal" style={{ maxWidth:440 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">{roleConfirm.role === 'admin' ? '👑 Zum Admin machen?' : 'Admin-Rechte entziehen?'}</div>
+              <button className="btn btn-sm" onClick={() => setRoleConfirm(null)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
+              <strong>{`${roleConfirm.p.first_name || ''} ${roleConfirm.p.last_name || ''}`.trim() || roleConfirm.p.email}</strong>
+              {roleConfirm.role === 'admin' ? (
+                <>
+                  {' '}bekommt vollen Zugriff: alle Personal- und Lohndaten, Zugänge freischalten und sperren, Einstellungen, Datensicherung.
+                  <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:8 }}>
+                    Nur an sehr vertrauenswürdige Personen vergeben (z. B. Mitinhaber). Deinen eigenen Inhaber-Zugang kann ein anderer Admin nicht ändern oder sperren.
+                  </div>
+                </>
+              ) : (
+                <> verliert die Admin-Rechte und wird {roleConfirm.role === 'manager' ? 'Manager' : 'Mitarbeiter'}.</>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setRoleConfirm(null)}>Abbrechen</button>
+              <button className={`btn ${roleConfirm.role === 'admin' ? 'btn-primary' : 'btn-danger'}`} onClick={() => changeRole(roleConfirm.p.id, roleConfirm.role)}>
+                {roleConfirm.role === 'admin' ? 'Ja, zum Admin machen' : 'Rechte entziehen'}
+              </button>
             </div>
           </div>
         </div>
@@ -789,9 +829,11 @@ export default function UserManagement() {
                         </td>
                         <td>
                           {isMe ? (
-                            <span className="badge badge-red">👑 Admin (du)</span>
+                            <span className="badge badge-red">👑 {p.is_owner ? 'Inhaber' : 'Admin'} (du)</span>
+                          ) : p.is_owner ? (
+                            <span className="badge badge-red" title="Rolle und Zugang des Inhabers kann nur der Inhaber selbst ändern">👑 Inhaber</span>
                           ) : (
-                            <select value={p.role} onChange={e => changeRole(p.id, e.target.value)} style={{ fontSize:12, width:'auto' }}>
+                            <select value={p.role} onChange={e => requestRoleChange(p, e.target.value)} style={{ fontSize:12, width:'auto' }}>
                               {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                             </select>
                           )}
@@ -800,7 +842,7 @@ export default function UserManagement() {
                           {p.approved_at ? new Date(p.approved_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '–'}
                         </td>
                         <td>
-                          {!isMe && (
+                          {!isMe && !p.is_owner && (
                             <button
                               className="btn btn-sm btn-danger"
                               onClick={() => setConfirmDelActive(p)}

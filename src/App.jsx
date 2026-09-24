@@ -16,6 +16,8 @@ import Shifts from './pages/Shifts'
 import Vacation from './pages/Vacation'
 import Payroll from './pages/Payroll'
 import Settings from './pages/Settings'
+import Timesheet from './pages/Timesheet'
+import { refreshPushSubscription } from './lib/push'
 import LightspeedOAuthCallback from './pages/LightspeedOAuthCallback'
 import UserManagement from './pages/UserManagement'
 import TimeManagement from './pages/TimeManagement'
@@ -191,6 +193,7 @@ export default function App() {
       }
 
       setProfile(data || null)
+      if (data?.status === 'approved') refreshPushSubscription()
 
       if (data?.role === 'admin' || data?.role === 'manager') {
         const [{ data: pend }, { count: vCount }, { data: onb }] = await Promise.all([
@@ -383,6 +386,7 @@ export default function App() {
                   <Route path="/schichten"     element={<Shifts />} />
                   <Route path="/urlaub"        element={<Vacation />} />
                   <Route path="/stunden"       element={<MyHours />} />
+                  <Route path="/stundennachweis" element={<Timesheet />} />
                   <Route path="/dokumente"     element={<PayrollDocuments />} />
                   <Route path="/konto"         element={<Account />} />
                   <Route path="/abwesenheit" element={isManager ? <AbsenceCalendar /> : <AccessDenied />} />

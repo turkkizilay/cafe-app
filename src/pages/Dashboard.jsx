@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom'
 import { supabase, formatTime, formatDate } from '../lib/supabase'
 import Avatar from '../components/UI/Avatar'
 import { missingPersonalFields } from '../components/PersonalDataCard'
+import { BACKUP_REMIND_DAYS } from '../lib/backup'
+import AppSetupCard from '../components/AppSetupCard'
 import { useProfile } from '../context/ProfileContext'
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
@@ -62,6 +64,11 @@ export default function Dashboard() {
   const [todayShifts, setTodayShifts] = useState([])  // Alle Schichten heute (Admin)
   const [liveClockIns,setLiveClockIns]= useState([])
   const [forgotten,   setForgotten]   = useState(0)   // Zeiteinträge „Ausstempeln vergessen“ (nur Admin)
+  const [backupDays,  setBackupDays]  = useState(null) // Tage seit letztem Sicherungs-Download (nur Admin); -1 = noch nie
+  const [soleAdmin,   setSoleAdmin]   = useState(false)
+  const [retentionDue, setRetentionDue] = useState(0)
+  const [hideAppSetup, setHideAppSetup] = useState(() => { try { return localStorage.getItem('cafe_hide_app_setup') === '1' } catch { return false } })
+  const [hideAdminTip, setHideAdminTip] = useState(() => { try { return localStorage.getItem('cafe_hide_admin_tip') === '1' } catch { return false } })
   const [stats,       setStats]       = useState({ employees:0, pendingVac:0, pendingUsers:0, pendingSwaps:0 })
   const [birthdays,   setBirthdays]   = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -113,6 +120,16 @@ export default function Dashboard() {
           const { count: fCount } = await supabase.from('time_entries').select('id', { count:'exact', head:true })
             .like('notes', '%AUSSTEMPELN VERGESSEN%')
           setForgotten(fCount || 0)
+          try {
+            const [{ data: bl }, { count: adminCount }, { data: ret }] = await Promise.all([
+              supabase.rpc('backup_list'),
+              supabase.from('profiles').select('id', { count:'exact', head:true }).eq('role', 'admin').eq('status', 'approved'),
+              supabase.rpc('retention_overview'),
+            ])
+            if (ret?.success) setRetentionDue(ret.total_due || 0)
+            if (bl?.success) setBackupDays(bl.last_download_at ? Math.floor((Date.now() - new Date(bl.last_download_at)) / 86400000) : -1)
+            setSoleAdmin(adminCount === 1)
+          } catch { /* Hinweise sind optional */ }
         }
 
         // Live-Personalkosten berechnen
@@ -246,6 +263,34 @@ export default function Dashboard() {
             <span>⚠️ {forgotten} Zeiteintrag{forgotten === 1 ? '' : 'e'} mit „Ausstempeln vergessen“ — wird erst nach deiner Korrektur bezahlt.</span>
             <Link to="/zeitkorrekturen" style={{ color:'inherit', fontWeight:600 }}>→ Jetzt korrigieren</Link>
           </div>
+        )}
+
+        {isAdmin && backupDays !== null && (backupDays === -1 || backupDays >= BACKUP_REMIND_DAYS) && (
+          <div className="alert alert-warn" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <span>💾 {backupDays === -1 ? 'Du hast noch nie eine Datensicherung heruntergeladen.' : `Deine neueste heruntergeladene Datensicherung ist ${backupDays} Tage alt.`} Bitte einmal im Monat sichern.</span>
+            <Link to="/einstellungen#datensicherung" style={{ color:'inherit', fontWeight:600 }}>→ Jetzt sichern</Link>
+          </div>
+        )}
+
+        {isAdmin && retentionDue > 0 && (
+          <div className="alert alert-warn" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <span>🗂️ {retentionDue} Datensätze/Dateien haben die Aufbewahrungsfrist erreicht und sollten gelöscht werden (Datenschutz).</span>
+            <Link to="/einstellungen#aufbewahrung" style={{ color:'inherit', fontWeight:600 }}>→ Ansehen</Link>
+          </div>
+        )}
+
+        {isAdmin && soleAdmin && !hideAdminTip && (
+          <div className="alert alert-info" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', fontSize:13 }}>
+            <span>👥 Du bist der einzige Admin. Wenn du ausfällst oder dein Passwort verlierst, kann niemand Zugänge freischalten oder Zeiten korrigieren. Tipp: eine zweite vertrauenswürdige Person zum Admin machen (Benutzerverwaltung).</span>
+            <span style={{ display:'flex', gap:10 }}>
+              <Link to="/benutzer" style={{ color:'inherit', fontWeight:600 }}>→ Benutzerverwaltung</Link>
+              <button className="btn btn-sm" onClick={() => { setHideAdminTip(true); try { localStorage.setItem('cafe_hide_admin_tip','1') } catch { /* egal */ } }}>Ausblenden</button>
+            </span>
+          </div>
+        )}
+
+        {!hideAppSetup && (
+          <AppSetupCard compact onDismiss={() => { setHideAppSetup(true); try { localStorage.setItem('cafe_hide_app_setup','1') } catch { /* egal */ } }} />
         )}
 
         {/* ── Warnung wenn kein Mitarbeiter verknüpft ── */}

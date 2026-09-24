@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { useToast }    from '../components/UI/Toast'
 import { useProfile }  from '../context/ProfileContext'
 import { supabase, formatDate, formatTime, formatCurrency } from '../lib/supabase'
@@ -208,6 +208,7 @@ export default function MyHours() {
         {employee && (
           <div style={{ padding:'0 24px', display:'flex', alignItems:'center', gap:8 }}>
             <span className="badge badge-gray">{employee.first_name} {employee.last_name}</span>
+            <Link to={`/stundennachweis?monat=${year}-${String(month).padStart(2,'0')}`} className="btn btn-sm">🖨️ Stundennachweis</Link>
           </div>
         )}
       </div>

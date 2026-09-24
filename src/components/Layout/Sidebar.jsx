@@ -20,6 +20,7 @@ const MANAGER_ITEMS = [
   { label: 'Abwesenheitskalender', icon: '📆', path: '/abwesenheit' },
   { label: 'Mitarbeiter',          icon: '👤', path: '/mitarbeiter' },
   { label: 'Lohn & Stunden',       icon: '💶', path: '/lohn'        },
+  { label: 'Stundennachweise',     icon: '🖨️', path: '/stundennachweis' },
 ]
 const ADMIN_ITEMS = [
   { label: 'Zeitkorrekturen',  icon: '✏️', path: '/zeitkorrekturen' },

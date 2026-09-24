@@ -17,6 +17,10 @@ export const PRIVACY_NOTICE_SECTIONS = [
     text: 'Wir verarbeiten die Angaben aus diesem Formular (Name, Geburtsdaten, Anschrift, Kontakt, Bankverbindung, Steuer-ID, Sozialversicherungsnummer, Krankenkasse, Angaben zu weiteren Beschäftigungen, Notfallkontakt), um dein Arbeitsverhältnis durchzuführen: Lohnabrechnung und Auszahlung, Meldungen an Sozialversicherung und Finanzamt, Dienstplanung und Zeiterfassung. Den Notfallkontakt nutzen wir nur, wenn dir während der Arbeit etwas zustößt.',
   },
   {
+    title: 'Zeiterfassung: Standort & WLAN',
+    text: 'Beim Ein- und Ausclocken wird geprüft, ob du im Café bist: entweder per GPS (nur in diesem Moment, nicht laufend) oder daran, ob dein Gerät mit dem Café-WLAN verbunden ist. Dafür wird die Internet-Adresse deiner Verbindung mit der des Café-Routers verglichen. Gespeichert werden nur die GPS-Position beim Ein- und Ausclocken und die Art der Prüfung (GPS oder WLAN) – deine Internet-Adresse wird nicht gespeichert. Zweck: korrekte Arbeitszeiterfassung (§ 16 ArbZG, § 17 MiLoG).',
+  },
+  {
     title: 'Rechtsgrundlage',
     text: 'Art. 6 Abs. 1 lit. b DSGVO (Durchführung des Arbeitsvertrags) und Art. 6 Abs. 1 lit. c DSGVO (gesetzliche Pflichten, z. B. aus Steuer- und Sozialversicherungsrecht), jeweils in Verbindung mit Art. 88 DSGVO und § 26 BDSG. Für den Notfallkontakt: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse, im Notfall schnell helfen zu können).',
   },
@@ -26,7 +30,7 @@ export const PRIVACY_NOTICE_SECTIONS = [
   },
   {
     title: 'Wie lange?',
-    text: 'Für die Dauer des Arbeitsverhältnisses. Danach bewahren wir abrechnungsrelevante Daten nur so lange auf, wie es gesetzlich vorgeschrieben ist (in der Regel 6 bzw. 10 Jahre nach Handels- und Steuerrecht), und löschen sie anschließend. Wird deine Bewerbung/Einladung nicht angenommen, löschen wir die Angaben.',
+    text: 'Für die Dauer des Arbeitsverhältnisses und danach nur so lange, wie es gesetzlich vorgeschrieben ist: Arbeitszeiten, Schichten, Urlaub und Krankmeldungen 3 volle Kalenderjahre, Lohnabrechnungen und Stammdaten 8 volle Kalenderjahre nach dem Jahr des Ausscheidens (Steuer- und Sozialversicherungsrecht). Danach werden sie gelöscht. Wird deine Einladung/Registrierung nicht angenommen, löschen wir die Angaben sofort.',
   },
   {
     title: 'Musst du die Daten angeben?',

@@ -363,12 +363,12 @@ export default function TimeManagement() {
                               ✏️ Korrigiert
                             </span>
                           )}
-                          {!isKorr && e.gps_ok_in && (
+                          {!isKorr && (e.gps_ok_in || e.clock_in_method === 'wlan') && (
                             <span style={{ background:'#DCFCE7', color:'#16A34A', fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20 }}>
-                              📍 GPS ✓
+                              {e.clock_in_method === 'wlan' ? '📶 WLAN' : e.clock_in_method === 'gps+wlan' ? '📍📶 GPS+WLAN' : '📍 GPS'}
                             </span>
                           )}
-                          {!isKorr && !isOffen && !e.gps_ok_in && (
+                          {!isKorr && !isOffen && !e.gps_ok_in && e.clock_in_method !== 'wlan' && (
                             <span style={{ color:'var(--text-muted)', fontSize:12 }}>Normal</span>
                           )}
                         </td>

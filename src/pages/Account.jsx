@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, formatDate, formatCurrency } from '../lib/supabase'
 import DeleteAccountCard from '../components/DeleteAccountCard'
+import AppSetupCard from '../components/AppSetupCard'
 import PersonalDataCard, { missingPersonalFields } from '../components/PersonalDataCard'
 import { openSignedFile } from '../lib/openFile'
 import { logActivity } from '../lib/activityLog'
@@ -46,7 +47,10 @@ export default function Account() {
   const fileRef = useRef()
 
   // ── Tab ─────────────────────────────────────────────────────
-  const [accountTab,   setAccountTab]   = useState('profil')
+  const [accountTab,   setAccountTab]   = useState(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return ['profil','daten','sicherheit','app','verlauf','dokumente'].includes(t) ? t : 'profil'
+  })
 
   // ── Dokumente ────────────────────────────────────────────────
   const [myDocs,       setMyDocs]       = useState([])
@@ -258,6 +262,7 @@ export default function Account() {
             ['profil',    '👤 Profil'],
             ['daten',     '✏️ Meine Daten'],
             ['sicherheit','🔐 Sicherheit'],
+            ['app',       '📱 App & Mitteilungen'],
             ['verlauf',   '📋 Verlauf'],
             ['dokumente', '📁 Dokumente'],
           ].map(([key, label]) => (
@@ -380,6 +385,12 @@ export default function Account() {
         {/* ══════════════════════════════════════════════════ */}
         {/* TAB 3: SICHERHEIT                                  */}
         {/* ══════════════════════════════════════════════════ */}
+        {accountTab === 'app' && (
+          <div style={{ maxWidth:640 }}>
+            <AppSetupCard />
+          </div>
+        )}
+
         {accountTab === 'sicherheit' && (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(340px, 1fr))', gap:16 }}>
 

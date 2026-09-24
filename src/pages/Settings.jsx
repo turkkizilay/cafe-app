@@ -4,6 +4,9 @@ import { supabase }      from '../lib/supabase'
 import { logActivity }   from '../lib/activityLog'
 import { useToast }      from '../components/UI/Toast'
 import { useProfile }    from '../context/ProfileContext'
+import CafeNetworkCard from '../components/CafeNetworkCard'
+import BackupCard from '../components/BackupCard'
+import RetentionCard from '../components/RetentionCard'
 
 // Integration Center nur laden wenn Tab aktiv — kein unnötiger Bundle-Overhead
 const IntegrationCenter = lazy(() =>
@@ -22,6 +25,13 @@ export default function Settings() {
   const [saving,     setSaving]     = useState(false)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [msg,        setMsg]        = useState('')
+
+  // Sprung zu einem Abschnitt, z. B. /einstellungen#datensicherung
+  useEffect(() => {
+    if (loading || !window.location.hash) return
+    const t = setTimeout(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ behavior:'smooth', block:'start' }), 300)
+    return () => clearTimeout(t)
+  }, [loading])
 
   useEffect(() => {
     supabase.from('cafe_settings').select('*').eq('id', 1).maybeSingle()
@@ -62,6 +72,17 @@ export default function Settings() {
       })
     }
     setTimeout(() => setMsg(''), 4000)
+  }
+
+  // „Nur über Café-WLAN einclocken“ – wird sofort gespeichert
+  async function setRequireNetwork(on) {
+    const prev = !!cfg.clock_require_network
+    setCfg(c => ({ ...c, clock_require_network: on }))
+    const { error } = await supabase.from('cafe_settings').update({ clock_require_network: on, updated_at: new Date().toISOString() }).eq('id', 1)
+    if (error) { setCfg(c => ({ ...c, clock_require_network: prev })); toast.error('Speichern fehlgeschlagen. Bitte erneut versuchen.'); return }
+    toast.success(on ? 'Einclocken jetzt nur noch über das Café-WLAN.' : 'Einclocken wieder per GPS oder Café-WLAN.')
+    logActivity({ action: 'settings.changed', category: 'settings',
+      summary: on ? 'hat „Nur über Café-WLAN einclocken“ eingeschaltet.' : 'hat „Nur über Café-WLAN einclocken“ ausgeschaltet.', targetType: 'cafe_settings' })
   }
 
   function useCurrentGPS() {
@@ -143,7 +164,7 @@ export default function Settings() {
                 <div className="card-header"><div className="card-title">📍 GPS Einclocken</div></div>
                 <div className="card-body">
                   <div className="alert alert-info" style={{ marginBottom:14, fontSize:12 }}>
-                    Speichere hier die GPS-Koordinaten des Cafés. Mitarbeiter können nur einclocken wenn sie sich im erlaubten Radius befinden.
+                    Speichere hier die GPS-Koordinaten des Cafés. Mitarbeiter können einclocken, wenn sie im erlaubten Radius sind – oder mit dem Café-WLAN verbunden (siehe unten).
                   </div>
                   <button className="btn" style={{ width:'100%', justifyContent:'center', marginBottom:12 }}
                     onClick={useCurrentGPS} disabled={gpsLoading}>
@@ -175,6 +196,11 @@ export default function Settings() {
                 </div>
               </div>
             </div>
+
+            <CafeNetworkCard gpsConfigured={Boolean(cfg.gps_lat && cfg.gps_lng)} requireNetwork={!!cfg.clock_require_network} onRequireNetworkChange={setRequireNetwork}
+              onNetworksChanged={() => supabase.from('cafe_settings').select('clock_require_network').eq('id', 1).maybeSingle().then(({ data }) => data && setCfg(c => ({ ...c, clock_require_network: data.clock_require_network })))} />
+            <BackupCard />
+            <RetentionCard />
 
             {/* Gesetzliche Hinweise */}
             <div className="card" style={{ marginTop:16 }}>

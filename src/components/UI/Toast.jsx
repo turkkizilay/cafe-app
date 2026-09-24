@@ -57,7 +57,7 @@ export function ToastProvider({ children }) {
   return (
     <>
       {children}
-      <div style={{
+      <div className="toast-container" style={{
         position:'fixed', bottom:24, right:24, zIndex:9999,
         display:'flex', flexDirection:'column-reverse', gap:8,
         maxWidth:400, width:'calc(100% - 32px)',

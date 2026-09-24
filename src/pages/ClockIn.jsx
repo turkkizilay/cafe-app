@@ -11,12 +11,12 @@ export default function ClockIn({ session }) {
   const [employee, setEmp]    = useState(null)
   const [cafe, setCafe]       = useState(null)
   const [gps, setGps]         = useState({ status: 'checking' })
+  const [net, setNet]         = useState({ status: 'checking' })   // Café-WLAN (serverseitig geprüft)
   const [openEntry, setOpen]  = useState(null)
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [working,  setWorking]  = useState(false)
   const [restWarn, setRestWarn] = useState(null)  // Stunden seit letztem Clockout
-  const [elapsed,  setElapsed]  = useState(0)     // Minuten seit Einclocken
 
   useEffect(() => {
     const t = setInterval(() => setTick(new Date()), 1000)
@@ -24,6 +24,25 @@ export default function ClockIn({ session }) {
   }, [])
 
   useEffect(() => { fetchData() }, [profile?.employee_id])
+
+  // Nach WLAN-Wechsel / Rückkehr in die App automatisch neu prüfen
+  useEffect(() => {
+    function recheck() { if (document.visibilityState === 'visible') checkNetwork() }
+    document.addEventListener('visibilitychange', recheck)
+    window.addEventListener('online', recheck)
+    return () => { document.removeEventListener('visibilitychange', recheck); window.removeEventListener('online', recheck) }
+  }, [])
+
+  async function checkNetwork() {
+    setNet(n => ({ ...n, status: 'checking' }))
+    try {
+      const { data, error } = await supabase.rpc('clock_network_status')
+      if (error || !data) { setNet({ status: 'error' }); return }
+      setNet({ status: !data.configured ? 'unconfigured' : data.net_ok ? 'ok' : 'no', netOnly: !!data.net_only })
+    } catch {
+      setNet({ status: 'error' })
+    }
+  }
 
   // Lokales Datum als YYYY-MM-DD (kein UTC-Versatz)
   function localDateStr(d = new Date()) {
@@ -38,36 +57,35 @@ export default function ClockIn({ session }) {
 
     const empId = profile?.employee_id
     if (empId) {
-      const [{ data: empData }, { data: todayEntries }] = await Promise.all([
+      const [{ data: empData }, { data: todayEntries }, { data: openRows }] = await Promise.all([
         supabase.from('employees').select('*').eq('id', empId).maybeSingle(),
         supabase.from('time_entries').select('*').eq('employee_id', empId).eq('date', today).order('clock_in'),
+        // Offener Eintrag kann auch von gestern sein (Nachtschicht / vergessen auszuclocken)
+        supabase.from('time_entries').select('*').eq('employee_id', empId).is('clock_out', null).order('clock_in', { ascending: false }).limit(1),
       ])
       setEmp(empData || null)
-      const entries = todayEntries || []
-      setEntries(entries)
-      const openEntry = entries.find(e => !e.clock_out) || null
+      const openEntry = openRows?.[0] || null
+      const list = todayEntries || []
+      setEntries(openEntry && !list.some(e => e.id === openEntry.id) ? [openEntry, ...list] : list)
       setOpen(openEntry)
 
-      // 11h Ruhezeit prüfen (§5 ArbZG)
-      if (!openEntry) {
-        // Letzten Clock-out finden (auch gestern)
+      // 11 Std. Ruhezeit zwischen zwei Arbeitstagen (§ 5 ArbZG) — Unterbrechungen am selben Tag zählen nicht
+      setRestWarn(null)
+      if (!openEntry && list.length === 0) {
         const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1)
         const { data: recent } = await supabase.from('time_entries')
           .select('clock_out').eq('employee_id', empId)
           .not('clock_out', 'is', null)
-          .gte('date', localDateStr(yesterday))
+          .gte('date', localDateStr(yesterday)).lt('date', today)
           .order('clock_out', { ascending: false }).limit(1)
         if (recent?.[0]?.clock_out) {
           const hoursSince = (Date.now() - new Date(recent[0].clock_out)) / 3600000
-          if (hoursSince < 11) {
-            setRestWarn(Math.round(hoursSince * 10) / 10)
-          } else {
-            setRestWarn(null)
-          }
+          if (hoursSince < 11) setRestWarn(Math.round(hoursSince * 10) / 10)
         }
       }
     }
 
+    checkNetwork()
     if (cafeData?.gps_lat && cafeData?.gps_lng) doGpsCheck(cafeData)
     else setGps({ status: 'no-config' })
     setLoading(false)
@@ -81,7 +99,8 @@ export default function ClockIn({ session }) {
         const dist = getDistanceMeters(pos.coords.latitude, pos.coords.longitude, cafeData.gps_lat, cafeData.gps_lng)
         setGps({ status: dist <= cafeData.gps_radius_m ? 'ok' : 'too-far', dist: Math.round(dist), lat: pos.coords.latitude, lng: pos.coords.longitude })
       },
-      () => setGps({ status: 'denied' })
+      err => setGps({ status: err?.code === 1 ? 'denied' : 'unavailable' }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
     )
   }
 
@@ -99,7 +118,7 @@ export default function ClockIn({ session }) {
     const { error } = await supabase.from('time_entries').insert([{
       employee_id: employee.id, date: localDateStr(now),
       clock_in: now.toISOString(),
-      gps_lat_in: gps.lat || null, gps_lng_in: gps.lng || null, gps_ok_in: gps.status === 'ok',
+      gps_lat_in: gps.lat ?? null, gps_lng_in: gps.lng ?? null,
     }])
     if (error) { toast.error(translateSupabaseError(error, 'Zeiterfassung')); setWorking(false); return }
     toast.success(`✅ Eingeclockt um ${now.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' })} Uhr`)
@@ -117,7 +136,7 @@ export default function ClockIn({ session }) {
     const netH = Math.max(0, totalH - breakMin / 60)
     const { data: saved, error } = await supabase.from('time_entries').update({
       clock_out: now.toISOString(),
-      gps_lat_out: gps.lat || null, gps_lng_out: gps.lng || null, gps_ok_out: gps.status === 'ok',
+      gps_lat_out: gps.lat ?? null, gps_lng_out: gps.lng ?? null,
       break_minutes: breakMin, hours_worked: parseFloat(netH.toFixed(2)),
     }).eq('id', openEntry.id).select('hours_worked, notes').maybeSingle()
     if (error) { toast.error(translateSupabaseError(error, 'Zeiterfassung')); setWorking(false); return }
@@ -131,16 +150,32 @@ export default function ClockIn({ session }) {
     setWorking(false)
   }
 
-  // GPS Status Konfiguration
-  const GPS_MAP = {
-    checking:    { pill: null,          text: '📍 GPS wird geprüft…',                                          canClock: false, reason: 'GPS wird geprüft' },
-    ok:          { pill: 'gps-ok',      text: `✅ Café Buur verifiziert (${gps.dist}m)`,                       canClock: true,  reason: null },
-    'too-far':   { pill: 'gps-fail',    text: `Du bist ${gps.dist}m entfernt (max. ${cafe?.gps_radius_m||50}m)`, canClock: false, reason: `Zu weit vom Café (${gps.dist}m)` },
-    denied:      { pill: 'gps-fail',    text: 'GPS-Zugriff verweigert',                                         canClock: false, reason: 'GPS-Zugriff verweigert' },
-    unavailable: { pill: 'gps-fail',    text: 'GPS nicht verfügbar',                                            canClock: false, reason: 'GPS nicht verfügbar' },
-    'no-config': { pill: null,          text: '⚠️ GPS noch nicht konfiguriert',                                 canClock: true,  reason: null },
+  // ── Standort-Status: GPS ODER Café-WLAN genügt (Server prüft dasselbe noch einmal) ──
+  const GPS_TEXT = {
+    checking:    '📍 GPS wird geprüft…',
+    ok:          `📍 GPS: im Café (${gps.dist} m)`,
+    'too-far':   `📍 GPS: ${gps.dist} m entfernt (max. ${cafe?.gps_radius_m || 50} m)`,
+    denied:      '📍 GPS: Zugriff nicht erlaubt',
+    unavailable: '📍 GPS: nicht verfügbar',
   }
-  const gi = GPS_MAP[gps.status] || GPS_MAP.checking
+  const NET_TEXT = {
+    checking: '📶 WLAN wird geprüft…',
+    ok:       '📶 Café-WLAN verbunden',
+    no:       '📶 Nicht im Café-WLAN',
+    error:    '📶 WLAN-Prüfung fehlgeschlagen',
+  }
+  const netOnly = !!net.netOnly   // Admin hat „nur Café-WLAN“ eingestellt
+  const gpsConfigured = gps.status !== 'no-config' && !netOnly
+  const netConfigured = net.status !== 'unconfigured'
+  const anyConfigured = gpsConfigured || (netConfigured && net.status !== 'checking')
+  const located = net.status === 'ok' || (!netOnly && gps.status === 'ok')
+  const stillChecking = (gpsConfigured && gps.status === 'checking') || (netConfigured && net.status === 'checking')
+  // Bei Prüf-Fehler ohne GPS entscheidet der Server (er prüft ohnehin selbst)
+  const canClock = located || (!netOnly && !gpsConfigured && (net.status === 'unconfigured' || net.status === 'error'))
+  const blockReason = stillChecking ? 'Standort wird geprüft' : 'Nicht im Café erkannt'
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
+  const elapsedMin = openEntry ? Math.max(0, Math.floor((tick - new Date(openEntry.clock_in)) / 60000)) : 0
+  const METHOD_LABEL = { gps: '📍 GPS', wlan: '📶 WLAN', 'gps+wlan': '📍📶', 'ohne Prüfung': '–' }
 
   const today = localDateStr()
   if (loading) return <div style={{ padding:24, color:'var(--text-secondary)' }}>Lädt…</div>
@@ -149,7 +184,7 @@ export default function ClockIn({ session }) {
     <>
       <div className="topbar">
         <div className="topbar-title">Zeiterfassung</div>
-        {cafe?.gps_lat && <button className="btn btn-sm" onClick={() => doGpsCheck(cafe)}>🔄 GPS neu prüfen</button>}
+        {anyConfigured && <button className="btn btn-sm" onClick={() => { checkNetwork(); if (cafe?.gps_lat && cafe?.gps_lng) doGpsCheck(cafe) }}>🔄 Standort neu prüfen</button>}
       </div>
 
       <div className="content">
@@ -172,22 +207,41 @@ export default function ClockIn({ session }) {
               </div>
             )}
 
-            {/* GPS Status Pill */}
-            {gi.pill
-              ? <div className={`gps-pill ${gi.pill}`} style={{ display:'inline-block', marginBottom:20 }}>
-                  {gi.text}
-                </div>
-              : <div style={{ marginBottom:20, fontSize:13, color:'var(--text-secondary)' }}>{gi.text}</div>
-            }
+            {/* Standort-Status */}
+            {anyConfigured ? (
+              <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap', marginBottom:20 }}>
+                {gpsConfigured && (
+                  <div className={`gps-pill ${gps.status === 'ok' ? 'gps-ok' : gps.status === 'checking' ? '' : 'gps-fail'}`} style={{ display:'inline-block', margin:0 }}>
+                    {GPS_TEXT[gps.status] || GPS_TEXT.checking}
+                  </div>
+                )}
+                {netConfigured && (
+                  <div className={`gps-pill ${net.status === 'ok' ? 'gps-ok' : net.status === 'checking' ? '' : 'gps-fail'}`} style={{ display:'inline-block', margin:0 }}>
+                    {NET_TEXT[net.status] || NET_TEXT.checking}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ marginBottom:20, fontSize:13, color:'var(--text-secondary)' }}>⚠️ Standortprüfung noch nicht eingerichtet</div>
+            )}
+
+            {!stillChecking && !canClock && employee && (
+              <div style={{ fontSize:12.5, color:'var(--text-secondary)', maxWidth:380, margin:'-8px auto 16px', lineHeight:1.55 }}>
+                {netOnly ? 'Verbinde dich mit dem Café-WLAN' : <>Erlaube den Standortzugriff{netConfigured ? ' oder verbinde dich mit dem Café-WLAN' : ''}</>} und tippe dann auf „Standort neu prüfen“.
+                {netConfigured && isIOS && net.status === 'no' && (
+                  <> Im Café-WLAN, aber nicht erkannt? Einstellungen → WLAN → (i) → „iCloud Privat-Relay“ ausschalten.</>
+                )}
+              </div>
+            )}
 
             {employee && !openEntry && (
               <button
-                className={`clock-btn ${gi.canClock ? 'btn-clock-in' : 'btn-clock-blocked'}`}
-                onClick={gi.canClock ? clockIn : undefined}
+                className={`clock-btn ${canClock ? 'btn-clock-in' : 'btn-clock-blocked'}`}
+                onClick={canClock ? clockIn : undefined}
                 disabled={working}
-                style={{ cursor: gi.canClock ? 'pointer' : 'not-allowed' }}
+                style={{ cursor: canClock ? 'pointer' : 'not-allowed' }}
               >
-                {working ? '…' : gi.canClock ? '⏱ Einclocken' : `🔒 Gesperrt — ${gi.reason}`}
+                {working ? '…' : canClock ? '⏱ Einclocken' : `🔒 ${blockReason}`}
               </button>
             )}
 
@@ -200,21 +254,26 @@ export default function ClockIn({ session }) {
                   </strong>
                 </div>
                 <button
-                  className={`clock-btn ${gi.canClock ? 'btn-clock-out' : 'btn-clock-blocked'}`}
-                  onClick={gi.canClock ? clockOut : undefined}
+                  className={`clock-btn ${canClock ? 'btn-clock-out' : 'btn-clock-blocked'}`}
+                  onClick={canClock ? clockOut : undefined}
                   disabled={working}
-                  style={{ cursor: gi.canClock ? 'pointer' : 'not-allowed' }}
+                  style={{ cursor: canClock ? 'pointer' : 'not-allowed' }}
                 >
-                  {working ? '…' : gi.canClock ? '⏹ Ausclocken' : `🔒 Gesperrt — ${gi.reason}`}
+                  {working ? '…' : canClock ? '⏹ Ausclocken' : `🔒 ${blockReason}`}
                 </button>
               </div>
             )}
           </div>
         </div>
 
-        {openEntry && elapsed > 0 && (
+        {openEntry && elapsedMin > 0 && (
         <div style={{ textAlign:'center', padding:'10px', marginBottom:8, background:'var(--accent-light)', borderRadius:10, fontSize:13, color:'var(--accent)', fontWeight:600 }}>
-          ⏱ Du arbeitest seit {elapsed >= 60 ? `${Math.floor(elapsed/60)}h ${elapsed%60}min` : `${elapsed} Minuten`}
+          ⏱ Du arbeitest seit {elapsedMin >= 60 ? `${Math.floor(elapsedMin/60)} Std. ${elapsedMin%60} Min.` : `${elapsedMin} Minuten`}
+        </div>
+      )}
+      {!openEntry && restWarn !== null && (
+        <div className="alert alert-warn" style={{ fontSize:13, marginBottom:12 }}>
+          ⚠️ Dein letztes Ausclocken ist erst {restWarn.toLocaleString('de-DE')} Std. her. Zwischen zwei Schichten sind gesetzlich in der Regel 11 Std. Ruhezeit vorgesehen (§ 5 ArbZG). Bitte kurz mit der Schichtleitung absprechen.
         </div>
       )}
       <div className="card">
@@ -223,15 +282,15 @@ export default function ClockIn({ session }) {
             ? <div className="empty-state"><div className="empty-state-icon">⏰</div><div className="empty-state-text">Noch keine Zeiteinträge heute</div></div>
             : <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Arbeitsbeginn</th><th>Arbeitsende</th><th>Pause</th><th>Netto-Stunden</th><th>GPS</th></tr></thead>
+                  <thead><tr><th>Arbeitsbeginn</th><th>Arbeitsende</th><th>Pause</th><th>Netto-Stunden</th><th>Ort</th></tr></thead>
                   <tbody>
                     {entries.map(e => (
                       <tr key={e.id}>
-                        <td>{formatTime(e.clock_in)}</td>
+                        <td>{e.date !== today && <span style={{ fontSize:11.5, color:'var(--text-muted)' }}>{new Date(e.date + 'T00:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})} · </span>}{formatTime(e.clock_in)}</td>
                         <td>{e.clock_out ? formatTime(e.clock_out) : <span className="badge badge-green">Aktiv</span>}</td>
                         <td>{e.break_minutes ? `${e.break_minutes} min` : '–'}</td>
                         <td>{e.hours_worked ? <strong>{e.hours_worked.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h</strong> : '–'}</td>
-                        <td title={e.gps_ok_in ? 'GPS verifiziert' : 'Keine GPS-Prüfung'}>{e.gps_ok_in ? '✅' : '⚠️'}</td>
+                        <td>{e.clock_in_method ? (METHOD_LABEL[e.clock_in_method] || '–') : (e.gps_ok_in ? '📍 GPS' : '–')}</td>
                       </tr>
                     ))}
                   </tbody>

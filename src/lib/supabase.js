@@ -20,7 +20,7 @@ async function isClockSkew401(res) {
   if (res.status !== 401) return false
   try {
     const txt = await res.clone().text()
-    return /issued at future|PGRST303/i.test(txt)
+    return /issued at future|not yet valid/i.test(txt)
   } catch { return false }
 }
 
@@ -39,6 +39,17 @@ export const supabase = createClient(
   SUPABASE_ANON_KEY || 'missing-key',
   { global: { fetch: (...args) => fetchWithSkewRetry(...args) } }
 )
+
+// Beim Abmelden dieses Gerät von Push-Benachrichtigungen abmelden – sonst bekäme
+// ein geteiltes Gerät weiter die Nachrichten der vorherigen Person.
+const _signOut = supabase.auth.signOut.bind(supabase.auth)
+supabase.auth.signOut = async (...args) => {
+  try {
+    const { detachPushFromAccount } = await import('./push')
+    await Promise.race([detachPushFromAccount(), new Promise(r => setTimeout(r, 2500))])
+  } catch { /* Abmelden geht immer vor */ }
+  return _signOut(...args)
+}
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 export function getInitials(first, last) {
