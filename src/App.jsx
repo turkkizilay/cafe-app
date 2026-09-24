@@ -326,9 +326,17 @@ export default function App() {
       </ToastProvider>
     </DarkModeProvider>
   )
+  // Kein Profil = Konto wurde gelöscht (auf einem anderen Gerät oder vom Admin)
   if (!profile) return (
     <DarkModeProvider>
-      <PendingScreen session={session} onRetry={() => fetchProfile(session.user.id)} />
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:14, padding:32, textAlign:'center', background:'var(--bg)' }}>
+        <div style={{ fontSize:44 }}>👋</div>
+        <h2 style={{ fontSize:19, fontWeight:700, margin:0 }}>Dieses Konto gibt es nicht mehr</h2>
+        <p style={{ fontSize:14, color:'var(--text-secondary)', maxWidth:360, margin:0, lineHeight:1.6 }}>
+          Der Zugang wurde gelöscht. Wenn du die App wieder nutzen möchtest, bitte die Geschäftsführung um eine neue Einladung.
+        </p>
+        <button className="btn btn-primary" onClick={async () => { await supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember'); window.location.href = '/' }}>Zur Anmeldung</button>
+      </div>
     </DarkModeProvider>
   )
 
