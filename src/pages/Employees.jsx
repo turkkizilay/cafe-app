@@ -12,7 +12,7 @@ import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
-import { monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
+import { monthlyTargetHours, parseWeeklyHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
 
 const EMPTY = {
@@ -242,6 +242,8 @@ export default function Employees() {
       if (!form.start_date)         { setError(appMessage("ui.d0c35bf70bc0")); return }
       const rate = parseFloat(form.hourly_rate)
       if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError(appMessage("ui.9ec91c2ee981")); return }
+      // Wochenstunden sind Pflicht – sonst wäre das Monats-Soll 0 und alle Stunden würden als Überstunden gelten
+      if (parseWeeklyHours(form.hours_per_week) === null) { setError(appMessage("employees.hoursInvalid")); return }
 
       // ── Gesetzliche Warnungen ──
       if (rate < MINDESTLOHN) {
@@ -295,7 +297,7 @@ export default function Employees() {
                                   : n(form.address),
         position:               n(form.position),
         employment_type:        form.employment_type,
-        hours_per_week:         parseFloat(form.hours_per_week),
+        hours_per_week:         parseWeeklyHours(form.hours_per_week),
         hourly_rate:            rate,
         start_date:             form.start_date,
         end_date:               n(form.end_date),

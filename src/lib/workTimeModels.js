@@ -11,6 +11,13 @@ export const STUDENT_NEAR_RATIO        = 0.9   // Werkstudent: Hinweis ab 90 % d
 
 const round2 = n => Math.round(n * 100) / 100
 
+// Wochenstunden im Mitarbeiterprofil: Pflichtfeld, > 0 und ≤ 60 (wie approve_onboarding auf dem Server)
+export const MAX_WEEKLY_HOURS = 60
+export function parseWeeklyHours(value) {
+  const h = parseFloat(String(value ?? '').replace(',', '.'))
+  return Number.isFinite(h) && h > 0 && h <= MAX_WEEKLY_HOURS ? h : null
+}
+
 // Monats-Soll in Stunden: Vollzeit fest 172 h, sonst Wochenstunden × 4,3
 export function monthlyTargetHours(employee) {
   if (!employee) return 0

@@ -68,3 +68,12 @@ test('no magic numbers for the rules outside the central module', () => {
     assert.doesNotMatch(src, /WERKSTUDENT_LIMIT\s*=\s*80/, f)
   }
 })
+
+test('weekly hours are required in the employee profile (> 0, ≤ 60)', async () => {
+  const { parseWeeklyHours } = await import('../src/lib/workTimeModels.js')
+  for (const ok of [[16, 16], ['20', 20], ['24', 24], ['12,5', 12.5], [60, 60]]) assert.equal(parseWeeklyHours(ok[0]), ok[1])
+  for (const bad of ['', null, undefined, 0, '0', -5, 61, 'abc', NaN]) assert.equal(parseWeeklyHours(bad), null, String(bad))
+  const page = readFileSync('src/pages/Employees.jsx', 'utf8')
+  assert.match(page, /parseWeeklyHours\(form\.hours_per_week\) === null\) \{ setError\(appMessage\("employees\.hoursInvalid"\)\)/)
+  assert.match(page, /hours_per_week:\s+parseWeeklyHours\(form\.hours_per_week\)/)
+})

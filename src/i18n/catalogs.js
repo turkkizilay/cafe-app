@@ -1967,7 +1967,8 @@ export const de = {
   "workModel.studentOf": "{actual} / {limit} h (betriebliche Grenze)",
   "workModel.studentLimitLabel": "Betriebliche Monatsgrenze Werkstudent: {limit} h",
   "workModel.studentReached": "⚠️ Betriebliche Monatsgrenze von {limit} h erreicht.",
-  "workModel.studentOver": "⚠️ Betriebliche Monatsgrenze von {limit} h überschritten: {over} h darüber. Die Stunden bleiben vollständig erfasst."
+  "workModel.studentOver": "⚠️ Betriebliche Monatsgrenze von {limit} h überschritten: {over} h darüber. Die Stunden bleiben vollständig erfasst.",
+  "employees.hoursInvalid": "Bitte gültige Wochenstunden eintragen (mehr als 0, höchstens 60)."
 }
 
 export const en = {
@@ -3938,5 +3939,6 @@ export const en = {
   "workModel.studentOf": "{actual} / {limit} h (company limit)",
   "workModel.studentLimitLabel": "Company monthly limit for working students: {limit} h",
   "workModel.studentReached": "⚠️ Company monthly limit of {limit} h reached.",
-  "workModel.studentOver": "⚠️ Company monthly limit of {limit} h exceeded by {over} h. All hours remain recorded."
+  "workModel.studentOver": "⚠️ Company monthly limit of {limit} h exceeded by {over} h. All hours remain recorded.",
+  "employees.hoursInvalid": "Please enter valid weekly hours (more than 0, at most 60)."
 }
