@@ -6,7 +6,7 @@
 -- (break_minutes des Eintrags, sonst 0).
 -- Einzige Änderung gegenüber 09: Zeile „v_break := …“.
 -- Bestehende Einträge werden NICHT verändert.
--- NOCH NICHT live eingespielt.
+-- Bereits live eingespielt (Migration no_auto_break, 2026-09-25) — NICHT erneut ausführen.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.prevent_time_entry_backdating()
