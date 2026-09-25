@@ -7,12 +7,13 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
+import { calcWorkedHours } from '../lib/workHours'
 import Avatar from '../components/UI/Avatar'
 
 const EMPTY_FORM = {
   employee_id: '', date: toLocalDateStr(new Date()),
   clock_in_time: '08:00', clock_out_time: '16:00',
-  break_minutes: 30, notes: '', reason: '',
+  break_minutes: 0, notes: '', reason: '',
 }
 
 function toISO(date, time) { return new Date(`${date}T${time}:00`).toISOString() }
@@ -20,10 +21,7 @@ function toTime(iso) {
   if (!iso) return '–'
   return new Date(iso).toLocaleTimeString(getIntlLocale(), { hour:'2-digit', minute:'2-digit' })
 }
-function calcHours(clockIn, clockOut, breakMin) {
-  if (!clockIn || !clockOut) return null
-  return Math.max(0, (new Date(clockOut) - new Date(clockIn)) / 3600000 - (breakMin||0) / 60)
-}
+const calcHours = calcWorkedHours
 
 const MONTHS = () => [tr("ui.5c5db120cb11"),tr("ui.caf71b3f582d"),tr("ui.adbbd95def15"),tr("ui.617531b4fec3"),tr("ui.d77b6bd0886e"),tr("ui.b27fd46ed1b6"),tr("ui.c43f56b9807e"),tr("ui.41e1d82aa990"),tr("ui.451e2b719061"),tr("ui.56ccd5de9e3a"),tr("ui.3e630d2964a0"),tr("ui.d8325218c0dc")]
 

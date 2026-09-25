@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase, getDistanceMeters } from '../lib/supabase'
 import { formatTime } from '../i18n/format.js'
 import { translateSupabaseError } from '../lib/errorHelper'
+import { calcWorkedHours } from '../lib/workHours'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 
@@ -135,9 +136,9 @@ export default function ClockIn({ session }) {
     if (!openEntry) { toast.warn(appMessage("ui.8a3492aa4c28")); return }
     setWorking(true)
     const now = new Date()
-    const totalH = (now - new Date(openEntry.clock_in)) / 3600000
-    const breakMin = totalH > 9 ? 45 : totalH > 6 ? 30 : 0
-    const netH = Math.max(0, totalH - breakMin / 60)
+    // Keine automatische Pause – nur eine tatsächlich erfasste Pause wird abgezogen
+    const breakMin = Number(openEntry.break_minutes) || 0
+    const netH = calcWorkedHours(openEntry.clock_in, now, breakMin)
     const { data: saved, error } = await supabase.from('time_entries').update({
       clock_out: now.toISOString(),
       gps_lat_out: gps.lat ?? null, gps_lng_out: gps.lng ?? null,
