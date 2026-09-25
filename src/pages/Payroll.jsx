@@ -7,9 +7,10 @@ import { formatCurrency } from '../i18n/format.js'
 import { logActivity } from '../lib/activityLog'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
+import { monthlyModel, monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
 
 const MINIJOB_LIMIT      = 603    // € / Monat 2026 (§ 8 Abs. 1 Nr. 1 SGB IV)
-const WERKSTUDENT_LIMIT  = 80     // Stunden / Monat (interne Regel Café Buur)
+const WERKSTUDENT_LIMIT  = STUDENT_MONTHLY_LIMIT_H   // Stunden / Monat (betriebliche Regel, zentral in workTimeModels)
 
 // Lokales Datum als YYYY-MM-DD — KEIN toISOString() (verschiebt in DE um 1 Tag durch UTC)
 function toLocalDateStr(d) {
@@ -75,9 +76,12 @@ const EMP_TYPE_LABEL = { get vollzeit() { return tr("ui.49dbe1b0b4b3") }, get te
 
 function calcOvertime(emp, actualHours, monthTarget) {
   switch (emp.employment_type) {
-    case 'werkstudent': return { overtime: Math.max(0, actualHours - WERKSTUDENT_LIMIT), limit: WERKSTUDENT_LIMIT, type:'stunden' }
     case 'minijob':     return { overtime: Math.max(0, actualHours - MINIJOB_LIMIT/emp.hourly_rate), limit: MINIJOB_LIMIT/emp.hourly_rate, type:'stunden' }
-    default:            return { overtime: Math.max(0, actualHours - monthTarget), limit: monthTarget, type:'stunden' }
+    default: {
+      // Arbeitszeitmodell (zentral): Überstunden nie negativ, Ist-Stunden werden nicht gekürzt
+      const m = monthlyModel(emp, actualHours)
+      return { overtime: m.overtime, limit: m.type === 'werkstudent' ? m.limit : monthTarget, type:'stunden' }
+    }
   }
 }
 
@@ -105,6 +109,10 @@ function OvertimeBadge({ emp, overtime, actualHours, limit, earnings }) {
       </div>
     )
   }
+  const model = monthlyModel(emp, actualHours)
+  const fmtH  = h => h.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})
+  if (model.status === 'over_cap') return <span className="badge badge-red">🚨 +{fmtH(overtime)}{tr("ui.2155eeffb339")} · {tr("workModel.overCap", { cap: model.limit })}</span>
+  if (model.status === 'near' || model.status === 'reached') return <span className="badge badge-amber">{tr("workModel.studentOf", { actual: fmtH(actualHours), limit: model.limit })}</span>
   if (overtime > 0) return <span className="badge badge-amber">+{overtime.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</span>
   if (actualHours === 0) return <span className="badge badge-gray">{tr("ui.9481cea66957")}</span>
   return <span className="badge badge-green">–</span>
@@ -181,12 +189,6 @@ export default function Payroll() {
       supabase.from('sick_leave').select('employee_id, start_date, end_date, continued_pay_end, certificate_received, certificate_file_path').lte('start_date', end).or(`end_date.is.null,end_date.gte.${start}`),
     ])
 
-    const daysInMonth     = new Date(year, month, 0).getDate()
-    const workdaysInMonth = Array.from({ length: daysInMonth }, (_, i) => {
-      const d = new Date(year, month-1, i+1)
-      return d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0
-    }).reduce((a,b) => a+b, 0)
-
     const finalizedByEmp = Object.fromEntries(
       (finalized || []).filter(f => f.is_finalized).map(f => [f.employee_id, f])
     )
@@ -241,7 +243,7 @@ export default function Payroll() {
       const payrollHours = Math.round(rawHours * 100) / 100
       const actualHours  = payrollHours
       const dailyH       = emp.hours_per_week ? emp.hours_per_week / 5 : 0
-      const monthTarget  = Math.round(dailyH * workdaysInMonth * 100) / 100
+      const monthTarget  = monthlyTargetHours(emp)   // Monats-Soll nach Arbeitszeitmodell (Vollzeit fix, sonst Wochenstunden × Faktor)
 
       // §11 BUrlG / §3 EFZG: bezahlte Urlaubs- & Krankheitstage (ohne bereits erfasste
       // Arbeitszeit an diesem Tag) fließen ins Bruttogehalt ein — siehe getPaidAbsenceDays().

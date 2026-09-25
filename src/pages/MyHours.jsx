@@ -11,6 +11,7 @@ import {
   MINIJOB_LIMIT, WERKSTUDENT_MONTHLY_LIMIT,
   WERKSTUDENT_WEEKLY_LIMIT,
 } from '../lib/constants'
+import { monthlyModel, monthlyTargetHours } from '../lib/workTimeModels'
 
 // ── Wochenhelfer (ISO 8601: Montag = Start, Sonntag = Ende) ────────────────
 function getStartOfWeekDE(date) {
@@ -153,23 +154,24 @@ export default function MyHours() {
   const dailyHours   = employee ? employee.hours_per_week / 5 : 8
   const weekTarget   = employee?.hours_per_week || 40
 
-  const workdaysInMonth = employee ? Array.from(
-    { length: new Date(year, month, 0).getDate() }, (_,i) => {
-      const d = new Date(year, month-1, i+1)
-      return d.getDay()!==0 && d.getDay()!==6 ? 1 : 0
-    }).reduce((a,b)=>a+b, 0) : 0
-  const monthTarget = dailyHours * workdaysInMonth
+  // Monats-Soll & Überstunden nach Arbeitszeitmodell (zentral in lib/workTimeModels)
+  const monthTarget = monthlyTargetHours(employee)
+  const model       = employee ? monthlyModel(employee, monthlyHours) : null
+  const fmtH        = h => h.toLocaleString(getIntlLocale(),{minimumFractionDigits:1,maximumFractionDigits:1})
 
   // Beschäftigungstyp-Limits
   let overtimeHours = 0, limitWarning = null, limitPercent = 0, limitColor = 'var(--success)'
   if (employee) {
     if (employee.employment_type === 'werkstudent') {
-      overtimeHours = Math.max(0, monthlyHours - WERKSTUDENT_MONTHLY_LIMIT)
+      overtimeHours = model.overtime
       limitPercent  = Math.min(100, (monthlyHours / WERKSTUDENT_MONTHLY_LIMIT) * 100)
-      if (monthlyHours > WERKSTUDENT_MONTHLY_LIMIT) {
-        limitWarning = tr("ui.045712f9aaa7", { p1: ((overtimeHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})), p2: (WERKSTUDENT_MONTHLY_LIMIT) })
+      if (model.status === 'over') {
+        limitWarning = tr("workModel.studentOver", { over: fmtH(overtimeHours), limit: model.limit })
         limitColor = 'var(--danger)'
-      } else if (monthlyHours > WERKSTUDENT_MONTHLY_LIMIT * 0.8) {
+      } else if (model.status === 'reached') {
+        limitWarning = tr("workModel.studentReached", { limit: model.limit })
+        limitColor = 'var(--warn)'
+      } else if (model.status === 'near') {
         limitWarning = tr("ui.b70e781ca345", { p1: ((WERKSTUDENT_MONTHLY_LIMIT - monthlyHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})) })
         limitColor = 'var(--warn)'
       }
@@ -188,9 +190,12 @@ export default function MyHours() {
         limitColor = 'var(--warn)'
       }
     } else {
-      overtimeHours = Math.max(0, monthlyHours - monthTarget)
+      overtimeHours = model.overtime
       limitPercent  = Math.min(110, (monthlyHours / (monthTarget||1)) * 100)
-      if (overtimeHours > 5) {
+      if (model.status === 'over_cap') {
+        limitWarning = tr("workModel.overCapWarning", { cap: model.limit, actual: fmtH(monthlyHours) })
+        limitColor = 'var(--danger)'
+      } else if (overtimeHours > 5) {
         limitWarning = tr("ui.0b6aaadc0bbc", { p1: ((overtimeHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})) })
         limitColor = 'var(--warn)'
       }
@@ -306,7 +311,9 @@ export default function MyHours() {
                 <div className="stat-label">
                   {new Date(year, month-1).toLocaleDateString(getIntlLocale(),{month:'long'})}{tr("ui.c3f435d37b8f")}</div>
                 <div className="stat-value">{monthlyHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</div>
-                <div className="stat-sub">{tr("ui.16b4d3e5ce3d")}{monthTarget.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})}{tr("ui.9fa01b4ec60c")}</div>
+                <div className="stat-sub">{employee.employment_type==='werkstudent'
+                    ? tr("workModel.studentOf", { actual: fmtH(monthlyHours), limit: model.limit })
+                    : <>{tr("ui.16b4d3e5ce3d")}{fmtH(monthTarget)}{tr("ui.9fa01b4ec60c")}</>}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">{tr("ui.99649f2b4fcc")}</div>
@@ -336,7 +343,7 @@ export default function MyHours() {
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:13 }}>
                   <span style={{ fontWeight:500 }}>
                     {employee.employment_type==='werkstudent'
-                      ? tr("ui.d4ef1c452ff8", { p1: (WERKSTUDENT_MONTHLY_LIMIT) })
+                      ? tr("workModel.studentLimitLabel", { limit: WERKSTUDENT_MONTHLY_LIMIT })
                       : employee.employment_type==='minijob'
                         ? tr("ui.4576c54217b9", { p1: (formatCurrency(MINIJOB_LIMIT)) })
                         : tr("ui.2fb506f83a7e", { p1: (new Date(year,month-1).toLocaleDateString(getIntlLocale(),{month:'long'})) })}

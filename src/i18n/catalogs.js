@@ -1960,7 +1960,14 @@ export const de = {
   "time.breakMultipleOpen": "Es kann nur eine Pause gleichzeitig laufen.",
   "time.breaksSaveFailed": "Pausen konnten nicht gespeichert werden: ",
   "dashboard.onBreakSince": "☕ Pause seit {time}",
-  "dashboard.onBreak": "☕ Pause"
+  "dashboard.onBreak": "☕ Pause",
+  "workModel.targetHint": "Monats-Soll: {target} h",
+  "workModel.overCap": "über {cap} h – bitte prüfen",
+  "workModel.overCapWarning": "🚨 Über {cap} h in diesem Monat ({actual} h). Bitte mit der Leitung klären – die Stunden bleiben vollständig erfasst.",
+  "workModel.studentOf": "{actual} / {limit} h (betriebliche Grenze)",
+  "workModel.studentLimitLabel": "Betriebliche Monatsgrenze Werkstudent: {limit} h",
+  "workModel.studentReached": "⚠️ Betriebliche Monatsgrenze von {limit} h erreicht.",
+  "workModel.studentOver": "⚠️ Betriebliche Monatsgrenze von {limit} h überschritten: {over} h darüber. Die Stunden bleiben vollständig erfasst."
 }
 
 export const en = {
@@ -3924,5 +3931,12 @@ export const en = {
   "time.breakMultipleOpen": "Only one break can be running at a time.",
   "time.breaksSaveFailed": "Breaks could not be saved: ",
   "dashboard.onBreakSince": "☕ On break since {time}",
-  "dashboard.onBreak": "☕ Break"
+  "dashboard.onBreak": "☕ Break",
+  "workModel.targetHint": "Monthly target: {target} h",
+  "workModel.overCap": "over {cap} h – please review",
+  "workModel.overCapWarning": "🚨 Over {cap} h this month ({actual} h). Please check with management – all hours remain recorded.",
+  "workModel.studentOf": "{actual} / {limit} h (company limit)",
+  "workModel.studentLimitLabel": "Company monthly limit for working students: {limit} h",
+  "workModel.studentReached": "⚠️ Company monthly limit of {limit} h reached.",
+  "workModel.studentOver": "⚠️ Company monthly limit of {limit} h exceeded by {over} h. All hours remain recorded."
 }

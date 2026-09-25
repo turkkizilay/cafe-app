@@ -12,6 +12,7 @@ import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
+import { monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
 
 const EMPTY = {
@@ -622,6 +623,13 @@ export default function Employees() {
                   <input type="number" value={form.hours_per_week} onChange={e => f('hours_per_week', e.target.value)} min="1" max="60" />
                   {form.employment_type === 'werkstudent' && parseFloat(form.hours_per_week) > 20 && (
                     <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 3 }}>{tr("ui.c4f2372a2379")}</div>
+                  )}
+                  {form.employment_type !== 'minijob' && (
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>
+                      {form.employment_type === 'werkstudent'
+                        ? tr("workModel.studentLimitLabel", { limit: STUDENT_MONTHLY_LIMIT_H })
+                        : tr("workModel.targetHint", { target: monthlyTargetHours({ employment_type: form.employment_type, hours_per_week: parseFloat(String(form.hours_per_week).replace(',', '.')) }).toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
+                    </div>
                   )}
                 </div>
                 <div className="form-group">
