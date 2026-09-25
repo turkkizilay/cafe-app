@@ -7,7 +7,7 @@
 -- • Bestandsmitarbeiter → 'hourly' (DEFAULT) – Berechnung für sie unverändert
 -- • payroll_months friert pay_type/monthly_salary beim Monatsabschluss mit ein
 -- • Keine Änderung an RLS/Grants: bestehende Zeilen-Policies gelten für die neuen Spalten
--- NOCH NICHT live eingespielt.
+-- Bereits live eingespielt (Migration compensation_model, 2026-09-25) — NICHT erneut ausführen.
 -- ============================================================
 
 ALTER TABLE public.employees
