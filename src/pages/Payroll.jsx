@@ -8,6 +8,7 @@ import { logActivity } from '../lib/activityLog'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { monthlyModel, monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
+import { payTypeOf, monthlyGross, sickPayAmount, isPartialMonth, datevRateCell, datevHintCell, PAY_FIXED } from '../lib/compensation'
 
 const MINIJOB_LIMIT      = 603    // € / Monat 2026 (§ 8 Abs. 1 Nr. 1 SGB IV)
 const WERKSTUDENT_LIMIT  = STUDENT_MONTHLY_LIMIT_H   // Stunden / Monat (betriebliche Regel, zentral in workTimeModels)
@@ -132,9 +133,9 @@ function exportDATEV(rows, monthLabel) {
     (r.vacationHours || 0).toFixed(2).replace('.',','),
     (r.sickHours || 0).toFixed(2).replace('.',','),
     r.overtime > 0 ? r.overtime.toFixed(2).replace('.',',') : '0,00',
-    r.hourly_rate.toFixed(2).replace('.',','),
+    datevRateCell(r),   // Fixgehalt: leer (kein Stundenlohn-Brutto)
     r.total.toFixed(2).replace('.',','),
-    r.isAlert ? (r.employment_type==='minijob' ? 'MINIJOB-GRENZE PRÜFEN' : 'ÜBERSTUNDEN') : ''
+    datevHintCell(r)    // + FIXGEHALT / TEILMONAT PRÜFEN; Stundenlohn-Zeilen wie bisher
   ])
   const csv = [headers, ...rows_csv].map(row => row.map(v => `"${v}"`).join(';')).join('\n')
   const BOM = '﻿'  // UTF-8 BOM für Excel/DATEV
@@ -230,6 +231,7 @@ export default function Payroll() {
                : emp.employment_type === 'minijob'      ? MINIJOB_LIMIT / hourlyRate
                : monthTarget,
           hourly_rate: hourlyRate,
+          pay_type: frozen.pay_type ?? emp.pay_type, monthly_salary: frozen.monthly_salary ?? emp.monthly_salary,   // undefined vor Migration 18
           grossSalary, total: grossSalary, isAlert,
           frozen: true,
         }
@@ -258,8 +260,10 @@ export default function Payroll() {
       // Überstunden bleiben ausschließlich an TATSÄCHLICH gearbeiteten Stunden bemessen
       // (bezahlter Urlaub/Krankheit zählt nicht als Überstunden-Basis).
       const { overtime, limit } = calcOvertime(emp, payrollHours, monthTarget)
-      // Brutto = gearbeitete + bezahlte Urlaubs-/Krankheitsstunden × Stundenlohn.
-      const grossSalary  = Math.round(paidHours * emp.hourly_rate * 100) / 100
+      // Brutto: Stundenlohn = gearbeitete + bezahlte Urlaubs-/Krankheitsstunden × Stundenlohn;
+      // Fixgehalt = hinterlegtes Brutto-Monatsgehalt (nie aus Stunden, keine Teilmonats-Kürzung)
+      const grossSalary  = monthlyGross(emp, paidHours)
+      const partialMonth = payTypeOf(emp) === PAY_FIXED && isPartialMonth(emp, start, end)
       const isAlert      = emp.employment_type === 'minijob'
                              ? grossSalary > MINIJOB_LIMIT   // zählt volles Brutto, nicht nur gearbeitete Stunden
                              : emp.employment_type === 'werkstudent'
@@ -270,7 +274,7 @@ export default function Payroll() {
       const overtimeRounded = Math.round(overtime * 100) / 100
       // Volle Präzision behalten — Anzeige rundet über toLocaleString.
       // Kein toFixed(1) im gespeicherten Wert, sonst wirkt Brutto (aus vollen Stunden) widersprüchlich.
-      return { ...emp, payrollHours, actualHours, vacationHours, sickHours, paidHours, monthTarget, overtime: overtimeRounded, limit, grossSalary, total: grossSalary, isAlert, frozen: false }
+      return { ...emp, payrollHours, actualHours, vacationHours, sickHours, paidHours, monthTarget, overtime: overtimeRounded, limit, grossSalary, total: grossSalary, isAlert, partialMonth, frozen: false }
     })
 
     setRows(result)
@@ -296,11 +300,13 @@ export default function Payroll() {
       overtime_hours: r.overtime,
       vacation_hours: r.vacationHours || 0,
       sick_hours:     r.sickHours || 0,
-      sick_pay:       Math.round((r.sickHours || 0) * r.hourly_rate * 100) / 100,
+      sick_pay:       sickPayAmount(r, r.sickHours),
       hourly_rate:    r.hourly_rate,
       gross_salary:   r.total,
       total_payout:   r.total,
       is_finalized:   true,
+      // Vergütungsmodell einfrieren – nur wenn die Spalten existieren (Migration 18)
+      ...(r.pay_type !== undefined ? { pay_type: payTypeOf(r), monthly_salary: r.monthly_salary ?? null } : {}),
     }))
     const { error } = await supabase.from('payroll_months').upsert(payload, { onConflict: 'employee_id,year,month' })
     setFinalizing(false)
@@ -469,7 +475,13 @@ export default function Payroll() {
                         )}
                       </td>
                       <td><OvertimeBadge emp={r} overtime={r.overtime} actualHours={r.actualHours} limit={r.limit} earnings={r.total} /></td>
-                      <td>{formatCurrency(r.hourly_rate)}{tr("ui.141582aa3785")}</td>
+                      <td>
+                        {payTypeOf(r) === PAY_FIXED
+                          ? <>{tr("payModel.perMonth", { amount: formatCurrency(r.monthly_salary) })}
+                              <div><span className="badge badge-gray" style={{ fontSize:10.5 }}>{tr("payModel.fixed")}</span></div>
+                              {r.partialMonth && <div style={{ fontSize:10.5, color:'var(--warn)', marginTop:2 }}>⚠️ {tr("payModel.partialMonth")}</div>}</>
+                          : <>{formatCurrency(r.hourly_rate)}{tr("ui.141582aa3785")}</>}
+                      </td>
                       <td>
                         <strong style={{ color: r.isAlert ? 'var(--danger)' : 'inherit' }}>
                           {formatCurrency(r.total)}

@@ -13,6 +13,9 @@ import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
 import { monthlyTargetFromInput, parseWeeklyHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
+import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_HOURLY, PAY_FIXED } from '../lib/compensation'
+
+const PAY_ERROR_KEY = { fixedNotAllowed: "payModel.fixedNotAllowed", salaryMissing: "payModel.salaryMissing" }
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
 
 const EMPTY = {
@@ -53,6 +56,8 @@ const EMP_TYPE = { get vollzeit() { return tr("ui.49dbe1b0b4b3") }, get teilzeit
 export default function Employees() {
   useLocale()
   const [employees, setEmployees] = useState([])
+  // Vergütungsmodell erst nutzen, wenn die DB die Spalten hat (Migration 18)
+  const payFeatureOn = employees.some(e => 'pay_type' in e)
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null)
   const [form,      setForm]      = useState(EMPTY)
@@ -244,6 +249,8 @@ export default function Employees() {
       if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError(appMessage("ui.9ec91c2ee981")); return }
       // Wochenstunden sind Pflicht – sonst wäre das Monats-Soll 0 und alle Stunden würden als Überstunden gelten
       if (parseWeeklyHours(form.hours_per_week) === null) { setError(appMessage("employees.hoursInvalid")); return }
+      const payErr = payFeatureOn ? validatePayModel({ ...form, pay_type: payTypeOf(form) }) : null
+      if (payErr) { setError(appMessage(PAY_ERROR_KEY[payErr])); return }
 
       // ── Gesetzliche Warnungen ──
       if (rate < MINDESTLOHN) {
@@ -299,6 +306,10 @@ export default function Employees() {
         employment_type:        form.employment_type,
         hours_per_week:         parseWeeklyHours(form.hours_per_week),
         hourly_rate:            rate,
+        ...(payFeatureOn ? {
+          pay_type:             payTypeOf(form),
+          monthly_salary:       payTypeOf(form) === PAY_FIXED ? parseMonthlySalary(form.monthly_salary) : null,
+        } : {}),
         start_date:             form.start_date,
         end_date:               n(form.end_date),
         vacation_days_per_year: parseInt(form.vacation_days_per_year),
@@ -455,7 +466,7 @@ export default function Employees() {
                         </td>
                         <td>{emp.hours_per_week}{tr("ui.aaa9402664f1")}</td>
                         <td>
-                          {formatCurrency(emp.hourly_rate)}{tr("ui.141582aa3785")}{emp.hourly_rate < MINDESTLOHN && <span className="badge badge-red" style={{ marginLeft: 6, fontSize: 10 }}>{tr("ui.73d8e2d2f8fd")}</span>}
+                          {payTypeOf(emp) === PAY_FIXED ? tr("payModel.perMonth", { amount: formatCurrency(emp.monthly_salary) }) : <>{formatCurrency(emp.hourly_rate)}{tr("ui.141582aa3785")}</>}{emp.hourly_rate < MINDESTLOHN && <span className="badge badge-red" style={{ marginLeft: 6, fontSize: 10 }}>{tr("ui.73d8e2d2f8fd")}</span>}
                         </td>
                         <td>{emp.vacation_days_per_year}{tr("ui.d00de448b9e2")}</td>
                         <td className="text-muted">{formatDate(emp.start_date)}</td>
@@ -611,6 +622,7 @@ export default function Employees() {
                       f('employment_type', type)
                       const defaults = { vollzeit: 40, teilzeit: 20, werkstudent: 20, minijob: 10 }
                       if (defaults[type] !== undefined) f('hours_per_week', defaults[type])
+                      if (!canHaveFixedPay(type)) f('pay_type', PAY_HOURLY)   // Werkstudent/Minijob: nur Stundenlohn
                     }}>
                     <option value="vollzeit">{tr("ui.49dbe1b0b4b3")}</option>
                     <option value="teilzeit">{tr("ui.df763b1cc689")}</option>
@@ -645,8 +657,35 @@ export default function Employees() {
                   {modal === 'edit' && form.hourly_rate && parseFloat(form.hourly_rate) >= MINDESTLOHN && (
                     <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{tr("ui.a3b0277ec83e")}</div>
                   )}
+                  {payFeatureOn && payTypeOf(form) === PAY_FIXED && (
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3 }}>{tr("payModel.hourlyInternal")}</div>
+                  )}
                 </div>
               </div>
+              {payFeatureOn && (
+                <div className="two-col">
+                  <div className="form-group">
+                    <label>{tr("payModel.label")}</label>
+                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', paddingTop: 4 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
+                        <input type="radio" name="pay_type" checked={payTypeOf(form) === PAY_HOURLY} onChange={() => f('pay_type', PAY_HOURLY)} />{tr("payModel.hourly")}
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400, opacity: canHaveFixedPay(form.employment_type) ? 1 : 0.5 }}>
+                        <input type="radio" name="pay_type" checked={payTypeOf(form) === PAY_FIXED} disabled={!canHaveFixedPay(form.employment_type)} onChange={() => f('pay_type', PAY_FIXED)} />{tr("payModel.fixed")}
+                      </label>
+                    </div>
+                    {!canHaveFixedPay(form.employment_type) && (
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3 }}>{tr("payModel.fixedNotAllowed")}</div>
+                    )}
+                  </div>
+                  {payTypeOf(form) === PAY_FIXED && (
+                    <div className="form-group">
+                      <label>{tr("payModel.monthlySalary")}</label>
+                      <input type="number" step="0.01" min="0" inputMode="decimal" value={form.monthly_salary ?? ''} onChange={e => f('monthly_salary', e.target.value)} />
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="two-col">
                 <div className="form-group">
                   <label>{tr("ui.0ba856e3d3d8")}</label>

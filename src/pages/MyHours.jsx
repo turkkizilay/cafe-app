@@ -12,6 +12,7 @@ import {
   WERKSTUDENT_WEEKLY_LIMIT,
 } from '../lib/constants'
 import { monthlyModel, monthlyTargetHours } from '../lib/workTimeModels'
+import { payTypeOf, PAY_FIXED } from '../lib/compensation'
 
 // ── Wochenhelfer (ISO 8601: Montag = Start, Sonntag = Ende) ────────────────
 function getStartOfWeekDE(date) {
@@ -331,8 +332,13 @@ export default function MyHours() {
                 </div>
               ) : (
                 <div className="stat-card">
-                  <div className="stat-label">{tr("ui.68c8ec0f16c7")}</div>
-                  <div className="stat-value" style={{ fontSize:20 }}>{formatCurrency(employee.hourly_rate)}</div>
+                  {payTypeOf(employee) === PAY_FIXED ? (<>
+                    <div className="stat-label">{tr("payModel.monthlySalaryLabel")}</div>
+                    <div className="stat-value" style={{ fontSize:20 }}>{formatCurrency(employee.monthly_salary)}</div>
+                  </>) : (<>
+                    <div className="stat-label">{tr("ui.68c8ec0f16c7")}</div>
+                    <div className="stat-value" style={{ fontSize:20 }}>{formatCurrency(employee.hourly_rate)}</div>
+                  </>)}
                 </div>
               )}
             </div>

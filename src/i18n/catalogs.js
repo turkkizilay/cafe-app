@@ -1971,7 +1971,17 @@ export const de = {
   "employees.hoursInvalid": "Bitte gültige Wochenstunden eintragen (mehr als 0, höchstens 60).",
   "workModel.enterWeeklyHours": "Wochenstunden eingeben, um das Monats-Soll zu sehen.",
   "clock.breakStatusUnknown": "Pausenstatus konnte nicht geladen werden. Bitte erneut laden, bevor du eine Pause startest oder beendest.",
-  "clock.breakStatusRetry": "↻ Erneut laden"
+  "clock.breakStatusRetry": "↻ Erneut laden",
+  "payModel.label": "Vergütung",
+  "payModel.hourly": "Stundenlohn",
+  "payModel.fixed": "Fixgehalt",
+  "payModel.monthlySalary": "Monatsgehalt (EUR, brutto) *",
+  "payModel.monthlySalaryLabel": "Monatsgehalt (brutto)",
+  "payModel.perMonth": "{amount} / Monat",
+  "payModel.hourlyInternal": "Bei Fixgehalt nur interner Satz (z. B. Kostenschätzung) – das Brutto ist das Monatsgehalt.",
+  "payModel.fixedNotAllowed": "Fixgehalt ist nur bei Vollzeit oder Teilzeit möglich.",
+  "payModel.salaryMissing": "Bitte ein gültiges Brutto-Monatsgehalt eintragen.",
+  "payModel.partialMonth": "Teilmonat prüfen"
 }
 
 export const en = {
@@ -3946,5 +3956,15 @@ export const en = {
   "employees.hoursInvalid": "Please enter valid weekly hours (more than 0, at most 60).",
   "workModel.enterWeeklyHours": "Enter weekly hours to see the monthly target.",
   "clock.breakStatusUnknown": "Break status could not be loaded. Please reload before starting or ending a break.",
-  "clock.breakStatusRetry": "↻ Reload"
+  "clock.breakStatusRetry": "↻ Reload",
+  "payModel.label": "Pay model",
+  "payModel.hourly": "Hourly wage",
+  "payModel.fixed": "Fixed salary",
+  "payModel.monthlySalary": "Monthly salary (EUR, gross) *",
+  "payModel.monthlySalaryLabel": "Monthly salary (gross)",
+  "payModel.perMonth": "{amount} / month",
+  "payModel.hourlyInternal": "For fixed salary this is an internal rate only (e.g. cost estimate) – gross pay is the monthly salary.",
+  "payModel.fixedNotAllowed": "Fixed salary is only available for full-time or part-time.",
+  "payModel.salaryMissing": "Please enter a valid gross monthly salary.",
+  "payModel.partialMonth": "Check partial month"
 }
