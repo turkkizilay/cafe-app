@@ -34,3 +34,10 @@ test('clock-out and admin form do not reintroduce a duration-based break', () =>
   }
   assert.match(readFileSync('src/pages/TimeManagement.jsx', 'utf8'), /break_minutes: 0, notes/)
 })
+
+test('DB trigger migration keeps only the recorded break on clock-out', () => {
+  const sql = readFileSync('supabase/migrations_onboarding/16_no_auto_break.sql', 'utf8')
+  assert.match(sql, /v_break := COALESCE\(OLD\.break_minutes, 0\);/)
+  assert.doesNotMatch(sql, /WHEN v_total > 9 THEN 45/)
+  assert.doesNotMatch(sql, /WHEN v_total > 6 THEN 30/)
+})
