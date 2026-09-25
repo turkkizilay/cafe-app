@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { calcWorkedHours, BREAK_WARNING_MINUTES, openBreak, sumBreakMinutes, breakElapsedMinutes, isBreakTooLong, netWorkedHours } from '../src/lib/workHours.js'
+import { calcWorkedHours, BREAK_WARNING_MINUTES, openBreak, sumBreakMinutes, breakElapsedMinutes, isBreakTooLong, netWorkedHours, validateBreaks } from '../src/lib/workHours.js'
 
 const IN = '2026-09-25T08:00:00.000Z'
 const at = (h, m = 0) => new Date(Date.parse(IN) + (h * 60 + m) * 60000).toISOString()
@@ -90,4 +90,22 @@ test('ClockIn maps every break RPC error of migration 17 to a bilingual message'
   const handled = [...page.matchAll(/m\.includes\('([^']+)'\)/g)].map(m => m[1])
   assert.ok(raised.length >= 4)
   for (const msg of raised) assert.ok(handled.some(h => msg.includes(h)), `unmapped: ${msg}`)
+})
+
+test('validateBreaks mirrors the DB guard rules for admin corrections', () => {
+  const OUT = at(8)
+  assert.equal(validateBreaks([], IN, OUT), null)
+  assert.equal(validateBreaks([brk(2, 0, 2, 20), brk(5, 0, 5, 15)], IN, OUT), null)
+  assert.equal(validateBreaks([brk(5, 0, 5, 15), brk(2, 0, 2, 20)], IN, OUT), null)               // Reihenfolge egal
+  assert.deepEqual(validateBreaks([{ break_start: null, break_end: at(2) }], IN, OUT), { code: 'missing', index: 0 })
+  assert.deepEqual(validateBreaks([brk(2, 0, 2, 20), brk(3, 0, null)], IN, OUT), { code: 'missing', index: 1 })  // geschlossene Schicht braucht Ende
+  assert.equal(validateBreaks([brk(3, 0, null)], IN, null), null)                                  // offene Schicht: laufende Pause ok
+  assert.deepEqual(validateBreaks([brk(3, 0, null), brk(4, 0, null)], IN, null), { code: 'multipleOpen', index: 1 })
+  assert.deepEqual(validateBreaks([brk(3, 0, 2, 50)], IN, OUT), { code: 'order', index: 0 })
+  assert.deepEqual(validateBreaks([brk(3, 0, 3, 0)], IN, OUT), { code: 'order', index: 0 })
+  assert.deepEqual(validateBreaks([{ break_start: at(-1), break_end: at(0, 10) }], IN, OUT), { code: 'outside', index: 0 })
+  assert.deepEqual(validateBreaks([brk(7, 50, 8, 10)], IN, OUT), { code: 'outside', index: 0 })
+  assert.deepEqual(validateBreaks([brk(2, 0, 2, 30), brk(2, 20, 2, 40)], IN, OUT), { code: 'overlap', index: 1 })
+  assert.equal(validateBreaks([brk(2, 0, 2, 30), brk(2, 30, 2, 40)], IN, OUT), null)               // direkt anschließend ok
+  assert.deepEqual(validateBreaks([brk(2, 0, null), brk(3, 0, 3, 10)], IN, null), { code: 'overlap', index: 1 })
 })

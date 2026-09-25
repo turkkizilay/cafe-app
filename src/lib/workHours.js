@@ -39,6 +39,26 @@ export function isBreakTooLong(brk, now = new Date()) {
   return !!brk && !brk.break_end && breakElapsedMinutes(brk, now) >= BREAK_WARNING_MINUTES
 }
 
+// Admin-Korrektur: Pausen prüfen (gleiche Regeln wie der DB-Guard). Liefert { code, index } oder null.
+// code: 'missing' | 'order' | 'outside' | 'overlap' | 'multipleOpen'
+export function validateBreaks(breaks, clockIn, clockOut) {
+  const ms = v => (v ? new Date(v).getTime() : null)
+  const inMs = ms(clockIn), outMs = ms(clockOut)
+  const rows = (breaks || []).map((b, index) => ({ index, s: ms(b.break_start), e: ms(b.break_end) }))
+  for (const r of rows) {
+    if (r.s == null || (outMs != null && r.e == null)) return { code: 'missing', index: r.index }
+    if (r.e != null && r.e <= r.s) return { code: 'order', index: r.index }
+    if ((inMs != null && r.s < inMs) || (outMs != null && r.e > outMs)) return { code: 'outside', index: r.index }
+  }
+  if (rows.filter(r => r.e == null).length > 1) return { code: 'multipleOpen', index: rows.findLastIndex(r => r.e == null) }
+  const sorted = [...rows].sort((a, b) => a.s - b.s)
+  for (let i = 1; i < sorted.length; i++) {
+    const prevEnd = sorted[i - 1].e ?? Infinity
+    if (sorted[i].s < prevEnd) return { code: 'overlap', index: sorted[i].index }
+  }
+  return null
+}
+
 // Netto-Arbeitszeit einer (ggf. noch offenen) Schicht abzüglich erfasster Pausen
 export function netWorkedHours(clockIn, clockOut, breaks, now = new Date()) {
   const end = clockOut || now

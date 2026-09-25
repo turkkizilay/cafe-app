@@ -1944,7 +1944,21 @@ export const de = {
   "clock.breakTooLong": "Deine Pause läuft seit über {minutes} Minuten. Bitte beende sie, falls du wieder arbeitest.",
   "clock.confirmClockOutOnBreak": "Deine Pause läuft noch. Beim Ausclocken wird sie jetzt beendet. Fortfahren?",
   "clock.breakAlreadyRunning": "Deine Pause läuft bereits.",
-  "clock.noBreakRunning": "Es läuft gerade keine Pause."
+  "clock.noBreakRunning": "Es läuft gerade keine Pause.",
+  "time.addBreak": "+ Pause hinzufügen",
+  "time.removeBreak": "Pause entfernen",
+  "time.breakStart": "Pausenbeginn",
+  "time.breakEnd": "Pausenende",
+  "time.breaksSum": "Summe: {minutes} Min.",
+  "time.breakRunning": "☕ Pause läuft",
+  "time.breakAutoClosed": "Pause beim Ausclocken beendet",
+  "time.breakLong": "Pause über {minutes} Min.",
+  "time.breakMissing": "Pause {n}: Bitte Beginn und Ende eintragen.",
+  "time.breakOrder": "Pause {n}: Das Ende muss nach dem Beginn liegen.",
+  "time.breakOutside": "Pause {n} liegt außerhalb der Arbeitszeit.",
+  "time.breakOverlap": "Pause {n} überschneidet sich mit einer anderen Pause.",
+  "time.breakMultipleOpen": "Es kann nur eine Pause gleichzeitig laufen.",
+  "time.breaksSaveFailed": "Pausen konnten nicht gespeichert werden: "
 }
 
 export const en = {
@@ -3892,5 +3906,19 @@ export const en = {
   "clock.breakTooLong": "Your break has been running for over {minutes} minutes. Please end it if you are back at work.",
   "clock.confirmClockOutOnBreak": "Your break is still running. Clocking out will end it now. Continue?",
   "clock.breakAlreadyRunning": "Your break is already running.",
-  "clock.noBreakRunning": "No break is running right now."
+  "clock.noBreakRunning": "No break is running right now.",
+  "time.addBreak": "+ Add break",
+  "time.removeBreak": "Remove break",
+  "time.breakStart": "Break start",
+  "time.breakEnd": "Break end",
+  "time.breaksSum": "Total: {minutes} min",
+  "time.breakRunning": "☕ On break",
+  "time.breakAutoClosed": "Break ended at clock-out",
+  "time.breakLong": "Break over {minutes} min",
+  "time.breakMissing": "Break {n}: please enter a start and end time.",
+  "time.breakOrder": "Break {n}: the end must be after the start.",
+  "time.breakOutside": "Break {n} is outside the working time.",
+  "time.breakOverlap": "Break {n} overlaps with another break.",
+  "time.breakMultipleOpen": "Only one break can be running at a time.",
+  "time.breaksSaveFailed": "Breaks could not be saved: "
 }
