@@ -34,6 +34,15 @@ export function breakElapsedMinutes(brk, now = new Date()) {
   return Math.max(0, Math.floor((end - new Date(brk.break_start)) / 60000))
 }
 
+// Pausen-Bedienung auf der Einclock-Seite. Unbekannter Status (lädt / Fehler) ist NIE „keine Pause“.
+// → 'hidden' (Funktion nicht verfügbar) | 'loading' | 'error' | 'running' | 'idle'
+export function breakUiState({ featureOn, loadState, breaks }) {
+  if (!featureOn) return 'hidden'
+  if (loadState === 'loading') return 'loading'
+  if (loadState !== 'ok') return 'error'
+  return openBreak(breaks) ? 'running' : 'idle'
+}
+
 // Warnung ab 90 Min. laufender Pause
 export function isBreakTooLong(brk, now = new Date()) {
   return !!brk && !brk.break_end && breakElapsedMinutes(brk, now) >= BREAK_WARNING_MINUTES

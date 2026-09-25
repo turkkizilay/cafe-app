@@ -109,3 +109,21 @@ test('validateBreaks mirrors the DB guard rules for admin corrections', () => {
   assert.equal(validateBreaks([brk(2, 0, 2, 30), brk(2, 30, 2, 40)], IN, OUT), null)               // direkt anschließend ok
   assert.deepEqual(validateBreaks([brk(2, 0, null), brk(3, 0, 3, 10)], IN, null), { code: 'overlap', index: 1 })
 })
+
+test('ClockIn: unknown break status is never treated as "no break"', async () => {
+  const { breakUiState } = await import('../src/lib/workHours.js')
+  const running = [brk(1, 0, null)]
+  assert.equal(breakUiState({ featureOn: true, loadState: 'ok', breaks: running }), 'running')
+  assert.equal(breakUiState({ featureOn: true, loadState: 'ok', breaks: [] }), 'idle')
+  assert.equal(breakUiState({ featureOn: true, loadState: 'error', breaks: [] }), 'error')
+  assert.equal(breakUiState({ featureOn: true, loadState: 'loading', breaks: [] }), 'loading')
+  assert.equal(breakUiState({ featureOn: true, loadState: undefined, breaks: [] }), 'error')
+  assert.equal(breakUiState({ featureOn: false, loadState: 'ok', breaks: [] }), 'hidden')
+  const page = readFileSync('src/pages/ClockIn.jsx', 'utf8')
+  // „Pause starten/beenden“ nur bei bekanntem Status; bei Fehler Hinweis + Erneut laden
+  assert.match(page, /\{\(breakUi === 'idle' \|\| breakUi === 'running'\) && \(/)
+  assert.match(page, /breakUi === 'error' && \([\s\S]*?clock\.breakStatusUnknown[\s\S]*?onClick=\{\(\) => loadBreaks\(openEntry\.id\)\}[\s\S]*?clock\.breakStatusRetry/)
+  assert.match(page, /if \(error\) \{ setBreaks\(\[\]\); setBreakLoad\('error'\); return \}/)
+  assert.match(page, /catch \{\s*setBreaks\(\[\]\); setBreakLoad\('error'\)/)
+  assert.doesNotMatch(page, /setBreaks\(bErr \? \[\] : rows\)/)          // alter Fehlerpfad („leer = keine Pause“) ist weg
+})

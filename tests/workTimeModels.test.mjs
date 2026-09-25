@@ -77,3 +77,15 @@ test('weekly hours are required in the employee profile (> 0, ≤ 60)', async ()
   assert.match(page, /parseWeeklyHours\(form\.hours_per_week\) === null\) \{ setError\(appMessage\("employees\.hoursInvalid"\)\)/)
   assert.match(page, /hours_per_week:\s+parseWeeklyHours\(form\.hours_per_week\)/)
 })
+
+test('employee form: no misleading 0,0 h target without valid weekly hours', async () => {
+  const { monthlyTargetFromInput } = await import('../src/lib/workTimeModels.js')
+  for (const raw of ['', null, undefined, '0', 'abc', 61]) assert.equal(monthlyTargetFromInput('teilzeit', raw), null, String(raw))
+  assert.equal(monthlyTargetFromInput('teilzeit', '16'), 68.8)
+  assert.equal(monthlyTargetFromInput('teilzeit', 20), 86)
+  assert.equal(monthlyTargetFromInput('teilzeit', '24'), 103.2)
+  assert.equal(monthlyTargetFromInput('vollzeit', ''), 172)      // Vollzeit-Soll hängt nicht an Wochenstunden
+  const page = readFileSync('src/pages/Employees.jsx', 'utf8')
+  assert.match(page, /monthlyTargetFromInput\(form\.employment_type, form\.hours_per_week\) === null\s*\?\s*tr\("workModel\.enterWeeklyHours"\)/)
+  assert.doesNotMatch(page, /monthlyTargetHours\(\{ employment_type: form\.employment_type/)
+})

@@ -12,7 +12,7 @@ import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
-import { monthlyTargetHours, parseWeeklyHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
+import { monthlyTargetFromInput, parseWeeklyHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
 
 const EMPTY = {
@@ -630,7 +630,9 @@ export default function Employees() {
                     <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>
                       {form.employment_type === 'werkstudent'
                         ? tr("workModel.studentLimitLabel", { limit: STUDENT_MONTHLY_LIMIT_H })
-                        : tr("workModel.targetHint", { target: monthlyTargetHours({ employment_type: form.employment_type, hours_per_week: parseFloat(String(form.hours_per_week).replace(',', '.')) }).toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
+                        : monthlyTargetFromInput(form.employment_type, form.hours_per_week) === null
+                          ? tr("workModel.enterWeeklyHours")   // kein irreführendes „0,0 h“ ohne gültige Wochenstunden
+                          : tr("workModel.targetHint", { target: monthlyTargetFromInput(form.employment_type, form.hours_per_week).toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
                     </div>
                   )}
                 </div>

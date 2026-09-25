@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase, getDistanceMeters } from '../lib/supabase'
 import { formatTime } from '../i18n/format.js'
 import { translateSupabaseError } from '../lib/errorHelper'
-import { calcWorkedHours, openBreak, sumBreakMinutes, isBreakTooLong, netWorkedHours, breakElapsedMinutes, BREAK_WARNING_MINUTES } from '../lib/workHours'
+import { calcWorkedHours, openBreak, sumBreakMinutes, isBreakTooLong, netWorkedHours, breakElapsedMinutes, breakUiState, BREAK_WARNING_MINUTES } from '../lib/workHours'
 import { fetchBreaks, startBreak, endBreak, isBreakFeatureMissing } from '../lib/breaks'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
@@ -25,6 +25,7 @@ export default function ClockIn({ session }) {
   const [restWarn, setRestWarn] = useState(null)  // Stunden seit letztem Clockout
   const [breaks, setBreaks]     = useState([])    // erfasste Pausen der offenen Schicht
   const [breaksOn, setBreaksOn] = useState(true)  // false, solange Migration 17 fehlt
+  const [breakLoad, setBreakLoad] = useState('ok') // 'loading' | 'ok' | 'error' – unbekannt ist nie „keine Pause“
 
   useEffect(() => {
     const t = setInterval(() => setTick(new Date()), 1000)
@@ -52,6 +53,20 @@ export default function ClockIn({ session }) {
     }
   }
 
+  // Pausen der offenen Schicht laden – auch als „Erneut laden“ nach einem Fehler
+  async function loadBreaks(entryId) {
+    setBreakLoad('loading')
+    try {
+      const { breaks: rows, error } = await fetchBreaks(entryId)
+      if (isBreakFeatureMissing(error)) { setBreaksOn(false); setBreaks([]); setBreakLoad('ok'); return }
+      setBreaksOn(true)
+      if (error) { setBreaks([]); setBreakLoad('error'); return }
+      setBreaks(rows); setBreakLoad('ok')
+    } catch {
+      setBreaks([]); setBreakLoad('error')
+    }
+  }
+
   // Lokales Datum als YYYY-MM-DD (kein UTC-Versatz)
   function localDateStr(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -76,11 +91,8 @@ export default function ClockIn({ session }) {
       const list = todayEntries || []
       setEntries(openEntry && !list.some(e => e.id === openEntry.id) ? [openEntry, ...list] : list)
       setOpen(openEntry)
-      if (openEntry) {
-        const { breaks: rows, error: bErr } = await fetchBreaks(openEntry.id)
-        setBreaksOn(!isBreakFeatureMissing(bErr))
-        setBreaks(bErr ? [] : rows)
-      } else setBreaks([])
+      if (openEntry) await loadBreaks(openEntry.id)
+      else { setBreaks([]); setBreakLoad('ok') }
 
       // 11 Std. Ruhezeit zwischen zwei Arbeitstagen (§ 5 ArbZG) — Unterbrechungen am selben Tag zählen nicht
       setRestWarn(null)
@@ -191,7 +203,10 @@ export default function ClockIn({ session }) {
       toast.warn(appMessage("ui.ce394dbf8d29"), 12000)
       await fetchData(); setWorking(false); return
     }
-    toast.success(appMessage("ui.974c5412d6ec", { p1: (formatParam("number", netH, {minimumFractionDigits:2,maximumFractionDigits:2})), p2: (breakMin ? (appMessage("ui.b90bda0a43ef", { p1: (breakMin) })) : ('')) }))
+    // Pausenstatus unbekannt → Server-Ergebnis anzeigen statt einer lokal ohne Pausen gerechneten Zahl
+    const known = breakLoad === 'ok' || !breaksOn
+    const announce = (netH, breakMin) => toast.success(appMessage("ui.974c5412d6ec", { p1: (formatParam("number", netH, {minimumFractionDigits:2,maximumFractionDigits:2})), p2: (breakMin ? (appMessage("ui.b90bda0a43ef", { p1: (breakMin) })) : ('')) }))
+    announce(known ? netH : Number(saved?.hours_worked ?? netH), known ? breakMin : 0)
     await fetchData()
     setWorking(false)
   }
@@ -221,7 +236,8 @@ export default function ClockIn({ session }) {
   const blockReason = stillChecking ? tr("ui.75c87c02a7f2") : tr("ui.f2ecba2c057d")
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
   const elapsedMin = openEntry ? Math.max(0, Math.floor((tick - new Date(openEntry.clock_in)) / 60000)) : 0
-  const runningBreak = breaksOn ? openBreak(breaks) : null
+  const breakUi      = breakUiState({ featureOn: breaksOn, loadState: breakLoad, breaks })
+  const runningBreak = breakUi === 'running' ? openBreak(breaks) : null
   const breakMinNow  = sumBreakMinutes(breaks, tick)
   const netHNow      = openEntry ? netWorkedHours(openEntry.clock_in, null, breaks, tick) : 0
   const breakSec     = runningBreak ? Math.max(0, Math.floor((tick - new Date(runningBreak.break_start)) / 1000)) : 0
@@ -313,11 +329,21 @@ export default function ClockIn({ session }) {
                   </div>
                 )}
 
+                {breakUi === 'error' && (
+                  <div className="break-panel" role="alert">
+                    <div className="break-panel-warn" style={{ marginTop:0 }}>{tr("clock.breakStatusUnknown")}</div>
+                    <button type="button" className="btn btn-sm" style={{ marginTop:8 }} onClick={() => loadBreaks(openEntry.id)}>{tr("clock.breakStatusRetry")}</button>
+                  </div>
+                )}
+
                 <div className="clock-actions">
-                  {breaksOn && (
+                  {(breakUi === 'idle' || breakUi === 'running') && (
                     <button className="clock-btn btn-clock-break" onClick={runningBreak ? onEndBreak : onStartBreak} disabled={working}>
                       {working ? '…' : runningBreak ? tr("clock.endBreak") : tr("clock.startBreak")}
                     </button>
+                  )}
+                  {breakUi === 'loading' && (
+                    <button className="clock-btn btn-clock-break" disabled aria-busy="true">…</button>
                   )}
                   <button
                     className={`clock-btn ${canClock ? 'btn-clock-out' : 'btn-clock-blocked'}`}

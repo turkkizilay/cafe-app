@@ -18,6 +18,14 @@ export function parseWeeklyHours(value) {
   return Number.isFinite(h) && h > 0 && h <= MAX_WEEKLY_HOURS ? h : null
 }
 
+// Formular-Anzeige: Monats-Soll aus Eingabe, oder null solange keine gültigen Wochenstunden vorliegen
+// (Vollzeit braucht keine Wochenstunden für das Soll)
+export function monthlyTargetFromInput(employmentType, rawWeeklyHours) {
+  if (employmentType === 'vollzeit') return FULLTIME_MONTHLY_TARGET_H
+  const h = parseWeeklyHours(rawWeeklyHours)
+  return h === null ? null : monthlyTargetHours({ employment_type: employmentType, hours_per_week: h })
+}
+
 // Monats-Soll in Stunden: Vollzeit fest 172 h, sonst Wochenstunden × 4,3
 export function monthlyTargetHours(employee) {
   if (!employee) return 0

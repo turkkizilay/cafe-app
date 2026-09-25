@@ -1968,7 +1968,10 @@ export const de = {
   "workModel.studentLimitLabel": "Betriebliche Monatsgrenze Werkstudent: {limit} h",
   "workModel.studentReached": "⚠️ Betriebliche Monatsgrenze von {limit} h erreicht.",
   "workModel.studentOver": "⚠️ Betriebliche Monatsgrenze von {limit} h überschritten: {over} h darüber. Die Stunden bleiben vollständig erfasst.",
-  "employees.hoursInvalid": "Bitte gültige Wochenstunden eintragen (mehr als 0, höchstens 60)."
+  "employees.hoursInvalid": "Bitte gültige Wochenstunden eintragen (mehr als 0, höchstens 60).",
+  "workModel.enterWeeklyHours": "Wochenstunden eingeben, um das Monats-Soll zu sehen.",
+  "clock.breakStatusUnknown": "Pausenstatus konnte nicht geladen werden. Bitte erneut laden, bevor du eine Pause startest oder beendest.",
+  "clock.breakStatusRetry": "↻ Erneut laden"
 }
 
 export const en = {
@@ -3940,5 +3943,8 @@ export const en = {
   "workModel.studentLimitLabel": "Company monthly limit for working students: {limit} h",
   "workModel.studentReached": "⚠️ Company monthly limit of {limit} h reached.",
   "workModel.studentOver": "⚠️ Company monthly limit of {limit} h exceeded by {over} h. All hours remain recorded.",
-  "employees.hoursInvalid": "Please enter valid weekly hours (more than 0, at most 60)."
+  "employees.hoursInvalid": "Please enter valid weekly hours (more than 0, at most 60).",
+  "workModel.enterWeeklyHours": "Enter weekly hours to see the monthly target.",
+  "clock.breakStatusUnknown": "Break status could not be loaded. Please reload before starting or ending a break.",
+  "clock.breakStatusRetry": "↻ Reload"
 }
