@@ -10,6 +10,8 @@ import { missingPersonalFields } from '../components/PersonalDataCard'
 import { BACKUP_REMIND_DAYS } from '../lib/backup'
 import AppSetupCard from '../components/AppSetupCard'
 import { useProfile } from '../context/ProfileContext'
+import { openBreak, netWorkedHours } from '../lib/workHours'
+import { fetchBreaksForEntries } from '../lib/breaks'
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 function greeting() {
@@ -68,6 +70,7 @@ export default function Dashboard() {
   const [nextShift,   setNextShift]   = useState(null)
   const [todayShifts, setTodayShifts] = useState([])  // Alle Schichten heute (Admin)
   const [liveClockIns,setLiveClockIns]= useState([])
+  const [liveBreaks,  setLiveBreaks]  = useState({})   // Pausen der offenen Schichten { entryId: [...] }
   const [forgotten,   setForgotten]   = useState(0)   // Zeiteinträge „Ausstempeln vergessen“ (nur Admin)
   const [backupDays,  setBackupDays]  = useState(null) // Tage seit letztem Sicherungs-Download (nur Admin); -1 = noch nie
   const [soleAdmin,   setSoleAdmin]   = useState(false)
@@ -108,6 +111,10 @@ export default function Dashboard() {
       setNextShift(shifts[0] || null)
       setMyEmployee(empRes.data || null)
       setLiveClockIns(liveRes.data || [])
+      // Pausen der offenen Schichten (ohne Migration 17 → leer, Anzeige wie bisher)
+      const { byEntry: liveBreakMap } = await fetchBreaksForEntries((liveRes.data || []).map(e => e.id))
+      setLiveBreaks(liveBreakMap || {})
+      const openBreaksByEmp = Object.fromEntries((liveRes.data || []).map(e => [e.employee_id, liveBreakMap?.[e.id] || []]))
       setClockedIn(!!myClockRes.data)
 
       if (canManage) {
@@ -152,7 +159,8 @@ export default function Dashboard() {
         ;(todayTE || []).forEach(te => {
           const emp = empMap[te.employee_id]
           if (!emp) return
-          const h = te.hours_worked || (te.clock_out ? 0 : Math.max(0, (nowMs - new Date(te.clock_in)) / 3600000))
+          // Offene Schicht: bisherige Zeit abzüglich erfasster Pausen (keine automatische Pause)
+          const h = te.hours_worked || (te.clock_out ? 0 : netWorkedHours(te.clock_in, null, openBreaksByEmp[te.employee_id], nowMs))
           hoursToday += h
           costToday  += h * emp.hourly_rate
         })
@@ -456,15 +464,19 @@ export default function Dashboard() {
                   {liveClockIns.map(e => {
                     const since = Math.floor((Date.now() - new Date(e.clock_in)) / 3600000)
                     const mins  = Math.floor(((Date.now() - new Date(e.clock_in)) % 3600000) / 60000)
+                    const onBreak = openBreak(liveBreaks[e.id])
                     return (
                       <div key={e.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderBottom:'1px solid var(--border)' }}>
                         <Avatar src={e.employees?.avatar_url} firstName={e.employees?.first_name} lastName={e.employees?.last_name} color={e.employees?.avatar_color} size={32} />
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:500, fontSize:13 }}>{e.employees?.first_name} {e.employees?.last_name}</div>
                           <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{tr("ui.ba03ce08ac40")}{formatTime(e.clock_in)}
-                            {' · '}{since > 0 ? `${since}h ` : ''}{mins}{tr("ui.1f6fa6f69d18")}</div>
+                            {' · '}{since > 0 ? `${since}h ` : ''}{mins}{tr("ui.1f6fa6f69d18")}
+                            {onBreak && <>{' · '}<span style={{ color:'var(--warn)', fontWeight:600 }}>{tr("dashboard.onBreakSince", { time: formatTime(onBreak.break_start) })}</span></>}</div>
                         </div>
-                        <span style={{ fontSize:12, fontWeight:600, color:'#059669' }}>{since}{tr("ui.17c76396f75d")}{mins}{tr("ui.1f6fa6f69d18")}</span>
+                        {onBreak
+                          ? <span style={{ fontSize:12, fontWeight:600, color:'var(--warn)' }}>{tr("dashboard.onBreak")}</span>
+                          : <span style={{ fontSize:12, fontWeight:600, color:'#059669' }}>{since}{tr("ui.17c76396f75d")}{mins}{tr("ui.1f6fa6f69d18")}</span>}
                       </div>
                     )
                   })}

@@ -1958,7 +1958,9 @@ export const de = {
   "time.breakOutside": "Pause {n} liegt außerhalb der Arbeitszeit.",
   "time.breakOverlap": "Pause {n} überschneidet sich mit einer anderen Pause.",
   "time.breakMultipleOpen": "Es kann nur eine Pause gleichzeitig laufen.",
-  "time.breaksSaveFailed": "Pausen konnten nicht gespeichert werden: "
+  "time.breaksSaveFailed": "Pausen konnten nicht gespeichert werden: ",
+  "dashboard.onBreakSince": "☕ Pause seit {time}",
+  "dashboard.onBreak": "☕ Pause"
 }
 
 export const en = {
@@ -3920,5 +3922,7 @@ export const en = {
   "time.breakOutside": "Break {n} is outside the working time.",
   "time.breakOverlap": "Break {n} overlaps with another break.",
   "time.breakMultipleOpen": "Only one break can be running at a time.",
-  "time.breaksSaveFailed": "Breaks could not be saved: "
+  "time.breaksSaveFailed": "Breaks could not be saved: ",
+  "dashboard.onBreakSince": "☕ On break since {time}",
+  "dashboard.onBreak": "☕ Break"
 }
