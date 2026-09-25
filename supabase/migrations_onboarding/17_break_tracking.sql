@@ -7,7 +7,8 @@
 --   Summe der erfassten Pausen. Ohne Pausen-Zeilen bleibt OLD.break_minutes
 --   (historische/manuelle Einträge unverändert). Keine automatische Pause.
 -- • Bestehende Daten werden NICHT verändert.
--- NOCH NICHT live eingespielt.
+-- Bereits live eingespielt (Migrationen break_tracking + break_tracking_lock_guard, 2026-09-25)
+-- — NICHT erneut ausführen.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS public.time_entry_breaks (
@@ -62,6 +63,8 @@ END $function$;
 DROP TRIGGER IF EXISTS trg_time_entry_breaks_guard ON public.time_entry_breaks;
 CREATE TRIGGER trg_time_entry_breaks_guard BEFORE INSERT OR UPDATE ON public.time_entry_breaks
   FOR EACH ROW EXECUTE FUNCTION public.time_entry_breaks_guard();
+-- Trigger-Funktion nicht per API aufrufbar (wie lock_down_trigger_function_execute_grants)
+REVOKE ALL ON FUNCTION public.time_entry_breaks_guard() FROM PUBLIC, anon, authenticated;
 
 -- ── Mitarbeiter: Pause starten / beenden (keine Standortprüfung) ──
 CREATE OR REPLACE FUNCTION public.start_break()
