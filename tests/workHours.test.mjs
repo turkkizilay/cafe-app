@@ -81,3 +81,13 @@ test('openBreak and 90-minute warning', () => {
   assert.equal(isBreakTooLong(brk(1, 0, 3, 0), at(4)), false) // beendete Pause warnt nicht
   assert.equal(isBreakTooLong(null), false)
 })
+
+test('ClockIn maps every break RPC error of migration 17 to a bilingual message', () => {
+  const sql = readFileSync('supabase/migrations_onboarding/17_break_tracking.sql', 'utf8')
+  const page = readFileSync('src/pages/ClockIn.jsx', 'utf8')
+  const rpcBody = name => sql.slice(sql.indexOf(`FUNCTION public.${name}()`), sql.indexOf('END $function$', sql.indexOf(`FUNCTION public.${name}()`)))
+  const raised = [...rpcBody('start_break').matchAll(/RAISE EXCEPTION '([^']+)'/g), ...rpcBody('end_break').matchAll(/RAISE EXCEPTION '([^']+)'/g)].map(m => m[1])
+  const handled = [...page.matchAll(/m\.includes\('([^']+)'\)/g)].map(m => m[1])
+  assert.ok(raised.length >= 4)
+  for (const msg of raised) assert.ok(handled.some(h => msg.includes(h)), `unmapped: ${msg}`)
+})

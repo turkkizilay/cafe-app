@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { supabase, getDistanceMeters } from '../lib/supabase'
 import { formatTime } from '../i18n/format.js'
 import { translateSupabaseError } from '../lib/errorHelper'
-import { calcWorkedHours } from '../lib/workHours'
+import { calcWorkedHours, openBreak, sumBreakMinutes, isBreakTooLong, netWorkedHours, breakElapsedMinutes, BREAK_WARNING_MINUTES } from '../lib/workHours'
+import { fetchBreaks, startBreak, endBreak, isBreakFeatureMissing } from '../lib/breaks'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 
@@ -22,6 +23,8 @@ export default function ClockIn({ session }) {
   const [loading, setLoading] = useState(true)
   const [working,  setWorking]  = useState(false)
   const [restWarn, setRestWarn] = useState(null)  // Stunden seit letztem Clockout
+  const [breaks, setBreaks]     = useState([])    // erfasste Pausen der offenen Schicht
+  const [breaksOn, setBreaksOn] = useState(true)  // false, solange Migration 17 fehlt
 
   useEffect(() => {
     const t = setInterval(() => setTick(new Date()), 1000)
@@ -73,6 +76,11 @@ export default function ClockIn({ session }) {
       const list = todayEntries || []
       setEntries(openEntry && !list.some(e => e.id === openEntry.id) ? [openEntry, ...list] : list)
       setOpen(openEntry)
+      if (openEntry) {
+        const { breaks: rows, error: bErr } = await fetchBreaks(openEntry.id)
+        setBreaksOn(!isBreakFeatureMissing(bErr))
+        setBreaks(bErr ? [] : rows)
+      } else setBreaks([])
 
       // 11 Std. Ruhezeit zwischen zwei Arbeitstagen (§ 5 ArbZG) — Unterbrechungen am selben Tag zählen nicht
       setRestWarn(null)
@@ -131,13 +139,46 @@ export default function ClockIn({ session }) {
     setWorking(false)
   }
 
+  // Bekannte Server-Meldungen der Pausen-RPCs zweisprachig; sonst generische Fehlerbehandlung
+  function breakError(error) {
+    const m = error?.message || ''
+    if (m.includes('läuft bereits'))     return appMessage("clock.breakAlreadyRunning")
+    if (m.includes('keine Pause'))       return appMessage("clock.noBreakRunning")
+    if (m.includes('nicht eingeclockt')) return appMessage("ui.8a3492aa4c28")
+    if (m.includes('nicht aktiv'))       return appMessage("ui.9470891f33ea")
+    return translateSupabaseError(error, appMessage("ui.858e4ba7a29f"))
+  }
+
+  async function onStartBreak() {
+    if (working || !openEntry) return
+    setWorking(true)
+    const { error } = await startBreak()
+    if (error) { toast.error(breakError(error)); await fetchData(); setWorking(false); return }
+    toast.success(appMessage("clock.breakStarted", { time: formatParam("time", new Date(), { hour:'2-digit', minute:'2-digit' }) }))
+    await fetchData()
+    setWorking(false)
+  }
+
+  async function onEndBreak() {
+    if (working) return
+    setWorking(true)
+    const { data, error } = await endBreak()
+    if (error) { toast.error(breakError(error)); await fetchData(); setWorking(false); return }
+    const ended = Array.isArray(data) ? data[0] : data
+    toast.success(appMessage("clock.breakEnded", { minutes: breakElapsedMinutes(ended) }))
+    await fetchData()
+    setWorking(false)
+  }
+
   async function clockOut() {
     if (working) return
     if (!openEntry) { toast.warn(appMessage("ui.8a3492aa4c28")); return }
+    if (openBreak(breaks) && !window.confirm(tr("clock.confirmClockOutOnBreak"))) return
     setWorking(true)
     const now = new Date()
-    // Keine automatische Pause – nur eine tatsächlich erfasste Pause wird abgezogen
-    const breakMin = Number(openEntry.break_minutes) || 0
+    // Keine automatische Pause – nur tatsächlich erfasste Pausen werden abgezogen
+    // (eine laufende Pause endet mit dem Ausclocken; der Server rechnet identisch)
+    const breakMin = breaks.length ? sumBreakMinutes(breaks, now) : (Number(openEntry.break_minutes) || 0)
     const netH = calcWorkedHours(openEntry.clock_in, now, breakMin)
     const { data: saved, error } = await supabase.from('time_entries').update({
       clock_out: now.toISOString(),
@@ -180,6 +221,11 @@ export default function ClockIn({ session }) {
   const blockReason = stillChecking ? tr("ui.75c87c02a7f2") : tr("ui.f2ecba2c057d")
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
   const elapsedMin = openEntry ? Math.max(0, Math.floor((tick - new Date(openEntry.clock_in)) / 60000)) : 0
+  const runningBreak = breaksOn ? openBreak(breaks) : null
+  const breakMinNow  = sumBreakMinutes(breaks, tick)
+  const netHNow      = openEntry ? netWorkedHours(openEntry.clock_in, null, breaks, tick) : 0
+  const breakSec     = runningBreak ? Math.max(0, Math.floor((tick - new Date(runningBreak.break_start)) / 1000)) : 0
+  const breakTimer   = `${Math.floor(breakSec / 3600)}:${String(Math.floor(breakSec / 60) % 60).padStart(2, '0')}:${String(breakSec % 60).padStart(2, '0')}`
   const METHOD_LABEL = { gps: '📍 GPS', wlan: '📶 WLAN', 'gps+wlan': '📍📶', 'ohne Prüfung': '–' }
 
   const today = localDateStr()
@@ -253,22 +299,41 @@ export default function ClockIn({ session }) {
               <div>
                 <div style={{ marginBottom:12, fontSize:13.5, color:'var(--text-secondary)' }}>{tr("ui.0f953d7be19e")}{formatTime(openEntry.clock_in)}{tr("ui.82b45aa08404")}{' '}
                   <strong style={{ color:'var(--text-primary)' }}>
-                    {((Date.now() - new Date(openEntry.clock_in)) / 3600000).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong>
+                    {netHNow.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong>
+                  {breakMinNow > 0 && <>{' · '}{tr("clock.breaksTotal", { minutes: breakMinNow })}</>}
                 </div>
-                <button
-                  className={`clock-btn ${canClock ? 'btn-clock-out' : 'btn-clock-blocked'}`}
-                  onClick={canClock ? clockOut : undefined}
-                  disabled={working}
-                  style={{ cursor: canClock ? 'pointer' : 'not-allowed' }}
-                >
-                  {working ? '…' : canClock ? tr("ui.161d46983281") : `🔒 ${blockReason}`}
-                </button>
+
+                {runningBreak && (
+                  <div className="break-panel" role="status">
+                    <div className="break-panel-title">{tr("clock.onBreakSince", { time: formatTime(runningBreak.break_start) })}</div>
+                    <div className="break-panel-timer">{breakTimer}</div>
+                    {isBreakTooLong(runningBreak, tick) && (
+                      <div className="break-panel-warn">{tr("clock.breakTooLong", { minutes: BREAK_WARNING_MINUTES })}</div>
+                    )}
+                  </div>
+                )}
+
+                <div className="clock-actions">
+                  {breaksOn && (
+                    <button className="clock-btn btn-clock-break" onClick={runningBreak ? onEndBreak : onStartBreak} disabled={working}>
+                      {working ? '…' : runningBreak ? tr("clock.endBreak") : tr("clock.startBreak")}
+                    </button>
+                  )}
+                  <button
+                    className={`clock-btn ${canClock ? 'btn-clock-out' : 'btn-clock-blocked'}`}
+                    onClick={canClock ? clockOut : undefined}
+                    disabled={working}
+                    style={{ cursor: canClock ? 'pointer' : 'not-allowed' }}
+                  >
+                    {working ? '…' : canClock ? tr("ui.161d46983281") : `🔒 ${blockReason}`}
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        {openEntry && elapsedMin > 0 && (
+        {openEntry && elapsedMin > 0 && !runningBreak && (
         <div style={{ textAlign:'center', padding:'10px', marginBottom:8, background:'var(--accent-light)', borderRadius:10, fontSize:13, color:'var(--accent)', fontWeight:600 }}>{tr("ui.5ebc04ce3734")}{elapsedMin >= 60 ? tr("ui.bab653ba27e2", { p1: (Math.floor(elapsedMin/60)), p2: (elapsedMin%60) }) : tr("count.minutes", { count: elapsedMin })}
         </div>
       )}
@@ -283,15 +348,18 @@ export default function ClockIn({ session }) {
                 <table>
                   <thead><tr><th>{tr("ui.7527c410788b")}</th><th>{tr("ui.2d604d899b88")}</th><th>{tr("ui.858e4ba7a29f")}</th><th>{tr("ui.30cb3e5a9be1")}</th><th>{tr("ui.30fb259129e5")}</th></tr></thead>
                   <tbody>
-                    {entries.map(e => (
+                    {entries.map(e => {
+                      const brkMin = e.id === openEntry?.id ? breakMinNow : e.break_minutes   // offene Schicht: live
+                      return (
                       <tr key={e.id}>
                         <td>{e.date !== today && <span style={{ fontSize:11.5, color:'var(--text-muted)' }}>{new Date(e.date + 'T00:00:00').toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit'})} · </span>}{formatTime(e.clock_in)}</td>
                         <td>{e.clock_out ? formatTime(e.clock_out) : <span className="badge badge-green">{tr("ui.8163454f378f")}</span>}</td>
-                        <td>{e.break_minutes ? `${e.break_minutes} min` : '–'}</td>
+                        <td>{brkMin ? `${brkMin} min` : '–'}</td>
                         <td>{e.hours_worked ? <strong>{e.hours_worked.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong> : '–'}</td>
                         <td>{e.clock_in_method ? (METHOD_LABEL[e.clock_in_method] || '–') : (e.gps_ok_in ? '📍 GPS' : '–')}</td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

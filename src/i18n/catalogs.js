@@ -1934,7 +1934,17 @@ export const de = {
   "push.error.4": "Benachrichtigungen konnten nicht eingerichtet werden.",
   "push.error.5": "Anmeldung für Benachrichtigungen fehlgeschlagen.",
   "app.title": "Café Buur — Personalverwaltung",
-  "time.corrected": "korrigiert"
+  "time.corrected": "korrigiert",
+  "clock.startBreak": "☕ Pause starten",
+  "clock.endBreak": "▶ Pause beenden",
+  "clock.onBreakSince": "☕ Pause läuft seit {time}",
+  "clock.breakStarted": "☕ Pause gestartet um {time}",
+  "clock.breakEnded": "✅ Pause beendet – {minutes} Min.",
+  "clock.breaksTotal": "Pausen: {minutes} Min.",
+  "clock.breakTooLong": "Deine Pause läuft seit über {minutes} Minuten. Bitte beende sie, falls du wieder arbeitest.",
+  "clock.confirmClockOutOnBreak": "Deine Pause läuft noch. Beim Ausclocken wird sie jetzt beendet. Fortfahren?",
+  "clock.breakAlreadyRunning": "Deine Pause läuft bereits.",
+  "clock.noBreakRunning": "Es läuft gerade keine Pause."
 }
 
 export const en = {
@@ -3872,5 +3882,15 @@ export const en = {
   "push.error.4": "Could not set up notifications.",
   "push.error.5": "Notification registration failed.",
   "app.title": "Café Buur — Staff management",
-  "time.corrected": "corrected"
+  "time.corrected": "corrected",
+  "clock.startBreak": "☕ Start break",
+  "clock.endBreak": "▶ End break",
+  "clock.onBreakSince": "☕ On break since {time}",
+  "clock.breakStarted": "☕ Break started at {time}",
+  "clock.breakEnded": "✅ Break ended – {minutes} min",
+  "clock.breaksTotal": "Breaks: {minutes} min",
+  "clock.breakTooLong": "Your break has been running for over {minutes} minutes. Please end it if you are back at work.",
+  "clock.confirmClockOutOnBreak": "Your break is still running. Clocking out will end it now. Continue?",
+  "clock.breakAlreadyRunning": "Your break is already running.",
+  "clock.noBreakRunning": "No break is running right now."
 }
