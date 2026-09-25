@@ -400,7 +400,7 @@ export default function App() {
                   <Route path="/konto"         element={<Account />} />
                   <Route path="/abwesenheit" element={isManager ? <AbsenceCalendar /> : <AccessDenied />} />
                   <Route path="/mitarbeiter"     element={isManager ? <Employees />      : <AccessDenied />} />
-                  <Route path="/lohn"            element={isManager ? <Payroll />        : <AccessDenied />} />
+                  <Route path="/lohn"            element={isAdmin   ? <Payroll />        : <AccessDenied />} />
                   <Route path="/zeitkorrekturen" element={isAdmin   ? <TimeManagement /> : <AccessDenied />} />
                   <Route path="/benutzer"        element={isAdmin   ? <UserManagement /> : <AccessDenied />} />
                   <Route path="/protokoll"       element={isAdmin   ? <ActivityLog />    : <AccessDenied />} />

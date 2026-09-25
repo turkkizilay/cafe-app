@@ -14,6 +14,7 @@ import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
 import { monthlyTargetFromInput, parseWeeklyHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
 import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_HOURLY, PAY_FIXED } from '../lib/compensation'
+import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
 
 const PAY_ERROR_KEY = { fixedNotAllowed: "payModel.fixedNotAllowed", salaryMissing: "payModel.salaryMissing" }
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
@@ -200,7 +201,9 @@ export default function Employees() {
       console.error('Employees fetch error:', error)
       setFetchError(translateSupabaseError(error, appMessage("ui.25a52375f2de")))
     }
-    setEmployees(data || [])
+    // Manager: fremde Mitarbeiter nur operativ (Migration 19) – keine Vergütungs-/Bank-/Steuerdaten
+    const staff = isAdmin ? null : await fetchStaffOperational()
+    setEmployees(mergeStaffRows(data, staff, e => showInactive || e.is_active))
     setLoading(false)
     if (isAdmin) fetchAccess()
     // Direktsprung aus der Benutzerverwaltung: /mitarbeiter?edit=<id>
@@ -444,7 +447,7 @@ export default function Employees() {
               ) : (
                 <table>
                   <thead>
-                    <tr><th>{tr("ui.dcd1d5223f73")}</th><th>{tr("ui.6d031af10da7")}</th><th>{tr("ui.75df3579c730")}</th><th>{tr("ui.4b2cec6773ea")}</th><th>{tr("ui.68c8ec0f16c7")}</th><th>{tr("ui.35d3a889824d")}</th><th>{tr("ui.b3acb8cb53f2")}</th>{isAdmin && <th>{tr("ui.eb1cc4e89bc4")}</th>}<th>{tr("ui.5656f92db78d")}</th></tr>
+                    <tr><th>{tr("ui.dcd1d5223f73")}</th><th>{tr("ui.6d031af10da7")}</th><th>{tr("ui.75df3579c730")}</th><th>{tr("ui.4b2cec6773ea")}</th>{isAdmin && <th>{tr("ui.68c8ec0f16c7")}</th>}<th>{tr("ui.35d3a889824d")}</th><th>{tr("ui.b3acb8cb53f2")}</th>{isAdmin && <th>{tr("ui.eb1cc4e89bc4")}</th>}<th>{tr("ui.5656f92db78d")}</th></tr>
                   </thead>
                   <tbody>
                     {filtered.map(emp => (
@@ -465,9 +468,9 @@ export default function Employees() {
                           </span>
                         </td>
                         <td>{emp.hours_per_week}{tr("ui.aaa9402664f1")}</td>
-                        <td>
+                        {isAdmin && (<td>
                           {payTypeOf(emp) === PAY_FIXED ? tr("payModel.perMonth", { amount: formatCurrency(emp.monthly_salary) }) : <>{formatCurrency(emp.hourly_rate)}{tr("ui.141582aa3785")}</>}{emp.hourly_rate < MINDESTLOHN && <span className="badge badge-red" style={{ marginLeft: 6, fontSize: 10 }}>{tr("ui.73d8e2d2f8fd")}</span>}
-                        </td>
+                        </td>)}
                         <td>{emp.vacation_days_per_year}{tr("ui.d00de448b9e2")}</td>
                         <td className="text-muted">{formatDate(emp.start_date)}</td>
                         {isAdmin && (
@@ -648,6 +651,7 @@ export default function Employees() {
                     </div>
                   )}
                 </div>
+                {isAdmin && (
                 <div className="form-group">
                   <label>{tr("ui.04d8b7c7a102")}</label>
                   <input type="number" step="0.01" value={form.hourly_rate} onChange={e => f('hourly_rate', e.target.value)} placeholder="12.41" />
@@ -661,8 +665,9 @@ export default function Employees() {
                     <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3 }}>{tr("payModel.hourlyInternal")}</div>
                   )}
                 </div>
+                )}
               </div>
-              {payFeatureOn && (
+              {isAdmin && payFeatureOn && (
                 <div className="two-col">
                   <div className="form-group">
                     <label>{tr("payModel.label")}</label>
@@ -696,6 +701,7 @@ export default function Employees() {
                 </div>
                 <div className="form-group"><label>{tr("ui.5de567a16489")}</label><input type="date" value={form.start_date || ''} onChange={e => f('start_date', e.target.value)} /></div>
               </div>
+              {isAdmin && (<>
               <div style={{ fontWeight:700, fontSize:13, margin:'18px 0 10px', paddingTop:14, borderTop:'1px solid var(--border)' }}>{tr("ui.c89f3b303b04")}{form.onboarding_completed_at && <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:8 }}>{tr("ui.b3915789c10b")}</span>}
               </div>
               <div className="two-col">
@@ -742,10 +748,11 @@ export default function Employees() {
                 <div className="form-group"><label>{tr("ui.0d21914d5fd4")}</label><input value={form.emergency_contact_phone || ''} onChange={e => f('emergency_contact_phone', e.target.value)} /></div>
               </div>
               <div className="form-group"><label>{tr("ui.74c060e64273")}</label><textarea rows="2" value={form.notes || ''} onChange={e => f('notes', e.target.value)} /></div>
+              </>)}
               </fieldset>
 
-              {/* ── Dokumente (nur im Edit-Modus) ────────────────── */}
-              {modal === 'edit' && (
+              {/* ── Dokumente (nur im Edit-Modus, nur Admin) ────────── */}
+              {isAdmin && modal === 'edit' && (
                 <div style={{ marginTop:20, paddingTop:16, borderTop:'2px solid var(--border)' }}>
                   <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>{tr("ui.34fe9717933a")}</div>
 

@@ -5,6 +5,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { supabase, toLocalDateStr } from '../lib/supabase'
 import { useProfile } from '../context/ProfileContext'
 import { BrandBadge } from '../components/UI/Brand'
+import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
 
 /**
  * Arbeitszeitnachweis pro Mitarbeiter und Monat (§ 17 MiLoG, § 16 Abs. 2 ArbZG).
@@ -81,7 +82,10 @@ export default function Timesheet() {
         if (firstErr) throw firstErr.error
         if (cancelled) return
         setCafe(cafeRes.data || null)
-        setEmps(empRes.data || [])
+        // Manager: fremde Mitarbeiter nur operativ (Migration 19)
+        const staff = onlyMe ? null : await fetchStaffOperational()
+        if (cancelled) return
+        setEmps(mergeStaffRows(empRes.data, staff))
         setData({
           te: teRes.data || [],
           vac: vacRes.data || [],

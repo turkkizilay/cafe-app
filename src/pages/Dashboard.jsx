@@ -12,6 +12,7 @@ import AppSetupCard from '../components/AppSetupCard'
 import { useProfile } from '../context/ProfileContext'
 import { openBreak, netWorkedHours } from '../lib/workHours'
 import { fetchBreaksForEntries } from '../lib/breaks'
+import { fetchStaffOperational, mergeStaffRows, fillEmbeddedEmployees } from '../lib/staffDirectory'
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 function greeting() {
@@ -110,7 +111,9 @@ export default function Dashboard() {
       const shifts = shiftRes.data || []
       setNextShift(shifts[0] || null)
       setMyEmployee(empRes.data || null)
-      setLiveClockIns(liveRes.data || [])
+      // Manager: fremde Mitarbeiter nur operativ (Migration 19) – Namen aus get_staff_operational()
+      const staff = canManage ? await fetchStaffOperational() : null
+      setLiveClockIns(fillEmbeddedEmployees(liveRes.data || [], staff))
       // Pausen der offenen Schichten (ohne Migration 17 → leer, Anzeige wie bisher)
       const { byEntry: liveBreakMap } = await fetchBreaksForEntries((liveRes.data || []).map(e => e.id))
       setLiveBreaks(liveBreakMap || {})
@@ -126,8 +129,8 @@ export default function Dashboard() {
           supabase.from('shifts').select('*, employees!employee_id(first_name, last_name, avatar_color, avatar_url)').eq('date', todayISO).order('start_time'),
           supabase.from('employees').select('id, first_name, last_name, birth_date, avatar_color').eq('is_active', true).not('birth_date', 'is', null),
         ])
-        setStats({ employees: empCount.count||0, pendingVac: vacPending.count||0, pendingUsers: usersPending.count||0, pendingSwaps: swapsPending.count||0 })
-        setTodayShifts(todayShiftRes.data || [])
+        setStats({ employees: staff ? staff.filter(e => e.is_active).length : (empCount.count||0), pendingVac: vacPending.count||0, pendingUsers: usersPending.count||0, pendingSwaps: swapsPending.count||0 })
+        setTodayShifts(fillEmbeddedEmployees(todayShiftRes.data || [], staff))
         if (isAdmin) {
           const { count: fCount } = await supabase.from('time_entries').select('id', { count:'exact', head:true })
             .like('notes', '%AUSSTEMPELN VERGESSEN%')
@@ -148,7 +151,8 @@ export default function Dashboard() {
           } catch { /* Hinweise sind optional */ }
         }
 
-        // Live-Personalkosten berechnen
+        // Live-Personalkosten berechnen – nur Admin (Löhne sind für Manager nicht lesbar)
+        if (isAdmin) {
         const nowMs = Date.now()
         const { data: empRates }  = await supabase.from('employees').select('id, hourly_rate, hours_per_week').eq('is_active', true)
         const { data: todayTE }   = await supabase.from('time_entries').select('employee_id, clock_in, clock_out, hours_worked').gte('date', todayISO).lte('date', todayISO)
@@ -184,6 +188,7 @@ export default function Dashboard() {
         })
 
         setLaborCosts({ today: costToday, hoursToday, plannedToday, week: costWeek })
+        }
 
         // Offene Anträge laden (Admin/Manager)
         if (canManage) {
@@ -218,12 +223,12 @@ export default function Dashboard() {
               vr.end_date >= sl.start_date
             )
           })
-          setPendingReqs({ vac: pendingVac||[], sick: pendingSick||[], sickReviews })
+          setPendingReqs({ vac: fillEmbeddedEmployees(pendingVac, staff), sick: fillEmbeddedEmployees(pendingSick, staff), sickReviews: fillEmbeddedEmployees(sickReviews, staff) })
         }
 
         // Geburtstage nächste 30 Tage
         const todayDate = new Date(); todayDate.setHours(0,0,0,0)
-        const upcoming = (allEmps.data || []).filter(e => {
+        const upcoming = mergeStaffRows(allEmps.data, staff, e => e.is_active && !!e.birth_date).filter(e => {
           const bd   = new Date(e.birth_date)
           const thisY = new Date(todayDate.getFullYear(), bd.getMonth(), bd.getDate())
           const diff  = (thisY - todayDate) / 86400000
@@ -540,7 +545,7 @@ export default function Dashboard() {
           </div>
         )}
         {/* ── Live Personalkosten (Admin/Manager) ── */}
-        {canManage && laborCosts && (
+        {isAdmin && laborCosts && (
           <div className="card" style={{ marginBottom:16 }}>
             <div className="card-header">
               <div className="card-title">{tr("ui.9236588794e4")}</div>

@@ -3,6 +3,7 @@ import { useLocale } from '../context/LocaleContext.jsx'
 import { useSearchParams } from 'react-router-dom'
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase, toLocalDateStr } from '../lib/supabase'
+import { fetchStaffOperational, mergeStaffRows, fillEmbeddedEmployees } from '../lib/staffDirectory'
 import { formatDate } from '../i18n/format.js'
 import { openSignedFile } from '../lib/openFile'
 import { translateSupabaseError } from '../lib/errorHelper'
@@ -74,8 +75,10 @@ export default function Vacation() {
       if (sickRes.error) { toast.error(messageParts([appMessage("ui.ab26cc01cc01"), errorMessage(sickRes.error)])); }
       if (holRes.error)  { toast.error(messageParts([appMessage("ui.242ecdcec487"), errorMessage(holRes.error)]));  }
 
-      const allVacs    = vacRes.data  || []
-      const allSick    = sickRes.data || []
+      // Manager: fremde Mitarbeiter nur operativ (Migration 19) – Namen/Urlaubstage aus get_staff_operational()
+      const staff      = canManage ? await fetchStaffOperational() : null
+      const allVacs    = fillEmbeddedEmployees(vacRes.data || [], staff)
+      const allSick    = fillEmbeddedEmployees(sickRes.data || [], staff)
       const allHols    = holRes.data  || []
 
       setVacations(allVacs)
@@ -87,7 +90,7 @@ export default function Vacation() {
         const { data: emps } = await supabase
           .from('employees').select('id, first_name, last_name, vacation_days_per_year')
           .eq('is_active', true).order('last_name')
-        setEmployees(emps || [])
+        setEmployees(mergeStaffRows(emps, staff, e => e.is_active))
       }
       if (profile?.employee_id) {
         const { data: myEmp } = await supabase

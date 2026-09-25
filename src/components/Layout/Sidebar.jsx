@@ -21,10 +21,10 @@ const SECTIONS = [
 const MANAGER_ITEMS = [
   { get label() { return tr("ui.15e5ec97be8c") }, icon: '📆', path: '/abwesenheit' },
   { get label() { return tr("ui.f4cb6891b9e5") },          icon: '👤', path: '/mitarbeiter' },
-  { get label() { return tr("ui.d3075b3fc4af") },       icon: '💶', path: '/lohn'        },
   { get label() { return tr("ui.f7afcf9af81e") },     icon: '🖨️', path: '/stundennachweis' },
 ]
 const ADMIN_ITEMS = [
+  { get label() { return tr("ui.d3075b3fc4af") },       icon: '💶', path: '/lohn'        },
   { get label() { return tr("ui.1ba6ae4c4865") },  icon: '✏️', path: '/zeitkorrekturen' },
   { get label() { return tr("ui.3249b70702f2") }, icon: '🔑', path: '/benutzer' },
   { get label() { return tr("ui.9c8cc5cff19d") },        icon: '📋', path: '/protokoll' },

@@ -2,6 +2,7 @@ import { t as tr, getIntlLocale, message as appMessage, errorMessage, messagePar
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
 import { formatMonthYear } from '../i18n/format.js'
 import Avatar from '../components/UI/Avatar'
 import { useProfile } from '../context/ProfileContext'
@@ -38,7 +39,9 @@ export default function AbsenceCalendar() {
       if (e1) toast.error(appMessage("ui.d89c1f2d2438"))
       if (e2) toast.error(appMessage("ui.8588e208bbda"))
       if (e3) toast.error(appMessage("ui.993de38ad0e2"))
-      setEmployees(emps || [])
+      // Manager: fremde Mitarbeiter nur operativ (Migration 19)
+      const staff = (isAdmin || isManager) ? await fetchStaffOperational() : null
+      setEmployees(mergeStaffRows(emps, staff, e => e.is_active))
       setVacations(vacs || [])
       setSick(sicks || [])
     } catch(err) { toast.error(messageParts([appMessage("ui.60efe70adb51"), errorMessage(err)])) }
