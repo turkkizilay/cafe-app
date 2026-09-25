@@ -1,3 +1,4 @@
+import { t as tr, getIntlLocale, message as appMessage } from '../../../i18n/runtime.js'
 /**
  * POS Integration — Fehlerklassen
  */
@@ -30,23 +31,23 @@ export function isRetryableError(err) {
 /** Gibt benutzerfreundliche deutsche Meldung zurück */
 export function toPosUserMessage(err) {
   if (!(err instanceof PosIntegrationError)) {
-    return 'Ein unbekannter Fehler ist aufgetreten. Bitte erneut versuchen.'
+    return appMessage("ui.05c68a92c52a")
   }
   const messages = {
-    AUTHENTICATION_FAILED:    'Lightspeed-Authentifizierung fehlgeschlagen. Bitte neu verbinden.',
-    AUTHORIZATION_FAILED:     'Keine Berechtigung für diese Lightspeed-Ressource.',
-    TOKEN_REFRESH_FAILED:     'Session-Erneuerung fehlgeschlagen. Bitte neu anmelden.',
-    INVALID_SCOPE:            'Unzureichende API-Berechtigungen. Bitte Lightspeed-Zugriff prüfen.',
-    CONNECTION_NOT_FOUND:     'Keine aktive Lightspeed-Verbindung gefunden.',
-    LOCATION_NOT_MAPPED:      'Kein Lightspeed-Standort zugeordnet. Bitte in Einstellungen konfigurieren.',
-    VALIDATION_FAILED:        'Ungültige Daten von Lightspeed empfangen.',
-    RATE_LIMITED:             `API-Limit erreicht. Bitte warten und erneut versuchen.`,
-    PROVIDER_TIMEOUT:         'Lightspeed antwortet nicht. Bitte später erneut versuchen.',
-    PROVIDER_UNAVAILABLE:     'Lightspeed ist derzeit nicht erreichbar.',
-    MAPPING_CONFLICT:         'Zuordnungskonflikt erkannt. Bitte manuell prüfen.',
-    DATABASE_ERROR:           'Datenbankfehler beim Speichern der Synchronisation.',
-    SYNC_ALREADY_RUNNING:     'Eine Synchronisation läuft bereits. Bitte warten.',
-    UNKNOWN_PROVIDER_ERROR:   'Unbekannter Lightspeed-Fehler. Bitte Support kontaktieren.',
+    AUTHENTICATION_FAILED:    appMessage("ui.e6628f0c7e0a"),
+    AUTHORIZATION_FAILED:     appMessage("ui.e6100cb6c74e"),
+    TOKEN_REFRESH_FAILED:     appMessage("ui.4b426c6db322"),
+    INVALID_SCOPE:            appMessage("ui.27892fab4cc8"),
+    CONNECTION_NOT_FOUND:     appMessage("ui.2d1d6cd76471"),
+    LOCATION_NOT_MAPPED:      appMessage("ui.824d1ffff867"),
+    VALIDATION_FAILED:        appMessage("ui.bdbf13c08933"),
+    RATE_LIMITED:             appMessage("ui.affe6e4b3f73"),
+    PROVIDER_TIMEOUT:         appMessage("ui.fed1774817f3"),
+    PROVIDER_UNAVAILABLE:     appMessage("ui.1cf85c8b2da1"),
+    MAPPING_CONFLICT:         appMessage("ui.029eb98d4faf"),
+    DATABASE_ERROR:           appMessage("ui.35525c825ea2"),
+    SYNC_ALREADY_RUNNING:     appMessage("ui.55c9ae54d48b"),
+    UNKNOWN_PROVIDER_ERROR:   appMessage("ui.ed88a8926fcf"),
   }
   return messages[err.code] || err.message
 }

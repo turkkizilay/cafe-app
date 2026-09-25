@@ -1,5 +1,8 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts, formatParam } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect } from 'react'
-import { supabase, formatDate, getInitials } from '../lib/supabase'
+import { supabase, getInitials } from '../lib/supabase'
+import { formatDate } from '../i18n/format.js'
 import Avatar from '../components/UI/Avatar'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { useProfile } from '../context/ProfileContext'
@@ -7,8 +10,8 @@ import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useDarkMode } from '../context/DarkModeContext'
 
-const DAY_NAMES  = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-const DAY_FULL   = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
+const DAY_NAMES  = () => [tr("ui.d23e867e38e8"), tr("ui.16ab72874809"), tr("ui.d8f33a13ae6e"), tr("ui.30094e0bec00"), tr("ui.eed8f901692d"), tr("ui.a951efc79deb"), tr("ui.fb1df1a24e3f")]
+const DAY_FULL   = () => [tr("ui.b703fc6aeb9c"),tr("ui.c2e102ca1f11"),tr("ui.76c93ad154a5"),tr("ui.b15c4daa80ba"),tr("ui.5815ddf1ffb1"),tr("ui.7c22aad82322"),tr("ui.a5984592501e")]
 const PILL_COLORS = [
   { bg:'#DBEAFE', text:'#1D4ED8' }, { bg:'#CCFBF1', text:'#0F766E' },
   { bg:'#FFE4E6', text:'#BE123C' }, { bg:'#EDE9FE', text:'#7C3AED' },
@@ -23,12 +26,12 @@ const DARK_COLORS = [
 ]
 
 const SWAP_STATUS_LABEL = {
-  open:      '⏳ Offen',
-  accepted:  '✅ Angenommen — wartet auf Freigabe',
-  declined:  '❌ Abgelehnt',
-  approved:  '✅ Genehmigt',
-  rejected:  '❌ Von Chef abgelehnt',
-  cancelled: '↩️ Zurückgezogen',
+  get open() { return tr("ui.6504dd313c3d") },
+  get accepted() { return tr("ui.125409acf442") },
+  get declined() { return tr("ui.bf6cb0fac7fc") },
+  get approved() { return tr("ui.74fd19e8e766") },
+  get rejected() { return tr("ui.2f15414de2e5") },
+  get cancelled() { return tr("ui.d5381e62dc57") },
 }
 
 function getWeekDays(offset = 0) {
@@ -52,6 +55,7 @@ function isToday(d) {
 }
 
 export default function Shifts() {
+  useLocale()
   const { isAdmin, isManager, profile } = useProfile()
   const toast   = useToast()
   const addGuard    = useSavingGuard()
@@ -128,12 +132,12 @@ export default function Shifts() {
 
   async function doAddShift() {
     if (!form.employee_id || !form.date || !form.start_time || !form.end_time) {
-      toast.warn('Bitte alle Pflichtfelder ausfüllen.'); return
+      toast.warn(appMessage("ui.41fb834a7568")); return
     }
     // Nachtschicht-Erkennung: Start >= 20:00 und Ende <= 10:00 = gültige Nachtschicht
     const isNightShift = form.start_time >= '20:00' && form.end_time <= '10:00'
     if (!isNightShift && form.end_time <= form.start_time) {
-      toast.warn('Endzeit muss nach der Startzeit liegen (außer bei Nachtschichten 20:00–10:00).'); return
+      toast.warn(appMessage("ui.a0706f001cea")); return
     }
     setSaving(true)
     const hrs = Math.max(0, (() => {
@@ -143,8 +147,8 @@ export default function Shifts() {
               return (e2 - s2) / 3600000
             })())
     const { error } = await supabase.from('shifts').insert([{ ...form, planned_hours: hrs }])
-    if (error) { toast.error(translateSupabaseError(error, 'Schicht speichern')); return }
-    toast.success('Schicht gespeichert ✅')
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.e83d6389c102"))); return }
+    toast.success(appMessage("ui.c435cfa6d137"))
     setModal(false); fetchData()
   }
 
@@ -167,17 +171,17 @@ export default function Shifts() {
   }
 
   async function doUpdateShift() {
-    if (!form.start_time || !form.end_time) { toast.warn('Zeiten eingeben'); return }
+    if (!form.start_time || !form.end_time) { toast.warn(appMessage("ui.85dfef533f44")); return }
     const isNight = form.start_time >= '20:00' && form.end_time <= '10:00'
-    if (!isNight && form.end_time <= form.start_time) { toast.warn('Endzeit nach Startzeit'); return }
+    if (!isNight && form.end_time <= form.start_time) { toast.warn(appMessage("ui.8dd00b5a5052")); return }
     setSaving(true)
     const s2 = new Date(`2000-01-01T${form.start_time}`).getTime()
     let e2   = new Date(`2000-01-01T${form.end_time}`).getTime()
     if (e2 <= s2) e2 += 86400000
     const hrs = Math.max(0, (e2 - s2) / 3600000)
     const { error } = await supabase.from('shifts').update({ ...form, planned_hours: hrs }).eq('id', editModal.id)
-    if (error) { toast.error(translateSupabaseError(error, 'Schicht speichern')); return }
-    toast.success('Schicht aktualisiert ✅')
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.e83d6389c102"))); return }
+    toast.success(appMessage("ui.fde9ec277b18"))
     setEditModal(null); fetchData()
   }
 
@@ -185,7 +189,7 @@ export default function Shifts() {
     if (saving) return
     setSaving(true)
     await supabase.from('shifts').delete().eq('id', id)
-    toast.success('Schicht gelöscht')
+    toast.success(appMessage("ui.aefcd8cefdd7"))
     setEditModal(null); setDelConfirm(false); fetchData()
   }
 
@@ -196,7 +200,7 @@ export default function Shifts() {
   }
 
   async function submitSwap() {
-    if (!swapForm.target_id) { toast.warn('Bitte Kolleg*in auswählen.'); return }
+    if (!swapForm.target_id) { toast.warn(appMessage("ui.e8f28b520944")); return }
     setSwapSaving(true)
     const { error } = await supabase.from('shift_swap_requests').insert([{
       requester_id:       myEmpId,
@@ -206,8 +210,8 @@ export default function Shifts() {
       message:             swapForm.message?.trim() || null,
     }])
     setSwapSaving(false)
-    if (error) { toast.error(translateSupabaseError(error, 'Tauschanfrage')); return }
-    toast.success('Tauschanfrage gesendet ✅')
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.c1f53b6028c3"))); return }
+    toast.success(appMessage("ui.dd13e21cb687"))
     setSwapModal(null)
     fetchSwaps()
   }
@@ -215,16 +219,16 @@ export default function Shifts() {
   async function respondSwap(id, accept) {
     const { error } = await supabase.from('shift_swap_requests')
       .update({ status: accept ? 'accepted' : 'declined' }).eq('id', id)
-    if (error) { toast.error(translateSupabaseError(error, 'Antwort')); return }
-    toast.success(accept ? 'Angenommen — wartet auf Freigabe durch den Chef ✅' : 'Abgelehnt')
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.14f8a52d95b2"))); return }
+    toast.success(accept ? (appMessage("ui.996526422813")) : (appMessage("ui.a9148e8654e8")))
     fetchSwaps()
   }
 
   async function cancelSwap(id) {
     const { error } = await supabase.from('shift_swap_requests')
       .update({ status:'cancelled' }).eq('id', id)
-    if (error) { toast.error(translateSupabaseError(error, 'Zurückziehen')); return }
-    toast.success('Tauschanfrage zurückgezogen')
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.53b0832683e3"))); return }
+    toast.success(appMessage("ui.397fbdd910af"))
     fetchSwaps()
   }
 
@@ -247,18 +251,18 @@ export default function Shifts() {
         status: 'approved', approved_by: profile.id, approved_at: new Date().toISOString(),
       }).eq('id', swap.id)
       if (r3.error) throw r3.error
-      toast.success('Tausch genehmigt & Schichtplan aktualisiert ✅')
+      toast.success(appMessage("ui.12bd389abab3"))
       fetchSwaps(); fetchData()
     } catch (err) {
-      toast.error('Fehler bei der Genehmigung: ' + (err.message || err))
+      toast.error(messageParts([appMessage("ui.39f69e181f3d"), (errorMessage(err) || err)]))
     }
     setSwapSaving(false)
   }
 
   async function rejectSwap(id) {
     const { error } = await supabase.from('shift_swap_requests').update({ status:'rejected' }).eq('id', id)
-    if (error) { toast.error(translateSupabaseError(error, 'Ablehnen')); return }
-    toast.success('Tauschanfrage abgelehnt')
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.7be75ced7162"))); return }
+    toast.success(appMessage("ui.bc2291382f28"))
     fetchSwaps()
   }
 
@@ -271,7 +275,7 @@ export default function Shifts() {
     let e   = new Date(`2000-01-01T${endTime}`).getTime()
     if (e <= s) e += 86400000 // Nachtschicht
     const hrs = (e - s) / 3600000
-    if (hrs > 10) warnings.push(`⚠️ §3 ArbZG: ${hrs.toLocaleString('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1})} h überschreitet die gesetzliche Tageshöchstarbeitszeit von 10 Stunden`)
+    if (hrs > 10) warnings.push(appMessage("ui.0b4f40ff790e", { p1: (formatParam("number", hrs, {minimumFractionDigits:1, maximumFractionDigits:1})) }))
 
     // §5 ArbZG: Min 11h Ruhezeit
     const [year, month, day] = date.split('-').map(Number)
@@ -286,19 +290,19 @@ export default function Shifts() {
       const thisStart = new Date(`${date}T${startTime}:00`)
       const rest = (thisStart - prevEnd) / 3600000
       if (rest < 11 && rest > 0)
-        warnings.push(`⚠️ §5 ArbZG: Nur ${rest.toLocaleString('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1})} h Ruhezeit seit letzter Schicht — gesetzlich erforderlich: 11h`)
+        warnings.push(appMessage("ui.384cf75871d5", { p1: (formatParam("number", rest, {minimumFractionDigits:1, maximumFractionDigits:1})) }))
     }
     for (const next of nextShifts) {
       const thisEnd   = new Date(`${date}T${endTime}:00`)
       const nextStart = new Date(`${nextDate}T${next.start_time || '00:00'}:00`)
       const rest = (nextStart - thisEnd) / 3600000
       if (rest < 11 && rest > 0)
-        warnings.push(`⚠️ §5 ArbZG: Nur ${rest.toLocaleString('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1})} h Ruhezeit bis zur nächsten Schicht — gesetzlich erforderlich: 11h`)
+        warnings.push(appMessage("ui.48591bbeef02", { p1: (formatParam("number", rest, {minimumFractionDigits:1, maximumFractionDigits:1})) }))
     }
 
     // §9 ArbZG: Sonntagsarbeit markieren
     const dow = new Date(date).getDay()
-    if (dow === 0) warnings.push(`ℹ️ §9 ArbZG: Sonntagsarbeit — besonderer gesetzlicher Schutz`)
+    if (dow === 0) warnings.push(appMessage("ui.62e41e53369d"))
 
     return warnings
   }
@@ -323,18 +327,17 @@ export default function Shifts() {
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">
-          Schichtplan — KW {getKW(days[0])} · {formatDate(start)} – {formatDate(end)}
+        <div className="topbar-title">{tr("ui.7b76512e1f14")}{getKW(days[0])} · {formatDate(start)} – {formatDate(end)}
         </div>
         <div className="topbar-right">
-          <button className="btn btn-sm" onClick={() => setOffset(o => o-1)}>← Zurück</button>
-          <button className="btn btn-sm" onClick={() => setOffset(0)} style={{ fontWeight: offset===0 ? 600 : 400 }}>Heute</button>
-          <button className="btn btn-sm" onClick={() => setOffset(o => o+1)}>Vor →</button>
+          <button className="btn btn-sm" onClick={() => setOffset(o => o-1)}>{tr("ui.10eefef364ea")}</button>
+          <button className="btn btn-sm" onClick={() => setOffset(0)} style={{ fontWeight: offset===0 ? 600 : 400 }}>{tr("ui.46ea2fff7a5b")}</button>
+          <button className="btn btn-sm" onClick={() => setOffset(o => o+1)}>{tr("ui.e582eb775b7e")}</button>
           {canEdit && (
             <button className="btn btn-primary btn-sm" onClick={() => {
               setForm({ employee_id: employees[0]?.id||'', date: today, start_time:'08:00', end_time:'16:00', position:'', notes:'' })
               setModal(true)
-            }}>+ Schicht</button>
+            }}>{tr("ui.e49f352db8bf")}</button>
           )}
         </div>
       </div>
@@ -344,23 +347,22 @@ export default function Shifts() {
         {canEdit && (
           <div className="stats-grid mb-5" style={{ gridTemplateColumns:'repeat(4, 1fr)' }}>
             <div className="stat-card">
-              <div className="stat-label">Mitarbeiter</div>
+              <div className="stat-label">{tr("ui.f4cb6891b9e5")}</div>
               <div className="stat-value">{employees.length}</div>
-              <div className="stat-sub">aktiv</div>
+              <div className="stat-sub">{tr("ui.3139fcc40f9c")}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Schichten diese Woche</div>
+              <div className="stat-label">{tr("ui.ab6937a28839")}</div>
               <div className="stat-value">{shifts.length}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Gesamt Stunden</div>
-              <div className="stat-value">{totalWeekHours.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h</div>
+              <div className="stat-label">{tr("ui.3e19e2c14737")}</div>
+              <div className="stat-value">{totalWeekHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})}{tr("ui.2155eeffb339")}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Ø pro Mitarbeiter</div>
+              <div className="stat-label">{tr("ui.c1ebe345e372")}</div>
               <div className="stat-value">
-                {employees.length ? (totalWeekHours / employees.length).toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1}) : '0'} h
-              </div>
+                {employees.length ? (totalWeekHours / employees.length).toLocaleString(getIntlLocale(),{minimumFractionDigits:1,maximumFractionDigits:1}) : '0'}{tr("ui.2155eeffb339")}</div>
             </div>
           </div>
         )}
@@ -377,10 +379,9 @@ export default function Shifts() {
             <div className="alert alert-info mb-5" style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
               <span style={{ fontSize:20 }}>📅</span>
               <div>
-                <div style={{ fontWeight:600 }}>Deine nächste Schicht</div>
+                <div style={{ fontWeight:600 }}>{tr("ui.19d15d980499")}</div>
                 <div style={{ fontSize:13, marginTop:2 }}>
-                  {d.toLocaleDateString('de-DE', { weekday:'long', day:'numeric', month:'long' })} · {next.start_time?.slice(0,5)} – {next.end_time?.slice(0,5)} Uhr
-                  {next.position && <span style={{ marginLeft:8, opacity:0.7 }}>({next.position})</span>}
+                  {d.toLocaleDateString(getIntlLocale(), { weekday:'long', day:'numeric', month:'long' })} · {next.start_time?.slice(0,5)} – {next.end_time?.slice(0,5)}{tr("ui.4e2866d1f2b9")}{next.position && <span style={{ marginLeft:8, opacity:0.7 }}>({next.position})</span>}
                 </div>
               </div>
             </div>
@@ -390,13 +391,11 @@ export default function Shifts() {
         {/* Shift Grid */}
         <div className="card">
           <div style={{ overflowX:'auto' }}>
-            {loading ? <div style={{ padding:24 }}>Lädt…</div> : (
+            {loading ? <div style={{ padding:24 }}>{tr("ui.ebbb1d1f265f")}</div> : (
               <table style={{ minWidth: 720, borderCollapse:'collapse', width:'100%' }}>
                 <thead>
                   <tr style={{ background:'var(--bg)' }}>
-                    <th style={{ padding:'10px 16px', textAlign:'left', fontSize:11, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase', color:'var(--text-secondary)', width:160, borderBottom:'1px solid var(--border)' }}>
-                      Mitarbeiter
-                    </th>
+                    <th style={{ padding:'10px 16px', textAlign:'left', fontSize:11, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase', color:'var(--text-secondary)', width:160, borderBottom:'1px solid var(--border)' }}>{tr("ui.f4cb6891b9e5")}</th>
                     {days.map((d, i) => {
                       const isWe = d.getDay()===0 || d.getDay()===6
                       const isTd = isToday(d)
@@ -409,19 +408,17 @@ export default function Shifts() {
                           minWidth:92, borderBottom:`1px solid var(--border)`,
                           borderLeft: isTd ? '2px solid var(--accent)' : undefined,
                         }}>
-                          <div style={{ fontWeight: isTd ? 700 : 600 }}>{DAY_NAMES[i]}</div>
+                          <div style={{ fontWeight: isTd ? 700 : 600 }}>{DAY_NAMES()[i]}</div>
                           <div style={{ fontWeight:400, fontSize:12 }}>{d.getDate()}.{d.getMonth()+1}.</div>
                         </th>
                       )
                     })}
-                    <th style={{ padding:'8px 12px', textAlign:'center', fontSize:11, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase', color:'var(--text-secondary)', width:60, borderBottom:'1px solid var(--border)' }}>
-                      Summe
-                    </th>
+                    <th style={{ padding:'8px 12px', textAlign:'center', fontSize:11, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase', color:'var(--text-secondary)', width:60, borderBottom:'1px solid var(--border)' }}>{tr("ui.b2616c8db04a")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {employees.length === 0 ? (
-                    <tr><td colSpan="9"><div className="empty-state"><div className="empty-state-text">Noch keine Mitarbeiter</div></div></td></tr>
+                    <tr><td colSpan="9"><div className="empty-state"><div className="empty-state-text">{tr("ui.f2afdbff046f")}</div></div></td></tr>
                   ) : employees.map(emp => {
                     const colorIdx = empColorMap[emp.id] ?? 0
                     const colors = darkMode ? DARK_COLORS[colorIdx] : PILL_COLORS[colorIdx]
@@ -436,7 +433,7 @@ export default function Shifts() {
                             <div>
                               <div style={{ fontSize:13, fontWeight: isMe ? 600 : 500 }}>
                                 {emp.first_name} {emp.last_name}
-                                {isMe && <span style={{ fontSize:10, marginLeft:6, color:'var(--accent)' }}>Ich</span>}
+                                {isMe && <span style={{ fontSize:10, marginLeft:6, color:'var(--accent)' }}>{tr("ui.ca089bd7b137")}</span>}
                               </div>
                               {emp.position && <div style={{ fontSize:11, color:'var(--text-muted)' }}>{emp.position}</div>}
                             </div>
@@ -455,7 +452,7 @@ export default function Shifts() {
                               {dayShifts.length === 0
                                 ? <span
                                     style={{ fontSize:11, color:'var(--text-muted)', display:'block', cursor: canEdit ? 'pointer' : 'default', padding:'8px 4px' }}
-                                    title={canEdit ? 'Klicken um Schicht anzulegen' : ''}
+                                    title={canEdit ? tr("ui.9da550e54dcf") : ''}
                                     onClick={canEdit ? () => {
                                       setForm({ employee_id: emp.id, date: ds, start_time:'08:00', end_time:'16:00', position:'', notes:'' })
                                       setModal(true)
@@ -468,7 +465,7 @@ export default function Shifts() {
                                       <div key={s.id}
                                         className={`shift-pill${mine?' mine':''}`}
                                         style={{ ...colors, margin:'2px 0', display:'block', cursor: clickable ? 'pointer' : 'default' }}
-                                        title={canEdit ? 'Klicken zum Bearbeiten' : mine && s.date >= today ? 'Klicken um Tausch anzufragen' : `${DAY_FULL[i]} · ${s.start_time?.slice(0,5)}–${s.end_time?.slice(0,5)}`}
+                                        title={canEdit ? tr("ui.6c8c224d4142") : mine && s.date >= today ? tr("ui.885d139e4caa") : `${DAY_FULL()[i]} · ${s.start_time?.slice(0,5)}–${s.end_time?.slice(0,5)}`}
                                         onClick={canEdit ? () => openEditModal(s) : (mine && s.date >= today ? () => openSwapModal(s) : undefined)}
                                       >
                                         {s.start_time?.slice(0,5)}–{s.end_time?.slice(0,5)}
@@ -490,9 +487,9 @@ export default function Shifts() {
                               : 'var(--warn)'
                             return (
                               <div>
-                                <div style={{ fontWeight:700, fontSize:13, color }}>{hrs > 0 ? `${hrs.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h` : '–'}</div>
+                                <div style={{ fontWeight:700, fontSize:13, color }}>{hrs > 0 ? `${hrs.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})} h` : '–'}</div>
                                 {target && hrs > 0 && (
-                                  <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:1 }}>/ {target.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h</div>
+                                  <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:1 }}>/ {target.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})}{tr("ui.2155eeffb339")}</div>
                                 )}
                               </div>
                             )
@@ -505,19 +502,18 @@ export default function Shifts() {
                 {canEdit && employees.length > 0 && (
                   <tfoot>
                     <tr style={{ background:'var(--bg)' }}>
-                      <td style={{ padding:'10px 16px', fontWeight:600, fontSize:12, color:'var(--text-secondary)' }}>Gesamt</td>
+                      <td style={{ padding:'10px 16px', fontWeight:600, fontSize:12, color:'var(--text-secondary)' }}>{tr("ui.a36bce47fdac")}</td>
                       {days.map((d, i) => {
                         const ds = toLocalDateStr(d)
                         const dayTotal = shifts.filter(s => s.date === ds).reduce((a, s) => a + (s.planned_hours || 0), 0)
                         return (
                           <td key={i} style={{ textAlign:'center', padding:'10px 4px', fontSize:12, fontWeight:600, color: dayTotal > 0 ? 'var(--accent-text)' : 'var(--text-muted)' }}>
-                            {dayTotal > 0 ? `${dayTotal.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h` : '–'}
+                            {dayTotal > 0 ? `${dayTotal.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})} h` : '–'}
                           </td>
                         )
                       })}
                       <td style={{ textAlign:'center', padding:'10px 8px', fontWeight:700, color:'var(--accent-text)' }}>
-                        {totalWeekHours.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h
-                      </td>
+                        {totalWeekHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})}{tr("ui.2155eeffb339")}</td>
                     </tr>
                   </tfoot>
                 )}
@@ -525,29 +521,24 @@ export default function Shifts() {
             )}
           </div>
           {canEdit && (
-            <div style={{ padding:'10px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>
-              💡 Schicht klicken = bearbeiten · Leere Zelle klicken = neue Schicht für diesen Mitarbeiter & Tag
-            </div>
+            <div style={{ padding:'10px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>{tr("ui.fc633115fede")}</div>
           )}
           {!canEdit && (
-            <div style={{ padding:'10px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>
-              💡 Eigene, zukünftige Schicht klicken = Tausch/Abgabe anfragen
-            </div>
+            <div style={{ padding:'10px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>{tr("ui.81aec27679c5")}</div>
           )}
         </div>
 
         {/* ── Tauschanfragen ── */}
         <div className="card" style={{ marginTop:16 }}>
           <div className="card-header">
-            <div className="card-title">🔄 Tauschanfragen</div>
+            <div className="card-title">{tr("ui.93653dbeacd5")}</div>
             {canEdit && swaps.filter(s => s.status==='accepted').length > 0 && (
               <span style={{ fontSize:12, fontWeight:600, color:'#DC2626' }}>
-                {swaps.filter(s => s.status==='accepted').length} warten auf Freigabe
-              </span>
+                {swaps.filter(s => s.status==='accepted').length}{tr("ui.ee80494e930e")}</span>
             )}
           </div>
           {swaps.length === 0 ? (
-            <div style={{ padding:'14px 16px', fontSize:13, color:'var(--text-muted)' }}>Keine Tauschanfragen</div>
+            <div style={{ padding:'14px 16px', fontSize:13, color:'var(--text-muted)' }}>{tr("ui.7b1b3278d010")}</div>
           ) : (
             <div style={{ padding:'4px 0' }}>
               {swaps.map(sw => {
@@ -556,12 +547,12 @@ export default function Shifts() {
                 return (
                   <div key={sw.id} style={{ padding:'10px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
                     <div style={{ fontSize:13, maxWidth:520 }}>
-                      <strong>{sw.requester?.first_name} {sw.requester?.last_name}</strong> möchte Schicht am{' '}
+                      <strong>{sw.requester?.first_name} {sw.requester?.last_name}</strong>{tr("ui.19e387413904")}{' '}
                       {sw.requester_shift ? formatDate(sw.requester_shift.date) : '–'}
-                      {' '}({sw.requester_shift?.start_time?.slice(0,5)}–{sw.requester_shift?.end_time?.slice(0,5)}) abgeben an{' '}
+                      {' '}({sw.requester_shift?.start_time?.slice(0,5)}–{sw.requester_shift?.end_time?.slice(0,5)}{tr("ui.f7c8dabbc7bd")}{' '}
                       <strong>{sw.target?.first_name} {sw.target?.last_name}</strong>
                       {sw.target_shift && (
-                        <> · Tausch gegen {formatDate(sw.target_shift.date)} ({sw.target_shift.start_time?.slice(0,5)}–{sw.target_shift.end_time?.slice(0,5)})</>
+                        <>{tr("ui.8625658c2618")}{formatDate(sw.target_shift.date)} ({sw.target_shift.start_time?.slice(0,5)}–{sw.target_shift.end_time?.slice(0,5)})</>
                       )}
                       {sw.message && <div style={{ color:'var(--text-secondary)', marginTop:2 }}>„{sw.message}"</div>}
                       <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{SWAP_STATUS_LABEL[sw.status] || sw.status}</div>
@@ -569,21 +560,21 @@ export default function Shifts() {
                     <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                       {isToMe && sw.status==='open' && (
                         <>
-                          <button className="btn btn-sm btn-primary" onClick={() => respondSwap(sw.id, true)}>Annehmen</button>
-                          <button className="btn btn-sm" onClick={() => respondSwap(sw.id, false)}>Ablehnen</button>
+                          <button className="btn btn-sm btn-primary" onClick={() => respondSwap(sw.id, true)}>{tr("ui.3d9ac3f1c8e7")}</button>
+                          <button className="btn btn-sm" onClick={() => respondSwap(sw.id, false)}>{tr("ui.7be75ced7162")}</button>
                         </>
                       )}
                       {isFromMe && sw.status==='open' && (
-                        <button className="btn btn-sm" onClick={() => cancelSwap(sw.id)}>Zurückziehen</button>
+                        <button className="btn btn-sm" onClick={() => cancelSwap(sw.id)}>{tr("ui.53b0832683e3")}</button>
                       )}
                       {canEdit && sw.status==='accepted' && (
                         <>
-                          <button className="btn btn-sm btn-primary" onClick={() => approveSwap(sw)} disabled={swapSaving}>✓ Genehmigen</button>
-                          <button className="btn btn-sm" onClick={() => rejectSwap(sw.id)}>Ablehnen</button>
+                          <button className="btn btn-sm btn-primary" onClick={() => approveSwap(sw)} disabled={swapSaving}>{tr("ui.0e3b1ae0aba0")}</button>
+                          <button className="btn btn-sm" onClick={() => rejectSwap(sw.id)}>{tr("ui.7be75ced7162")}</button>
                         </>
                       )}
                       {canEdit && sw.status==='open' && (
-                        <button className="btn btn-sm" onClick={() => rejectSwap(sw.id)}>Ablehnen</button>
+                        <button className="btn btn-sm" onClick={() => rejectSwap(sw.id)}>{tr("ui.7be75ced7162")}</button>
                       )}
                     </div>
                   </div>
@@ -599,7 +590,7 @@ export default function Shifts() {
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setEditModal(null)}>
           <div className="modal">
             <div className="modal-header">
-              <div className="modal-title">✏️ Schicht bearbeiten</div>
+              <div className="modal-title">{tr("ui.4dd7ed0c319c")}</div>
               <button className="btn btn-sm" onClick={() => setEditModal(null)}>✕</button>
             </div>
             <div className="modal-body">
@@ -607,8 +598,8 @@ export default function Shifts() {
                 📅 {formatDate(editModal.date)} · {employees.find(e => e.id === editModal.employee_id)?.first_name || ''} {employees.find(e => e.id === editModal.employee_id)?.last_name || ''}
               </div>
               <div className="two-col">
-                <div className="form-group"><label>Beginn</label><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} /></div>
-                <div className="form-group"><label>Ende</label><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.0d95fd6a769f")}</label><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.2ddcd606c872")}</label><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} /></div>
               </div>
               {form.start_time && form.end_time && (
                 <div className="alert alert-info" style={{ marginBottom:12 }}>
@@ -616,31 +607,28 @@ export default function Shifts() {
                     const s2 = new Date(`2000-01-01T${form.start_time}`).getTime()
                     let e2   = new Date(`2000-01-01T${form.end_time}`).getTime()
                     if (e2 <= s2) e2 += 86400000
-                    return Math.max(0,(e2-s2)/3600000).toFixed(1)
-                  })()}h geplant
-                </div>
+                    return Math.max(0,(e2-s2)/3600000).toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                  })()}{tr("ui.2caa0d94132e")}</div>
               )}
-              <div className="form-group"><label>Position (optional)</label><input value={form.position||''} onChange={e => f('position', e.target.value)} placeholder="Barista, Service…" /></div>
-              <div className="form-group"><label>Notiz (optional)</label><input value={form.notes||''} onChange={e => f('notes', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.e7cb519c770c")}</label><input value={form.position||''} onChange={e => f('position', e.target.value)} placeholder={tr("ui.d66f7f89fc3a")} /></div>
+              <div className="form-group"><label>{tr("ui.337da4d81ab6")}</label><input value={form.notes||''} onChange={e => f('notes', e.target.value)} /></div>
 
               {/* Delete section */}
               {!delConfirm ? (
-                <button onClick={() => setDelConfirm(true)} className="btn btn-sm" style={{ border:'1px solid var(--danger)', color:'var(--danger)', background:'none', marginTop:8 }}>
-                  🗑 Schicht löschen
-                </button>
+                <button onClick={() => setDelConfirm(true)} className="btn btn-sm" style={{ border:'1px solid var(--danger)', color:'var(--danger)', background:'none', marginTop:8 }}>{tr("ui.aec8a0ffe8d6")}</button>
               ) : (
                 <div style={{ background:'#FEF2F2', borderRadius:8, padding:'12px', marginTop:8 }}>
-                  <div style={{ fontSize:13, marginBottom:10, color:'var(--danger)' }}>Schicht wirklich löschen?</div>
+                  <div style={{ fontSize:13, marginBottom:10, color:'var(--danger)' }}>{tr("ui.08981f035923")}</div>
                   <div style={{ display:'flex', gap:8 }}>
-                    <button className="btn btn-danger" onClick={() => deleteShift(editModal.id)}>Ja, löschen</button>
-                    <button className="btn" onClick={() => setDelConfirm(false)}>Abbrechen</button>
+                    <button className="btn btn-danger" onClick={() => deleteShift(editModal.id)}>{tr("ui.00796fc4bdac")}</button>
+                    <button className="btn" onClick={() => setDelConfirm(false)}>{tr("ui.f7ff1178af20")}</button>
                   </div>
                 </div>
               )}
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setEditModal(null)}>Abbrechen</button>
-              <button className="btn btn-primary" onClick={updateShift} disabled={saving}>{saving ? '…' : '💾 Speichern'}</button>
+              <button className="btn" onClick={() => setEditModal(null)}>{tr("ui.f7ff1178af20")}</button>
+              <button className="btn btn-primary" onClick={updateShift} disabled={saving}>{saving ? '…' : tr("ui.22158eab4b10")}</button>
             </div>
           </div>
         </div>
@@ -649,18 +637,18 @@ export default function Shifts() {
       {modal && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(false)}>
           <div className="modal">
-            <div className="modal-header"><div className="modal-title">📅 Schicht anlegen</div><button className="btn btn-sm" onClick={() => setModal(false)}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.e8f73e8a2f58")}</div><button className="btn btn-sm" onClick={() => setModal(false)}>✕</button></div>
             <div className="modal-body">
               <div className="form-group">
-                <label>Mitarbeiter</label>
+                <label>{tr("ui.f4cb6891b9e5")}</label>
                 <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)}>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
                 </select>
               </div>
-              <div className="form-group"><label>Datum</label><input type="date" value={form.date} onChange={e => f('date', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.9135882d323c")}</label><input type="date" value={form.date} onChange={e => f('date', e.target.value)} /></div>
               <div className="two-col">
-                <div className="form-group"><label>Beginn</label><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} /></div>
-                <div className="form-group"><label>Ende</label><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.0d95fd6a769f")}</label><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.2ddcd606c872")}</label><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} /></div>
               </div>
               {form.start_time && form.end_time && (
                 <div className="alert alert-info">
@@ -668,25 +656,25 @@ export default function Shifts() {
                   const s = new Date(`2000-01-01T${form.start_time}`).getTime()
                   let e = new Date(`2000-01-01T${form.end_time}`).getTime()
                   if (e <= s) e += 86400000
-                  return Math.max(0,(e-s)/3600000).toFixed(1)
-                })()}h geplant{form.start_time >= '20:00' && form.end_time <= '10:00' ? ' (Nachtschicht)' : ''}
+                  return Math.max(0,(e-s)/3600000).toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                })()}{tr("ui.2caa0d94132e")}{form.start_time >= '20:00' && form.end_time <= '10:00' ? tr("ui.403c1e68366a") : ''}
                 </div>
               )}
-              <div className="form-group"><label>Position (optional)</label><input value={form.position||''} onChange={e => f('position', e.target.value)} placeholder="Barista, Service…" /></div>
-              <div className="form-group"><label>Notiz (optional)</label><input value={form.notes||''} onChange={e => f('notes', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.e7cb519c770c")}</label><input value={form.position||''} onChange={e => f('position', e.target.value)} placeholder={tr("ui.d66f7f89fc3a")} /></div>
+              <div className="form-group"><label>{tr("ui.337da4d81ab6")}</label><input value={form.notes||''} onChange={e => f('notes', e.target.value)} /></div>
             </div>
             {arbzgWarnings.length > 0 && (
               <div style={{ margin:'0 0 12px', display:'flex', flexDirection:'column', gap:6 }}>
                 {arbzgWarnings.map((w,i) => (
-                  <div key={i} style={{ background: w.startsWith('⚠️') ? '#FEF3C7' : '#EFF6FF', borderRadius:8, padding:'8px 12px', fontSize:12, color: w.startsWith('⚠️') ? '#92400E' : '#1D4ED8' }}>
-                    {w}
+                  <div key={i} style={{ background: localizeMessage(w).startsWith('⚠️') ? '#FEF3C7' : '#EFF6FF', borderRadius:8, padding:'8px 12px', fontSize:12, color: localizeMessage(w).startsWith('⚠️') ? '#92400E' : '#1D4ED8' }}>
+                    {localizeMessage(w)}
                   </div>
                 ))}
               </div>
             )}
             <div className="modal-footer">
-              <button className="btn" onClick={() => setModal(false)}>Abbrechen</button>
-              <button className="btn btn-primary" onClick={addShift} disabled={saving}>{saving?'…':'💾 Schicht speichern'}</button>
+              <button className="btn" onClick={() => setModal(false)}>{tr("ui.f7ff1178af20")}</button>
+              <button className="btn btn-primary" onClick={addShift} disabled={saving}>{saving?'…':tr("ui.419761c7357f")}</button>
             </div>
           </div>
         </div>
@@ -697,17 +685,16 @@ export default function Shifts() {
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setSwapModal(null)}>
           <div className="modal">
             <div className="modal-header">
-              <div className="modal-title">🔄 Schicht abgeben / tauschen</div>
+              <div className="modal-title">{tr("ui.aa1f314dc477")}</div>
               <button className="btn btn-sm" onClick={() => setSwapModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ background:'var(--bg)', borderRadius:8, padding:'10px 12px', marginBottom:14, fontSize:12, color:'var(--text-secondary)' }}>
-                📅 {formatDate(swapModal.date)} · {swapModal.start_time?.slice(0,5)}–{swapModal.end_time?.slice(0,5)} Uhr
-              </div>
+                📅 {formatDate(swapModal.date)} · {swapModal.start_time?.slice(0,5)}–{swapModal.end_time?.slice(0,5)}{tr("ui.4e2866d1f2b9")}</div>
               <div className="form-group">
-                <label>An wen? *</label>
+                <label>{tr("ui.abe331ba1188")}</label>
                 <select value={swapForm.target_id} onChange={e => setSwapForm({ ...swapForm, target_id:e.target.value, target_shift_id:'' })}>
-                  <option value="">– Kolleg*in wählen –</option>
+                  <option value="">{tr("ui.9e73357db213")}</option>
                   {employees.filter(e => e.id !== myEmpId).map(e => (
                     <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
                   ))}
@@ -715,24 +702,24 @@ export default function Shifts() {
               </div>
               {swapForm.target_id && (
                 <div className="form-group">
-                  <label>Gegen Schicht tauschen (optional)</label>
+                  <label>{tr("ui.412eeefb207a")}</label>
                   <select value={swapForm.target_shift_id} onChange={e => setSwapForm({ ...swapForm, target_shift_id:e.target.value })}>
-                    <option value="">– Nur abgeben, kein Tausch –</option>
+                    <option value="">{tr("ui.ce9f059293dd")}</option>
                     {shifts.filter(s => s.employee_id === swapForm.target_id).map(s => (
                       <option key={s.id} value={s.id}>{formatDate(s.date)} · {s.start_time?.slice(0,5)}–{s.end_time?.slice(0,5)}</option>
                     ))}
                   </select>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>Nur Schichten der aktuell angezeigten Woche wählbar.</div>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>{tr("ui.11c7a545809c")}</div>
                 </div>
               )}
               <div className="form-group">
-                <label>Nachricht (optional)</label>
-                <input value={swapForm.message} onChange={e => setSwapForm({ ...swapForm, message:e.target.value })} placeholder="z. B. Grund für den Tausch" />
+                <label>{tr("ui.8127877fe26c")}</label>
+                <input value={swapForm.message} onChange={e => setSwapForm({ ...swapForm, message:e.target.value })} placeholder={tr("ui.0ed0c0b8a002")} />
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setSwapModal(null)}>Abbrechen</button>
-              <button className="btn btn-primary" onClick={submitSwap} disabled={swapSaving}>{swapSaving ? '…' : '🔄 Anfrage senden'}</button>
+              <button className="btn" onClick={() => setSwapModal(null)}>{tr("ui.f7ff1178af20")}</button>
+              <button className="btn btn-primary" onClick={submitSwap} disabled={swapSaving}>{swapSaving ? '…' : tr("ui.2842afa972eb")}</button>
             </div>
           </div>
         </div>

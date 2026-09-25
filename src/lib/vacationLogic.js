@@ -1,3 +1,4 @@
+import { t as tr, getIntlLocale, message as appMessage } from '../i18n/runtime.js'
 /**
  * Urlaubslogik — Café Buur
  * ════════════════════════════════════════════════════════════
@@ -231,7 +232,7 @@ export function checkVacationDuringSick(startDate, endDate, sickLeaves, holidays
     overlaps: sickDays > 0,
     sickDays,
     message: sickDays > 0
-      ? `ℹ️ §9 BUrlG: ${sickDays} der beantragten Tage überschneiden sich mit einer Krankmeldung — diese Tage werden nicht als Urlaub gezählt.`
+      ? appMessage("ui.5ecdf83a115b", { p1: (sickDays) })
       : null,
   }
 }
@@ -269,7 +270,7 @@ export function checkSickDuringVacation(sickStart, sickEnd, approvedVacations, h
     returnedDays,
     affectedVacations: affected,
     message: returnedDays > 0
-      ? `✅ §9 BUrlG: ${returnedDays} Urlaubstag${returnedDays > 1 ? 'e werden' : ' wird'} zurückgegeben, da die Krankmeldung in den genehmigten Urlaub fällt.`
+      ? appMessage("vacation.returned", { count: (returnedDays) })
       : null,
   }
 }
@@ -280,7 +281,7 @@ export function calculateRequestedDays(startDate, endDate, holidays = []) {
 }
 
 export function canRequestVacation(requestedDays, balance) {
-  if (requestedDays <= 0)               return { ok: false, reason: 'Keine gültigen Arbeitstage im Zeitraum.' }
-  if (requestedDays > balance.remaining) return { ok: false, reason: `Nicht genug Resturlaub. Verfügbar: ${balance.remaining} Tage, beantragt: ${requestedDays} Tage.` }
+  if (requestedDays <= 0)               return { ok: false, reason: appMessage("vacation.unavailable") }
+  if (requestedDays > balance.remaining) return { ok: false, reason: appMessage("vacation.insufficient", { available: (balance.remaining), requested: (requestedDays) }) }
   return { ok: true, reason: null }
 }

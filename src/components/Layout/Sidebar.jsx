@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale } from '../../i18n/runtime.js'
+import { useLocale } from '../../context/LocaleContext.jsx'
 import { useState, useEffect } from 'react'
 import { BrandMark } from '../UI/Brand'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
@@ -6,27 +8,27 @@ import { useDarkMode } from '../../context/DarkModeContext'
 import { logActivity } from '../../lib/activityLog'
 
 const SECTIONS = [
-  { label: 'Mein Bereich', items: [
+  { get label() { return tr("ui.824543888534") }, items: [
     { label: 'Dashboard',             icon: '📊', path: '/',            end: true },
-    { label: 'Einclocken',            icon: '⏱️', path: '/einclocken'  },
-    { label: 'Schichtplan',           icon: '📅', path: '/schichten'   },
-    { label: 'Urlaub & Krank',        icon: '🌴', path: '/urlaub',     vacBadge: true },
-    { label: 'Meine Stunden',         icon: '⏰', path: '/stunden'     },
-    { label: 'Meine Lohnabrechnungen',icon: '📄', path: '/dokumente'   },
-    { label: 'Mein Konto',           icon: '👤', path: '/konto'       },
+    { get label() { return tr("ui.23f6c8674993") },            icon: '⏱️', path: '/einclocken'  },
+    { get label() { return tr("ui.77ecaf5660bb") },           icon: '📅', path: '/schichten'   },
+    { get label() { return tr("ui.37beb63c4e2b") },        icon: '🌴', path: '/urlaub',     vacBadge: true },
+    { get label() { return tr("ui.d969afbb67a9") },         icon: '⏰', path: '/stunden'     },
+    { get label() { return tr("ui.5893138b1479") },icon: '📄', path: '/dokumente'   },
+    { get label() { return tr("ui.5cf21c63b3d6") },           icon: '👤', path: '/konto'       },
   ]},
 ]
 const MANAGER_ITEMS = [
-  { label: 'Abwesenheitskalender', icon: '📆', path: '/abwesenheit' },
-  { label: 'Mitarbeiter',          icon: '👤', path: '/mitarbeiter' },
-  { label: 'Lohn & Stunden',       icon: '💶', path: '/lohn'        },
-  { label: 'Stundennachweise',     icon: '🖨️', path: '/stundennachweis' },
+  { get label() { return tr("ui.15e5ec97be8c") }, icon: '📆', path: '/abwesenheit' },
+  { get label() { return tr("ui.f4cb6891b9e5") },          icon: '👤', path: '/mitarbeiter' },
+  { get label() { return tr("ui.d3075b3fc4af") },       icon: '💶', path: '/lohn'        },
+  { get label() { return tr("ui.f7afcf9af81e") },     icon: '🖨️', path: '/stundennachweis' },
 ]
 const ADMIN_ITEMS = [
-  { label: 'Zeitkorrekturen',  icon: '✏️', path: '/zeitkorrekturen' },
-  { label: 'Benutzerverwaltung', icon: '🔑', path: '/benutzer' },
-  { label: 'Protokoll',        icon: '📋', path: '/protokoll' },
-  { label: 'Einstellungen',    icon: '⚙️', path: '/einstellungen'  },
+  { get label() { return tr("ui.1ba6ae4c4865") },  icon: '✏️', path: '/zeitkorrekturen' },
+  { get label() { return tr("ui.3249b70702f2") }, icon: '🔑', path: '/benutzer' },
+  { get label() { return tr("ui.9c8cc5cff19d") },        icon: '📋', path: '/protokoll' },
+  { get label() { return tr("ui.f5750a5d7231") },    icon: '⚙️', path: '/einstellungen'  },
 ]
 
 // Eingeklappt-Zustand (nur Desktop) pro Gerät merken — reine Komfort-Einstellung
@@ -44,7 +46,21 @@ function writeCollapsed(v) {
  * Mobile  (≤ 768px): Leiste ist ausgeblendet; oben erscheint eine schmale Kopfzeile
  *                    mit ☰ — ein Tipp öffnet die Navigation als Schublade von links.
  */
+function NavItem({ item, collapsed, isManager, vacTotal }) {
+  useLocale()
+    const badge = item.badge || (item.vacBadge && isManager && vacTotal > 0 ? vacTotal : null)
+    return (
+      <NavLink to={item.path} end={item.end} title={collapsed ? item.label : undefined}
+        className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+        <span className="nav-icon">{item.icon}</span>
+        <span className="nav-label">{item.label}</span>
+        {badge && <span className="nav-badge">{badge}</span>}
+      </NavLink>
+    )
+  }
+
 export default function Sidebar({ session, isAdmin, isManager, pendingCount, vacPendingCount, sickPendingCount }) {
+  useLocale()
   const navigate = useNavigate()
   const location = useLocation()
   const { dark, toggle } = useDarkMode()
@@ -74,17 +90,7 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
   const vacTotal = (vacPendingCount || 0) + (sickPendingCount || 0)
   const totalBadge = (isAdmin ? (pendingCount || 0) : 0) + (isManager ? vacTotal : 0)
 
-  const NavItem = ({ item }) => {
-    const badge = item.badge || (item.vacBadge && isManager && vacTotal > 0 ? vacTotal : null)
-    return (
-      <NavLink to={item.path} end={item.end} title={collapsed ? item.label : undefined}
-        className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-        <span className="nav-icon">{item.icon}</span>
-        <span className="nav-label">{item.label}</span>
-        {badge && <span className="nav-badge">{badge}</span>}
-      </NavLink>
-    )
-  }
+
 
   const adminWithBadge = ADMIN_ITEMS.map(item =>
     item.path === '/benutzer' ? { ...item, badge: pendingCount > 0 ? pendingCount : null } : item
@@ -94,7 +100,7 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
     <>
       {/* ── Mobile-Kopfzeile ── */}
       <header className="mobile-bar">
-        <button className="mobile-menu-btn" onClick={() => setOpen(true)} aria-label="Menü öffnen" aria-expanded={open}>
+        <button className="mobile-menu-btn" onClick={() => setOpen(true)} aria-label={tr("ui.ac3b2ef4fee1")} aria-expanded={open}>
           <span aria-hidden="true">☰</span>
           {totalBadge > 0 && <span className="mobile-menu-dot" aria-hidden="true" />}
         </button>
@@ -106,52 +112,52 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
       {/* ── Abdunkelung hinter der Schublade (nur Mobile) ── */}
       <div className={`sidebar-backdrop${open ? ' show' : ''}`} onClick={() => setOpen(false)} aria-hidden="true" />
 
-      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${open ? ' open' : ''}`} aria-label="Navigation">
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${open ? ' open' : ''}`} aria-label={tr("ui.3db65f8c2a7d")}>
         <div className="sidebar-logo">
           <BrandMark size={30} style={{ flexShrink:0 }} />
           <div className="sidebar-logo-text">
             <div className="sidebar-logo-name">Café Buur</div>
             <div className="sidebar-logo-sub">{session?.user?.email}</div>
           </div>
-          <button className="sidebar-close" onClick={() => setOpen(false)} aria-label="Menü schließen">✕</button>
+          <button className="sidebar-close" onClick={() => setOpen(false)} aria-label={tr("ui.48700e16fc0c")}>✕</button>
         </div>
 
         <nav className="sidebar-nav">
           {SECTIONS.map(sec => (
-            <div key={sec.label}>
+            <div key={sec.items[0].path}>
               <div className="sidebar-section-label">{sec.label}</div>
-              {sec.items.map(item => <NavItem key={item.path} item={item} />)}
+              {sec.items.map(item => <NavItem key={item.path} item={item} collapsed={collapsed} isManager={isManager} vacTotal={vacTotal} />)}
             </div>
           ))}
 
           {isManager && (<>
-            <div className="sidebar-section-label">Verwaltung</div>
-            {MANAGER_ITEMS.map(item => <NavItem key={item.path} item={item} />)}
+            <div className="sidebar-section-label">{tr("ui.2456bb8ed72f")}</div>
+            {MANAGER_ITEMS.map(item => <NavItem key={item.path} item={item} collapsed={collapsed} isManager={isManager} vacTotal={vacTotal} />)}
           </>)}
 
           {isAdmin && (<>
             <div className="sidebar-section-label">Administration</div>
-            {adminWithBadge.map(item => <NavItem key={item.path} item={item} />)}
+            {adminWithBadge.map(item => <NavItem key={item.path} item={item} collapsed={collapsed} isManager={isManager} vacTotal={vacTotal} />)}
           </>)}
         </nav>
 
         <div className="sidebar-footer">
-          <button className="dark-toggle" onClick={toggle} title="Design wechseln">
-            <span>{dark ? '☀️' : '🌙'}</span><span className="nav-label">{dark ? 'Hell' : 'Dunkel'}</span>
+          <button className="dark-toggle" onClick={toggle} title={tr("ui.967636c74cfd")}>
+            <span>{dark ? '☀️' : '🌙'}</span><span className="nav-label">{dark ? tr("ui.8d586f8b60df") : tr("ui.368b231be48a")}</span>
           </button>
 
           <div className="sidebar-role nav-label">
-            {isAdmin ? '👑 Administrator' : isManager ? '🔧 Manager' : '👤 Mitarbeiter'}
+            {isAdmin ? tr("ui.224667160047") : isManager ? tr("ui.0e60bc79039b") : tr("ui.d422e9b832d6")}
           </div>
           <button className="nav-item" style={{ width:'calc(100% - 12px)', border:'none', background:'none', cursor:'pointer' }}
-            onClick={logout} title={collapsed ? 'Abmelden' : undefined}>
-            <span className="nav-icon">🚪</span><span className="nav-label">Abmelden</span>
+            onClick={logout} title={collapsed ? tr("ui.545f8be33bf0") : undefined}>
+            <span className="nav-icon">🚪</span><span className="nav-label">{tr("ui.545f8be33bf0")}</span>
           </button>
 
           <button className="sidebar-collapse-btn" onClick={toggleCollapsed}
-            aria-label={collapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen'}
-            title={collapsed ? 'Ausklappen' : 'Einklappen'}>
-            {collapsed ? '»' : '« Einklappen'}
+            aria-label={collapsed ? tr("ui.fe503b8e2f0d") : tr("ui.c141cc21abae")}
+            title={collapsed ? tr("ui.b68cf2cea9a4") : tr("ui.5503d6ae1ee4")}>
+            {collapsed ? '»' : tr("ui.eeb3838c69e1")}
           </button>
         </div>
       </aside>

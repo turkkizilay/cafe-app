@@ -1,3 +1,4 @@
+import { t as tr, getLocale, message as appMessage } from '../i18n/runtime.js'
 /**
  * openSignedFile — öffnet eine private Datei (Attest, Lohnabrechnung, Vertrag)
  * in einem neuen Tab, ohne vom Pop-up-Blocker gestoppt zu werden.
@@ -37,16 +38,17 @@ export function clearOpenFallback() {
  * @param {() => Promise<string>} getSignedUrl  liefert die signierte URL (wirft bei Fehler)
  * @param {string} [label]                      Text für den Fallback-Link
  */
-export async function openSignedFile(getSignedUrl, label = 'Dokument öffnen') {
+export async function openSignedFile(getSignedUrl, label = appMessage('file.open')) {
   // 1. Tab synchron öffnen — noch innerhalb der Klick-Aktion
   let tab = null
   try { tab = window.open('', '_blank') } catch { tab = null }
   if (tab) {
     try {
       tab.opener = null
-      tab.document.title = 'Wird geladen…'
+      tab.document.documentElement.lang = getLocale()
+      tab.document.title = tr('file.loading')
       tab.document.body.style.cssText = 'font-family:-apple-system,system-ui,sans-serif;padding:32px;color:#6B7280'
-      tab.document.body.textContent = 'Dokument wird geladen…'
+      tab.document.body.textContent = tr('file.loadingDocument')
     } catch { /* manche Browser erlauben keinen Zugriff — egal */ }
   }
 

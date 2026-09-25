@@ -3,11 +3,16 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 import { registerServiceWorker } from './lib/push'
+import { LocaleProvider } from './context/LocaleContext.jsx'
+import LanguageSwitcher from './components/UI/LanguageSwitcher.jsx'
 
 // StrictMode entfernt — verursacht doppelte Toast-Aufrufe durch
 // React 18's double-invocation von State-Updater-Funktionen in Dev-Mode
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <App />
+  <LocaleProvider>
+    <div className="language-dock"><LanguageSwitcher /></div>
+    <App />
+  </LocaleProvider>
 )
 
 // „App installieren“ (Android/Chrome): Ereignis kommt nur einmal – früh merken

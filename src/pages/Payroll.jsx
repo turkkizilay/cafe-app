@@ -1,6 +1,9 @@
+import { t as tr, getIntlLocale, message as appMessage, errorMessage, messageParts, formatParam } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect } from 'react'
 import Avatar from '../components/UI/Avatar'
-import { supabase, formatCurrency } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
+import { formatCurrency } from '../i18n/format.js'
 import { logActivity } from '../lib/activityLog'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
@@ -68,7 +71,7 @@ function getPaidAbsenceDays(empVacations, empSickLeaves, workedDatesSet, rangeSt
   return { vacationDays, sickDays }
 }
 
-const EMP_TYPE_LABEL = { vollzeit:'Vollzeit', teilzeit:'Teilzeit', werkstudent:'Werkstudent', minijob:'Minijob' }
+const EMP_TYPE_LABEL = { get vollzeit() { return tr("ui.49dbe1b0b4b3") }, get teilzeit() { return tr("ui.df763b1cc689") }, get werkstudent() { return tr("ui.fa23b3bc413a") }, get minijob() { return tr("ui.b3fc8da9deb1") } }
 
 function calcOvertime(emp, actualHours, monthTarget) {
   switch (emp.employment_type) {
@@ -79,6 +82,7 @@ function calcOvertime(emp, actualHours, monthTarget) {
 }
 
 function OvertimeBadge({ emp, overtime, actualHours, limit, earnings }) {
+  useLocale()
   if (emp.employment_type === 'minijob') {
     // Minijob-Grenze zählt das TATSÄCHLICH ausgezahlte Brutto — inkl. bezahltem
     // Urlaub & Lohnfortzahlung bei Krankheit, nicht nur die gearbeiteten Stunden.
@@ -89,10 +93,10 @@ function OvertimeBadge({ emp, overtime, actualHours, limit, earnings }) {
       <div>
         <div style={{ marginBottom:4 }}>
           {earnings > MINIJOB_LIMIT
-            ? <span className="badge badge-red">🚨 {formatCurrency(earnings - MINIJOB_LIMIT)} über Limit</span>
+            ? <span className="badge badge-red">🚨 {formatCurrency(earnings - MINIJOB_LIMIT)}{tr("ui.5a195fba17e0")}</span>
             : earnings > MINIJOB_LIMIT * 0.85
-            ? <span className="badge badge-amber">⚠️ noch {formatCurrency(remaining)}</span>
-            : <span className="badge badge-green">✓ noch {formatCurrency(remaining)}</span>
+            ? <span className="badge badge-amber">{tr("ui.493476141032")}{formatCurrency(remaining)}</span>
+            : <span className="badge badge-green">{tr("ui.239432c12bae")}{formatCurrency(remaining)}</span>
           }
         </div>
         <div style={{ background:'var(--border)', borderRadius:3, height:4, width:80 }}>
@@ -101,8 +105,8 @@ function OvertimeBadge({ emp, overtime, actualHours, limit, earnings }) {
       </div>
     )
   }
-  if (overtime > 0) return <span className="badge badge-amber">+{overtime.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h</span>
-  if (actualHours === 0) return <span className="badge badge-gray">0h</span>
+  if (overtime > 0) return <span className="badge badge-amber">+{overtime.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</span>
+  if (actualHours === 0) return <span className="badge badge-gray">{tr("ui.9481cea66957")}</span>
   return <span className="badge badge-green">–</span>
 }
 
@@ -134,6 +138,7 @@ function exportDATEV(rows, monthLabel) {
 }
 
 export default function Payroll() {
+  useLocale()
   const { isAdmin } = useProfile()
   const toast = useToast()
   const now = new Date()
@@ -269,7 +274,7 @@ export default function Payroll() {
     setRows(result)
     setIsFinalized(result.length > 0 && result.every(r => r.frozen))
     } catch (err) {
-      toast.error('Fehler beim Laden der Lohndaten: ' + err.message)
+      toast.error(messageParts([appMessage("ui.bca4918dcbef"), errorMessage(err)]))
     }
     setLoading(false)
   }
@@ -297,11 +302,11 @@ export default function Payroll() {
     }))
     const { error } = await supabase.from('payroll_months').upsert(payload, { onConflict: 'employee_id,year,month' })
     setFinalizing(false)
-    if (error) { toast.error('Fehler beim Abschließen: ' + error.message); return }
-    toast.success(`✅ ${monthLabel} abgeschlossen — Werte sind jetzt eingefroren.`)
+    if (error) { toast.error(messageParts([appMessage("ui.0ed0b07a3a3f"), errorMessage(error)])); return }
+    toast.success(appMessage("ui.644f27781f6a", { p1: (formatParam('date', new Date(year, month-1), {month:'long', year:'numeric'})) }))
     logActivity({
       action: 'payroll.month_finalized', category: 'payroll',
-      summary: `hat die Lohnabrechnung für ${monthLabel} abgeschlossen.`,
+      summary: `hat die Lohnabrechnung für ${exportMonthLabel} abgeschlossen.`,
       targetType: 'payroll_month', metadata: { year, month },
     })
     fetchPayroll()
@@ -309,15 +314,15 @@ export default function Payroll() {
 
   async function reopenMonth() {
     if (finalizing) return
-    if (!window.confirm(`${monthLabel} wirklich wieder öffnen? Die Werte werden dann bei jedem Aufruf wieder live aus den aktuellen Daten neu berechnet, bis der Monat erneut abgeschlossen wird.`)) return
+    if (!window.confirm(tr("ui.0c5a4d942c6a", { p1: (formatParam('date', new Date(year, month-1), {month:'long', year:'numeric'})) }))) return
     setFinalizing(true)
     const { error } = await supabase.from('payroll_months').update({ is_finalized: false }).eq('year', year).eq('month', month)
     setFinalizing(false)
-    if (error) { toast.error('Fehler beim Öffnen: ' + error.message); return }
-    toast.info(`${monthLabel} wieder geöffnet.`)
+    if (error) { toast.error(messageParts([appMessage("ui.e89d524aea7a"), errorMessage(error)])); return }
+    toast.info(appMessage("ui.b803c5bc04d3", { p1: (formatParam('date', new Date(year, month-1), {month:'long', year:'numeric'})) }))
     logActivity({
       action: 'payroll.month_reopened', category: 'payroll',
-      summary: `hat die Lohnabrechnung für ${monthLabel} wieder geöffnet.`,
+      summary: `hat die Lohnabrechnung für ${exportMonthLabel} wieder geöffnet.`,
       targetType: 'payroll_month', metadata: { year, month },
     })
     fetchPayroll()
@@ -333,32 +338,27 @@ export default function Payroll() {
   const totalHours     = rows.reduce((s, r) => s + r.actualHours, 0)
   const totalOvertime  = rows.reduce((s, r) => s + r.overtime, 0)
   const alertCount     = rows.filter(r => r.isAlert).length
-  const monthLabel     = new Date(year, month-1).toLocaleDateString('de-DE',{month:'long', year:'numeric'})
-  const MONTHS         = Array.from({length:12}, (_, i) => ({ v:i+1, l:new Date(year,i).toLocaleDateString('de-DE',{month:'long'}) }))
+  const exportMonthLabel = new Date(year, month-1).toLocaleDateString('de-DE',{month:'long', year:'numeric'})
+  const monthLabel     = new Date(year, month-1).toLocaleDateString(getIntlLocale(),{month:'long', year:'numeric'})
+  const MONTHS         = Array.from({length:12}, (_, i) => ({ v:i+1, l:new Date(year,i).toLocaleDateString(getIntlLocale(),{month:'long'}) }))
 
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">Lohn & Stunden</div>
+        <div className="topbar-title">{tr("ui.d3075b3fc4af")}</div>
         <div className="topbar-right">
           <select value={month} onChange={e => setMonth(+e.target.value)} style={{ width:'auto' }}>
             {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
           </select>
           {isAdmin && (
             isFinalized ? (
-              <button className="btn btn-sm" onClick={reopenMonth} disabled={finalizing}>
-                🔓 Wieder öffnen
-              </button>
+              <button className="btn btn-sm" onClick={reopenMonth} disabled={finalizing}>{tr("ui.eaafb643b7eb")}</button>
             ) : (
               <button className="btn btn-sm" onClick={finalizeMonth} disabled={finalizing || loading || rows.length === 0 || !monthHasEnded}
-                title={!monthHasEnded ? 'Kann erst nach Monatsende abgeschlossen werden' : 'Werte für diesen Monat einfrieren'}>
-                🔒 Monat abschließen
-              </button>
+                title={!monthHasEnded ? tr("ui.fb55d952c370") : tr("ui.9563eaee5234")}>{tr("ui.f6ba644f3057")}</button>
             )
           )}
-          <button className="btn" onClick={() => handleDatevExport(filtered, monthLabel)} disabled={loading || rows.length === 0}>
-            📊 DATEV Export (CSV)
-          </button>
+          <button className="btn" onClick={() => handleDatevExport(filtered, exportMonthLabel)} disabled={loading || rows.length === 0}>{tr("ui.6d2bd07b0514")}</button>
           <select value={year} onChange={e => setYear(+e.target.value)} style={{ width:90 }}>
             {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
           </select>
@@ -369,57 +369,53 @@ export default function Payroll() {
         {/* Stats */}
         <div className="stats-grid mb-5">
           <div className="stat-card">
-            <div className="stat-label">Monat</div>
+            <div className="stat-label">{tr("ui.2933070469a2")}</div>
             <div className="stat-value" style={{ fontSize:17 }}>
               {monthLabel}
-              {isFinalized && <span className="badge badge-green" style={{ marginLeft:8, fontSize:10, verticalAlign:'middle' }}>🔒 abgeschlossen</span>}
+              {isFinalized && <span className="badge badge-green" style={{ marginLeft:8, fontSize:10, verticalAlign:'middle' }}>{tr("ui.7acc8d7967cb")}</span>}
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Gesamtstunden</div>
-            <div className="stat-value">{totalHours.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h</div>
+            <div className="stat-label">{tr("ui.3eac55004b5d")}</div>
+            <div className="stat-value">{totalHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Überstunden gesamt</div>
+            <div className="stat-label">{tr("ui.66a7f3693804")}</div>
             <div className="stat-value" style={{ color: totalOvertime > 0 ? 'var(--warn)' : 'inherit' }}>
-              {totalOvertime > 0 ? `+${totalOvertime.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h` : '–'}
+              {totalOvertime > 0 ? `+${totalOvertime.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})} h` : '–'}
             </div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Lohnkosten Brutto</div>
+            <div className="stat-label">{tr("ui.56fac2a56469")}</div>
             <div className="stat-value" style={{ fontSize:20 }}>{formatCurrency(totalPayout)}</div>
           </div>
         </div>
 
         {!isFinalized && !loading && rows.length > 0 && (
-          <div className="alert" style={{ marginBottom:16, fontSize:12, color:'var(--text-secondary)' }}>
-            ℹ️ Vorläufige, live berechnete Werte (Basis: aktueller Stundenlohn; enthält bezahlten Urlaub & Lohnfortzahlung bei Krankheit als Ø-Tagesstunden). Erst nach „Monat abschließen" sind die Zahlen für diesen Monat dauerhaft fixiert.
-          </div>
+          <div className="alert" style={{ marginBottom:16, fontSize:12, color:'var(--text-secondary)' }}>{tr("ui.f9c6246d89ff")}</div>
         )}
 
         {/* Alert Banner */}
         {alertCount > 0 && (
           <div className="alert alert-danger" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span>🚨 {alertCount} Mitarbeiter {alertCount===1?'hat':'haben'} Limit-Überschreitungen!</span>
-            <button className="btn btn-sm btn-danger" onClick={() => setFilter('alert')}>Anzeigen</button>
+            <span>{tr("payroll.alerts", { count: alertCount })}</span>
+            <button className="btn btn-sm btn-danger" onClick={() => setFilter('alert')}>{tr("ui.ccb27f03f03e")}</button>
           </div>
         )}
 
         {/* Filter Tabs */}
         <div className="flex gap-2 mb-5" style={{ marginBottom:16 }}>
-          <button className={`btn btn-sm${filter==='all'?' btn-primary':''}`} onClick={() => setFilter('all')}>Alle ({rows.length})</button>
-          <button className={`btn btn-sm${filter==='overtime'?' btn-primary':''}`} onClick={() => setFilter('overtime')}>
-            Mit Überstunden ({rows.filter(r=>r.overtime>0).length})
+          <button className={`btn btn-sm${filter==='all'?' btn-primary':''}`} onClick={() => setFilter('all')}>{tr("ui.6e45dcdf9899")}{rows.length})</button>
+          <button className={`btn btn-sm${filter==='overtime'?' btn-primary':''}`} onClick={() => setFilter('overtime')}>{tr("ui.9aab736276d9")}{rows.filter(r=>r.overtime>0).length})
           </button>
-          <button className={`btn btn-sm${filter==='alert'?' btn-primary':''}`} style={{ color: alertCount > 0 ? 'var(--danger)' : undefined }} onClick={() => setFilter('alert')}>
-            🚨 Alarme ({alertCount})
+          <button className={`btn btn-sm${filter==='alert'?' btn-primary':''}`} style={{ color: alertCount > 0 ? 'var(--danger)' : undefined }} onClick={() => setFilter('alert')}>{tr("ui.5e48108df13b")}{alertCount})
           </button>
         </div>
 
-        {loading ? <div style={{ padding:40, textAlign:'center', color:'var(--text-muted)' }}>Lädt…</div> : filtered.length === 0 ? (
+        {loading ? <div style={{ padding:40, textAlign:'center', color:'var(--text-muted)' }}>{tr("ui.ebbb1d1f265f")}</div> : filtered.length === 0 ? (
           <div className="empty-state" style={{ padding:40 }}>
             <div className="empty-state-icon">💰</div>
-            <div className="empty-state-text">Keine Lohndaten für diesen Monat</div>
+            <div className="empty-state-text">{tr("ui.a62b2e73c8ad")}</div>
           </div>
         ) : (
           <div className="card">
@@ -427,13 +423,13 @@ export default function Payroll() {
               <table>
                 <thead>
                   <tr>
-                    <th>Mitarbeiter</th>
-                    <th>Typ</th>
-                    <th>Soll</th>
-                    <th>Gearbeitet</th>
-                    <th>Überstunden / Status</th>
-                    <th>Stundenlohn</th>
-                    <th>Brutto</th>
+                    <th>{tr("ui.f4cb6891b9e5")}</th>
+                    <th>{tr("ui.1b024183cb33")}</th>
+                    <th>{tr("ui.e9cafcdab284")}</th>
+                    <th>{tr("ui.4672a46e5211")}</th>
+                    <th>{tr("ui.fa5864d46af0")}</th>
+                    <th>{tr("ui.68c8ec0f16c7")}</th>
+                    <th>{tr("ui.6cd01d543ed9")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -445,10 +441,10 @@ export default function Payroll() {
                           <div>
                             <div style={{ fontWeight:500 }}>{r.first_name} {r.last_name}</div>
                             {r.employment_type === 'werkstudent' && (
-                              <div style={{ fontSize:11, color:'var(--text-muted)' }}>Max {WERKSTUDENT_LIMIT}h/Monat · {r.hours_per_week}h/Woche</div>
+                              <div style={{ fontSize:11, color:'var(--text-muted)' }}>Max {WERKSTUDENT_LIMIT}{tr("ui.f0dd38020b95")}{r.hours_per_week}{tr("ui.0be41103d552")}</div>
                             )}
                             {r.employment_type === 'minijob' && (
-                              <div style={{ fontSize:11, color:'var(--text-muted)' }}>Limit: {formatCurrency(MINIJOB_LIMIT)}/Monat</div>
+                              <div style={{ fontSize:11, color:'var(--text-muted)' }}>{tr("ui.cded0737a8be")}{formatCurrency(MINIJOB_LIMIT)}{tr("ui.d81b0e9e1ccd")}</div>
                             )}
                           </div>
                         </div>
@@ -456,28 +452,28 @@ export default function Payroll() {
                       <td><span className="badge badge-gray" style={{ fontSize:11 }}>{EMP_TYPE_LABEL[r.employment_type]||r.employment_type}</span></td>
                       <td className="text-muted">
                         {r.employment_type === 'werkstudent'
-                          ? `${WERKSTUDENT_LIMIT.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} h`
+                          ? `${WERKSTUDENT_LIMIT.toLocaleString(getIntlLocale(), {minimumFractionDigits:2, maximumFractionDigits:2})} h`
                           : r.employment_type === 'minijob'
                             ? `max ${(MINIJOB_LIMIT/r.hourly_rate).toFixed(0)} h`
-                            : `${r.monthTarget.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} h`}
+                            : `${r.monthTarget.toLocaleString(getIntlLocale(), {minimumFractionDigits:2, maximumFractionDigits:2})} h`}
                       </td>
                       <td>
-                        <strong>{r.actualHours.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2})} h</strong>
+                        <strong>{r.actualHours.toLocaleString(getIntlLocale(), {minimumFractionDigits:2, maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong>
                         {(r.vacationHours > 0 || r.sickHours > 0) && (
                           <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
-                            {r.vacationHours > 0 && <>+{r.vacationHours.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h Urlaub </>}
-                            {r.sickHours > 0 && <>+{r.sickHours.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h Krank (bez.)</>}
+                            {r.vacationHours > 0 && <>+{r.vacationHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.4c4e75df57b1")}</>}
+                            {r.sickHours > 0 && <>+{r.sickHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.939a86d4945f")}</>}
                           </div>
                         )}
                       </td>
                       <td><OvertimeBadge emp={r} overtime={r.overtime} actualHours={r.actualHours} limit={r.limit} earnings={r.total} /></td>
-                      <td>{formatCurrency(r.hourly_rate)}/h</td>
+                      <td>{formatCurrency(r.hourly_rate)}{tr("ui.141582aa3785")}</td>
                       <td>
                         <strong style={{ color: r.isAlert ? 'var(--danger)' : 'inherit' }}>
                           {formatCurrency(r.total)}
                         </strong>
                         {r.employment_type === 'minijob' && r.actualHours * r.hourly_rate > MINIJOB_LIMIT && (
-                          <div style={{ fontSize:11, color:'var(--danger)' }}>⚠️ Minijob-Status gefährdet!</div>
+                          <div style={{ fontSize:11, color:'var(--danger)' }}>{tr("ui.592317f52ea6")}</div>
                         )}
                       </td>
                     </tr>
@@ -485,16 +481,13 @@ export default function Payroll() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background:'var(--bg)', fontWeight:700 }}>
-                    <td colSpan="6" style={{ padding:'12px 16px' }}>Gesamt</td>
+                    <td colSpan="6" style={{ padding:'12px 16px' }}>{tr("ui.a36bce47fdac")}</td>
                     <td style={{ padding:'12px 16px', fontSize:15 }}>{formatCurrency(totalPayout)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-            <div style={{ padding:'10px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)', lineHeight:1.8 }}>
-              📋 Minijob-Grenze 2026: {formatCurrency(MINIJOB_LIMIT)}/Monat · Werkstudent-Limit: {WERKSTUDENT_LIMIT}h/Monat · Max 10h/Tag §3 ArbZG<br/>
-              ℹ️ Angezeigte Beträge sind Bruttolöhne vor Steuer & Sozialabgaben — Abrechnung bitte mit Steuerberaterin.
-            </div>
+            <div style={{ padding:'10px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)', lineHeight:1.8 }}>{tr("ui.b5018301f9c1")}{formatCurrency(MINIJOB_LIMIT)}{tr("ui.3e9de5bc8f30")}{WERKSTUDENT_LIMIT}{tr("ui.5f3a6f6bfd78")}<br/>{tr("ui.8e0145022aa7")}</div>
           </div>
         )}
       </div>

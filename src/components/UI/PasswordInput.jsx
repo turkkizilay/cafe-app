@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale } from '../../i18n/runtime.js'
+import { useLocale } from '../../context/LocaleContext.jsx'
 import { useState } from 'react'
 
 /**
@@ -8,6 +10,7 @@ export default function PasswordInput({
   value, onChange, placeholder = '••••••••',
   autoComplete, required, disabled, style = {}, id,
 }) {
+  useLocale()
   const [visible, setVisible] = useState(false)
 
   return (
@@ -35,8 +38,8 @@ export default function PasswordInput({
           padding: '4px', lineHeight: 1,
           userSelect: 'none',
         }}
-        title={visible ? 'Passwort verbergen' : 'Passwort anzeigen'}
-        aria-label={visible ? 'Passwort verbergen' : 'Passwort anzeigen'}
+        title={visible ? tr("ui.680d43e0eca7") : tr("ui.dccd381767f2")}
+        aria-label={visible ? tr("ui.680d43e0eca7") : tr("ui.dccd381767f2")}
       >
         {visible ? '🙈' : '👁️'}
       </button>

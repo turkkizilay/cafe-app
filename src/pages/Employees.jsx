@@ -1,7 +1,10 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts, formatParam } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/UI/Avatar'
-import { supabase, getInitials, getAvatarColor, formatDate, formatCurrency, toLocalDateStr } from '../lib/supabase'
+import { supabase, getInitials, getAvatarColor, toLocalDateStr } from '../lib/supabase'
+import { formatDate, formatCurrency } from '../i18n/format.js'
 import { openSignedFile } from '../lib/openFile'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { MINDESTLOHN } from '../lib/constants'
@@ -9,7 +12,7 @@ import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
-import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS } from '../lib/personalData'
+import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
 
 const EMPTY = {
   first_name: '', last_name: '', email: '', phone: '', birth_date: '',
@@ -24,12 +27,12 @@ const EMPTY = {
 const PERSONAL_CHECK = ['birth_date','postal_code','iban','tax_id','social_security_number','phone','emergency_contact_phone']
 
 const DOC_TYPES = {
-  employment_contract: 'Arbeitsvertrag',
-  contract_addendum:   'Vertragsnachtrag',
-  certificate:         'Bescheinigung',
-  agreement:           'Vereinbarung',
-  personal_document:   'Personalunterlage',
-  other:               'Sonstiges',
+  get employment_contract() { return tr("ui.7c2a6c84ba98") },
+  get contract_addendum() { return tr("ui.5d4a21030716") },
+  get certificate() { return tr("ui.fe1020b37611") },
+  get agreement() { return tr("ui.139fb05af4f2") },
+  get personal_document() { return tr("ui.841be075bc36") },
+  get other() { return tr("ui.9f3d5f8d94cf") },
 }
 
 function sanitizeFileName(name) {
@@ -41,12 +44,13 @@ function getTenure(startDate) {
   const years  = Math.floor((Date.now() - new Date(startDate)) / (365.25 * 86400000))
   const months = Math.floor(((Date.now() - new Date(startDate)) % (365.25 * 86400000)) / (30.44 * 86400000))
   if (years > 0) return `${years}J ${months}M`
-  return `${months} Mon.`
+  return tr("ui.64ec1995134b", { p1: (months) })
 }
 
-const EMP_TYPE = { vollzeit: 'Vollzeit', teilzeit: 'Teilzeit', werkstudent: 'Werkstudent', minijob: 'Minijob' }
+const EMP_TYPE = { get vollzeit() { return tr("ui.49dbe1b0b4b3") }, get teilzeit() { return tr("ui.df763b1cc689") }, get werkstudent() { return tr("ui.fa23b3bc413a") }, get minijob() { return tr("ui.b3fc8da9deb1") } }
 
 export default function Employees() {
+  useLocale()
   const [employees, setEmployees] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null)
@@ -95,7 +99,7 @@ export default function Employees() {
 
       const { error: storErr } = await supabase.storage
         .from('employee-documents').upload(filePath, docFile, { cacheControl:'3600', upsert:false })
-      if (storErr) { toast.error('Upload fehlgeschlagen: ' + storErr.message); return }
+      if (storErr) { toast.error(messageParts([appMessage("ui.69d9669978d1"), errorMessage(storErr)])); return }
 
       const { error: dbErr } = await supabase.from('employee_documents').insert([{
         id: docId,
@@ -117,10 +121,10 @@ export default function Employees() {
       if (dbErr) {
         // Rollback Storage
         await supabase.storage.from('employee-documents').remove([filePath])
-        toast.error('Dokument konnte nicht gespeichert werden: ' + dbErr.message)
+        toast.error(messageParts([appMessage("ui.d5711a0bb238"), errorMessage(dbErr)]))
         return
       }
-      toast.success('✅ Dokument hochgeladen')
+      toast.success(appMessage("ui.4688296e9058"))
       setDocForm({ document_type:'employment_contract', title:'', description:'', valid_from:'', valid_until:'' })
       setDocFile(null)
       if (docFileRef.current) docFileRef.current.value = ''
@@ -140,7 +144,7 @@ export default function Employees() {
         return data.signedUrl
       })
     } catch {
-      toast.error('Das Dokument konnte nicht geöffnet werden. Bitte erneut versuchen.')
+      toast.error(appMessage("ui.0709a3b7a0d0"))
     } finally { setDocActionId(null) }
   }
 
@@ -148,13 +152,13 @@ export default function Employees() {
     if (docActionId) return
     setDocActionId(doc.id + ':dl')
     try {
-      const typeName = DOC_TYPES[doc.document_type] || 'Dokument'
-      const lastName = employee?.last_name?.replace(/\s+/g,'_') || 'Mitarbeiter'
+      const typeName = DOC_TYPES[doc.document_type] || tr("ui.836ae9356297")
+      const lastName = employee?.last_name?.replace(/\s+/g,'_') || tr("ui.f4cb6891b9e5")
       const date = toLocalDateStr(new Date(doc.uploaded_at))
       const filename = `${typeName}_${lastName}_${date}.pdf`
       const { data, error } = await supabase.storage
         .from('employee-documents').createSignedUrl(doc.file_path, 60, { download: filename })
-      if (error) { toast.error('Download fehlgeschlagen: ' + error.message); return }
+      if (error) { toast.error(messageParts([appMessage("ui.322e45a8c6c6"), errorMessage(error)])); return }
       const a = document.createElement('a'); a.href = data.signedUrl; a.download = filename
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
     } finally { setDocActionId(null) }
@@ -162,15 +166,15 @@ export default function Employees() {
 
   async function archiveDoc(doc) {
     if (docActionId) return
-    if (!window.confirm(`"${doc.title}" archivieren?\n\nDas Dokument wird für den Mitarbeiter nicht mehr sichtbar sein. Der Eintrag bleibt für Admin-Zwecke erhalten.\n\nDiese Aktion kann nicht rückgängig gemacht werden.`)) return
+    if (!window.confirm(tr("ui.d161262b9c31", { p1: (doc.title) }))) return
     setDocActionId(doc.id + ':arch')
     try {
       const { error } = await supabase.from('employee_documents').update({
         is_active:   false,
         archived_at: new Date().toISOString(),
       }).eq('id', doc.id)
-      if (error) { toast.error('Archivieren fehlgeschlagen: ' + error.message); return }
-      toast.success('Dokument archiviert')
+      if (error) { toast.error(messageParts([appMessage("ui.921fd12e062e"), errorMessage(error)])); return }
+      toast.success(appMessage("ui.4dba11c3080f"))
       fetchDocs(form.id)
     } finally { setDocActionId(null) }
   }
@@ -188,7 +192,7 @@ export default function Employees() {
     const { data, error } = showInactive ? await q : await q.eq('is_active', true)
     if (error) {
       console.error('Employees fetch error:', error)
-      setFetchError(translateSupabaseError(error, 'Mitarbeiter laden'))
+      setFetchError(translateSupabaseError(error, appMessage("ui.25a52375f2de")))
     }
     setEmployees(data || [])
     setLoading(false)
@@ -231,20 +235,20 @@ export default function Employees() {
     // Seiten-Session hängen und der "Speichern"-Button reagierte danach gar nicht mehr. ──
     try {
       // ── Pflichtfelder validieren ──
-      if (!form.first_name?.trim()) { setError('Vorname fehlt'); return }
-      if (!form.last_name?.trim())  { setError('Nachname fehlt'); return }
-      if (!form.email?.trim())      { setError('E-Mail fehlt'); return }
-      if (!form.start_date)         { setError('Eintrittsdatum fehlt'); return }
+      if (!form.first_name?.trim()) { setError(appMessage("ui.b76679096430")); return }
+      if (!form.last_name?.trim())  { setError(appMessage("ui.473f6c626760")); return }
+      if (!form.email?.trim())      { setError(appMessage("ui.0753440cb1d0")); return }
+      if (!form.start_date)         { setError(appMessage("ui.d0c35bf70bc0")); return }
       const rate = parseFloat(form.hourly_rate)
-      if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError('Stundenlohn ungültig'); return }
+      if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError(appMessage("ui.9ec91c2ee981")); return }
 
       // ── Gesetzliche Warnungen ──
       if (rate < MINDESTLOHN) {
-        setError(`⚠️ Mindestlohn-Warnung: Der Stundenlohn (${rate.toFixed(2)} €) liegt unter dem gesetzlichen Mindestlohn 2026 (${MINDESTLOHN} €/Std). Bitte korrigieren.`)
+        setError(appMessage("ui.e464f6564209", { p1: (formatParam("number", rate, { minimumFractionDigits: 2, maximumFractionDigits: 2 })), p2: (MINDESTLOHN) }))
         return
       }
       if (form.employment_type === 'werkstudent' && parseFloat(form.hours_per_week) > 20) {
-        setError('⚠️ Werkstudenten-Warnung: Max. 20h/Woche während Vorlesungszeit (§20 SGB IV). Bitte Stunden anpassen oder Beschäftigungsart prüfen.')
+        setError(appMessage("ui.fafbdfa4b2dc"))
         return
       }
 
@@ -258,7 +262,7 @@ export default function Employees() {
           .gte('start_date', `${new Date().getFullYear()}-01-01`)
         const usedDays = (approvedVacs || []).reduce((s, v) => s + (v.days_count || 0), 0)
         if (usedDays > parseInt(form.vacation_days_per_year)) {
-          setError(`⚠️ Achtung: ${form.first_name} hat bereits ${usedDays} Urlaubstage in ${new Date().getFullYear()} genehmigt. Neue Anzahl (${form.vacation_days_per_year}) würde ein negatives Urlaubssaldo erzeugen. Bitte zuerst genehmigte Anträge anpassen.`)
+          setError(appMessage("ui.4656cc80f01f", { p1: (form.first_name), p2: (usedDays), p3: (new Date().getFullYear()), p4: (form.vacation_days_per_year) }))
           return
         }
       }
@@ -266,10 +270,10 @@ export default function Employees() {
       // ── Personaldaten: Format nur prüfen, wenn etwas eingetragen ist ──
       const filled = PERSONAL_CHECK.filter(k => form[k] !== null && form[k] !== undefined && String(form[k]).trim() !== '')
       const pErr = validatePersonal(form, filled)
-      if (form.other_employment === true && !String(form.other_employment_note || '').trim()) pErr.other_employment_note = 'Bitte angeben'
+      if (form.other_employment === true && !String(form.other_employment_note || '').trim()) pErr.other_employment_note = appMessage("ui.e82ab6425a11")
       if (Object.keys(pErr).length) {
         const k = Object.keys(pErr)[0]
-        setError(`${FIELD_LABELS[k] || k}: ${pErr[k]}`)
+        setError(messageParts([(FIELD_MESSAGES[k] || k), ": ", pErr[k]]))
         return
       }
 
@@ -322,11 +326,11 @@ export default function Employees() {
         : await supabase.from('employees').update(payload).eq('id', form.id).select('id').maybeSingle()
 
       if (err) {
-        setError(translateSupabaseError(err, 'Mitarbeiter speichern'))
+        setError(translateSupabaseError(err, appMessage("ui.84853b348826")))
         return
       }
       if (modal === 'add' && saved) setJustCreated(saved)
-      else toast.success('✅ Stammdaten gespeichert')
+      else toast.success(appMessage("ui.4424bc9901a8"))
       setModal(null)
       fetchEmployees()
     } finally {
@@ -352,13 +356,13 @@ export default function Employees() {
     if (!confirmDeact) { deactGuard.end(); return }
     try {
       const { error } = await supabase.from('employees').update({ is_active: false, end_date: toLocalDateStr(new Date()) }).eq('id', confirmDeact.id)
-      if (error) { toast.error(translateSupabaseError(error, 'Deaktivieren')); return }
+      if (error) { toast.error(translateSupabaseError(error, appMessage("ui.7a86e994b5dd"))); return }
       // Ehemalige sollen sich nicht mehr anmelden können (eigener Admin-Zugang wird nie gesperrt)
       if (lockLogin && access[confirmDeact.id]) {
         await supabase.from('profiles').update({ status: 'disabled' })
           .eq('employee_id', confirmDeact.id).neq('id', profile?.id || '')
       }
-      toast.success(`${confirmDeact.name} deaktiviert${lockLogin && access[confirmDeact.id] ? ' — App-Zugang gesperrt' : ''}.`)
+      toast.success(appMessage("ui.3f5e698f6aca", { p1: (confirmDeact.name), p2: (lockLogin && access[confirmDeact.id] ? (appMessage("ui.4478a1db6960")) : ('')) }))
       logActivity({
         action: 'employee.deactivated', category: 'employee',
         summary: `hat ${confirmDeact.name} deaktiviert${lockLogin && access[confirmDeact.id] ? ' und den App-Zugang gesperrt' : ''}.`,
@@ -376,14 +380,14 @@ export default function Employees() {
     if (!saveGuard.begin()) return
     try {
       const { error } = await supabase.from('employees').update({ is_active: true, end_date: null }).eq('id', id)
-      if (error) { toast.error(translateSupabaseError(error, 'Reaktivieren')); return }
+      if (error) { toast.error(translateSupabaseError(error, appMessage("ui.b2f1e0b4fec7"))); return }
       // War der App-Zugang beim Deaktivieren gesperrt worden → wieder freigeben
       let unlocked = false
       if (access[id] === 'disabled') {
         const { error: pErr } = await supabase.from('profiles').update({ status: 'approved' }).eq('employee_id', id).eq('status', 'disabled')
         unlocked = !pErr
       }
-      toast.success(`✅ ${name} wurde reaktiviert${unlocked ? ' — App-Zugang wieder frei' : ''}`)
+      toast.success(appMessage("ui.b827c18bb5a2", { p1: (name), p2: (unlocked ? (appMessage("ui.0e068e1733b1")) : ('')) }))
       logActivity({
         action: 'employee.reactivated', category: 'employee',
         summary: `hat ${name} reaktiviert${unlocked ? ' und den App-Zugang wieder freigegeben' : ''}.`,
@@ -401,32 +405,32 @@ export default function Employees() {
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">Mitarbeiter</div>
+        <div className="topbar-title">{tr("ui.f4cb6891b9e5")}</div>
         <div className="topbar-right">
-          <input style={{ width: 200 }} placeholder="🔍 Suchen..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input style={{ width: 200 }} placeholder={tr("ui.7f7211cd472d")} value={search} onChange={e => setSearch(e.target.value)} />
           <button className="btn btn-sm" onClick={() => setShowInactive(x => !x)}
             style={{ borderColor: showInactive ? 'var(--accent)' : undefined, color: showInactive ? 'var(--accent)' : undefined }}>
-            {showInactive ? '👥 Alle' : '📦 Archiv anzeigen'}
+            {showInactive ? tr("ui.625cdcf52e80") : tr("ui.f37c3c02afe6")}
           </button>
-          {isAdmin && <button className="btn btn-primary" onClick={() => setAddChoice(true)}>+ Neuer Mitarbeiter</button>}
+          {isAdmin && <button className="btn btn-primary" onClick={() => setAddChoice(true)}>{tr("ui.8b96938fac5b")}</button>}
         </div>
       </div>
 
       <div className="content">
-        {loading ? <div className="text-muted">Lädt...</div> : fetchError ? (
-          <div className="alert alert-danger">{fetchError}</div>
+        {loading ? <div className="text-muted">{tr("ui.7a72dd7b9d46")}</div> : fetchError ? (
+          <div className="alert alert-danger">{localizeMessage(fetchError)}</div>
         ) : (
           <div className="card">
             <div className="table-wrap">
               {filtered.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-state-icon">👤</div>
-                  <div className="empty-state-text">{search ? 'Keine Treffer' : 'Noch keine Mitarbeiter — leg den ersten an!'}</div>
+                  <div className="empty-state-text">{search ? tr("ui.6df7e9f71b5f") : tr("ui.64b9da529810")}</div>
                 </div>
               ) : (
                 <table>
                   <thead>
-                    <tr><th>Name</th><th>Position</th><th>Art</th><th>Std/Wo</th><th>Stundenlohn</th><th>Urlaub</th><th>Dabei seit</th>{isAdmin && <th>App-Zugang</th>}<th>Aktionen</th></tr>
+                    <tr><th>{tr("ui.dcd1d5223f73")}</th><th>{tr("ui.6d031af10da7")}</th><th>{tr("ui.75df3579c730")}</th><th>{tr("ui.4b2cec6773ea")}</th><th>{tr("ui.68c8ec0f16c7")}</th><th>{tr("ui.35d3a889824d")}</th><th>{tr("ui.b3acb8cb53f2")}</th>{isAdmin && <th>{tr("ui.eb1cc4e89bc4")}</th>}<th>{tr("ui.5656f92db78d")}</th></tr>
                   </thead>
                   <tbody>
                     {filtered.map(emp => (
@@ -435,7 +439,7 @@ export default function Employees() {
                           <div className="name-cell">
                             <Avatar src={emp.avatar_url} firstName={emp.first_name} lastName={emp.last_name} color={emp.avatar_color} size={32} />
                             <div>
-                              <div style={{ fontWeight: 500 }}>{emp.first_name} {emp.last_name}{!emp.is_active && <span style={{ marginLeft:6, fontSize:10, background:'var(--border)', borderRadius:10, padding:'1px 6px', color:'var(--text-muted)' }}>Inaktiv</span>}</div>
+                              <div style={{ fontWeight: 500 }}>{emp.first_name} {emp.last_name}{!emp.is_active && <span style={{ marginLeft:6, fontSize:10, background:'var(--border)', borderRadius:10, padding:'1px 6px', color:'var(--text-muted)' }}>{tr("ui.bf7c9171cb49")}</span>}</div>
                               <div className="text-sm text-muted">{emp.email}</div>
                             </div>
                           </div>
@@ -446,32 +450,31 @@ export default function Employees() {
                             {EMP_TYPE[emp.employment_type] || emp.employment_type}
                           </span>
                         </td>
-                        <td>{emp.hours_per_week}h</td>
+                        <td>{emp.hours_per_week}{tr("ui.aaa9402664f1")}</td>
                         <td>
-                          {formatCurrency(emp.hourly_rate)}/h
-                          {emp.hourly_rate < MINDESTLOHN && <span className="badge badge-red" style={{ marginLeft: 6, fontSize: 10 }}>⚠️ Unter Mindestlohn</span>}
+                          {formatCurrency(emp.hourly_rate)}{tr("ui.141582aa3785")}{emp.hourly_rate < MINDESTLOHN && <span className="badge badge-red" style={{ marginLeft: 6, fontSize: 10 }}>{tr("ui.73d8e2d2f8fd")}</span>}
                         </td>
-                        <td>{emp.vacation_days_per_year} Tage</td>
+                        <td>{emp.vacation_days_per_year}{tr("ui.d00de448b9e2")}</td>
                         <td className="text-muted">{formatDate(emp.start_date)}</td>
                         {isAdmin && (
                           <td>
-                            {access[emp.id] === 'active'   && <span className="badge badge-green">✅ Aktiv</span>}
-                            {access[emp.id] === 'pending'  && <span className="badge badge-amber">⏳ Wartet</span>}
-                            {access[emp.id] === 'disabled' && <span className="badge badge-red">🔒 Gesperrt</span>}
-                            {access[emp.id] === 'invited'  && <span className="badge badge-blue">📨 Eingeladen</span>}
+                            {access[emp.id] === 'active'   && <span className="badge badge-green">{tr("ui.e293a477e7a2")}</span>}
+                            {access[emp.id] === 'pending'  && <span className="badge badge-amber">{tr("ui.08fae8eb0ce7")}</span>}
+                            {access[emp.id] === 'disabled' && <span className="badge badge-red">{tr("ui.a9dba4d3545f")}</span>}
+                            {access[emp.id] === 'invited'  && <span className="badge badge-blue">{tr("ui.cf1375be0028")}</span>}
                             {!access[emp.id] && emp.is_active && (
                               <button className="btn btn-sm" onClick={() => navigate(`/benutzer?invite=${emp.id}`)}
-                                title="Einladungslink für den App-Zugang erstellen">📨 Einladen</button>
+                                title={tr("ui.d958a0dc77d7")}>{tr("ui.09b04b14c98a")}</button>
                             )}
                             {!access[emp.id] && !emp.is_active && <span className="text-muted">–</span>}
                           </td>
                         )}
                         <td>
                           <div className="flex gap-2">
-                            <button className="btn btn-sm" onClick={() => openEdit(emp)}>{isAdmin ? '✏️ Bearbeiten' : '👁️ Ansehen'}</button>
+                            <button className="btn btn-sm" onClick={() => openEdit(emp)}>{isAdmin ? tr("ui.10b85209d6db") : tr("ui.52be03d9b363")}</button>
                             {!isAdmin ? null : emp.is_active
-                              ? <button className="btn btn-sm btn-danger" onClick={() => handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`)}>Deaktivieren</button>
-                              : <button className="btn btn-sm" style={{ border:'1px solid #16A34A', color:'#16A34A' }} onClick={() => doReactivate(emp.id, `${emp.first_name} ${emp.last_name}`)}>Reaktivieren</button>
+                              ? <button className="btn btn-sm btn-danger" onClick={() => handleDeactivate(emp.id, `${emp.first_name} ${emp.last_name}`)}>{tr("ui.7a86e994b5dd")}</button>
+                              : <button className="btn btn-sm" style={{ border:'1px solid #16A34A', color:'#16A34A' }} onClick={() => doReactivate(emp.id, `${emp.first_name} ${emp.last_name}`)}>{tr("ui.b2f1e0b4fec7")}</button>
                             }
                           </div>
                         </td>
@@ -490,26 +493,22 @@ export default function Employees() {
         <div className="modal-overlay" onClick={() => setAddChoice(false)}>
           <div className="modal" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title">Neuen Mitarbeiter hinzufügen</div>
+              <div className="modal-title">{tr("ui.5c5bb03cfd8e")}</div>
               <button className="btn btn-sm" onClick={() => setAddChoice(false)}>✕</button>
             </div>
             <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
               <button className="btn" style={{ justifyContent:'flex-start', textAlign:'left', padding:'14px 16px', height:'auto', whiteSpace:'normal' }}
                 onClick={() => { setAddChoice(false); navigate('/benutzer?new=1') }}>
                 <div>
-                  <div style={{ fontWeight:600, fontSize:14 }}>📨 Einladen <span className="badge badge-accent" style={{ marginLeft:6 }}>empfohlen</span></div>
-                  <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:4, lineHeight:1.5 }}>
-                    Du gibst nur die E-Mail ein (Lohn & Stunden optional gleich mit). Der Mitarbeiter trägt Adresse, Bank, Steuer-ID usw. selbst ein — du prüfst und schaltest frei.
-                  </div>
+                  <div style={{ fontWeight:600, fontSize:14 }}>{tr("ui.a99194c457d5")}<span className="badge badge-accent" style={{ marginLeft:6 }}>{tr("ui.ab8b5fe6ab84")}</span></div>
+                  <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:4, lineHeight:1.5 }}>{tr("ui.c63e621f60b6")}</div>
                 </div>
               </button>
               <button className="btn" style={{ justifyContent:'flex-start', textAlign:'left', padding:'14px 16px', height:'auto', whiteSpace:'normal' }}
                 onClick={() => { setAddChoice(false); openAdd() }}>
                 <div>
-                  <div style={{ fontWeight:600, fontSize:14 }}>✍️ Selbst anlegen</div>
-                  <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:4, lineHeight:1.5 }}>
-                    Du trägst alle Daten selbst ein — z. B. für Aushilfen ohne Smartphone. Einen App-Zugang kannst du danach jederzeit schicken.
-                  </div>
+                  <div style={{ fontWeight:600, fontSize:14 }}>{tr("ui.d456a1e202fd")}</div>
+                  <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:4, lineHeight:1.5 }}>{tr("ui.ec794756e6e6")}</div>
                 </div>
               </button>
             </div>
@@ -521,14 +520,12 @@ export default function Employees() {
       {justCreated && (
         <div className="modal-overlay" onClick={() => setJustCreated(null)}>
           <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><div className="modal-title">✅ {justCreated.first_name} {justCreated.last_name} angelegt</div></div>
-            <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
-              Soll {justCreated.first_name} auch die App nutzen (einstempeln, Schichtplan, Urlaub)?
-              Dann schicke jetzt einen Einladungslink an <strong>{justCreated.email}</strong>.
+            <div className="modal-header"><div className="modal-title">✅ {justCreated.first_name} {justCreated.last_name}{tr("ui.ab2b451b4d2f")}</div></div>
+            <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>{tr("ui.137bdbfc3648")}{justCreated.first_name}{tr("ui.17009dff6de1")}<strong>{justCreated.email}</strong>.
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setJustCreated(null)}>Später</button>
-              <button className="btn btn-primary" onClick={() => { const id = justCreated.id; setJustCreated(null); navigate(`/benutzer?invite=${id}`) }}>📨 Jetzt einladen</button>
+              <button className="btn" onClick={() => setJustCreated(null)}>{tr("ui.c47401bce409")}</button>
+              <button className="btn btn-primary" onClick={() => { const id = justCreated.id; setJustCreated(null); navigate(`/benutzer?invite=${id}`) }}>{tr("ui.7983b7810bb1")}</button>
             </div>
           </div>
         </div>
@@ -538,34 +535,29 @@ export default function Employees() {
       {confirmDeact && (
         <div className="modal-overlay" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>
           <div className="modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><div className="modal-title">Mitarbeiter deaktivieren</div><button className="btn btn-sm" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.3d275245a375")}</div><button className="btn btn-sm" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>✕</button></div>
             <div className="modal-body">
               {openClockIn && (
                 <div className="alert" style={{ background:'#FEF3C7', border:'1px solid #F59E0B', color:'#92400E', marginBottom:12, borderRadius:8, padding:'12px 14px' }}>
-                  ⚠️ <strong>{confirmDeact.name} ist aktuell eingeclockt!</strong><br/>
-                  <span style={{ fontSize:12, lineHeight:1.5, display:'block', marginTop:4 }}>
-                    Nach der Deaktivierung bleibt der offene Zeiteintrag bestehen. 
-                    Bitte danach unter <strong>Zeitkorrekturen</strong> den Eintrag manuell abschließen.
-                  </span>
+                  ⚠️ <strong>{confirmDeact.name}{tr("ui.5a05a013899c")}</strong><br/>
+                  <span style={{ fontSize:12, lineHeight:1.5, display:'block', marginTop:4 }}>{tr("ui.b63b3c2ba8b2")}<strong>{tr("ui.1ba6ae4c4865")}</strong>{tr("ui.ab7c3aaa7bfa")}</span>
                 </div>
               )}
               <div className="alert alert-danger">
-                {confirmDeact.name} wirklich deaktivieren?{openClockIn ? ' Trotz offenem Clock-In?' : ''} Der Eintrag bleibt im Archiv erhalten
-                (Stunden, Lohn, Dokumente) und lässt sich jederzeit reaktivieren.
-              </div>
+                {confirmDeact.name}{tr("ui.0fc1cc79ccd9")}{openClockIn ? tr("ui.d7fa805a7f5a") : ''}{tr("ui.dd7b3f33115f")}</div>
               {access[confirmDeact.id] && access[confirmDeact.id] !== 'invited' && (
                 <label style={{ display:'flex', gap:8, alignItems:'flex-start', fontSize:13, cursor:'pointer', marginTop:4 }}>
                   <input type="checkbox" checked={lockLogin} onChange={e => setLockLogin(e.target.checked)} style={{ width:16, height:16, marginTop:2 }} />
-                  <span>Auch den App-Zugang sperren <span style={{ color:'var(--text-muted)' }}>(empfohlen — ehemalige Mitarbeiter können sich dann nicht mehr anmelden)</span></span>
+                  <span>{tr("ui.46fda77bf7b3")}<span style={{ color:'var(--text-muted)' }}>{tr("ui.4a39b7d6cdb8")}</span></span>
                 </label>
               )}
               {access[confirmDeact.id] === 'invited' && (
-                <div style={{ fontSize:12.5, color:'var(--text-secondary)' }}>Die offene Einladung wird automatisch zurückgezogen.</div>
+                <div style={{ fontSize:12.5, color:'var(--text-secondary)' }}>{tr("ui.cf19713957ef")}</div>
               )}
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>Abbrechen</button>
-              <button className="btn btn-danger" onClick={doDeactivate}>Ja, deaktivieren</button>
+              <button className="btn" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>{tr("ui.f7ff1178af20")}</button>
+              <button className="btn btn-danger" onClick={doDeactivate}>{tr("ui.6c5538190bd0")}</button>
             </div>
           </div>
         </div>
@@ -575,169 +567,165 @@ export default function Employees() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div className="modal" style={{ maxWidth: 540 }}>
             <div className="modal-header">
-              <div className="modal-title">{modal === 'add' ? '+ Neuer Mitarbeiter' : isAdmin ? '✏️ Mitarbeiter bearbeiten' : '👁️ Mitarbeiter'}</div>
+              <div className="modal-title">{modal === 'add' ? tr("ui.8b96938fac5b") : isAdmin ? tr("ui.4de5a5b9b16e") : tr("ui.4b108417160e")}</div>
               <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
-              {error && <div className="alert alert-danger">❌ {error}</div>}
-              {!isAdmin && <div className="alert alert-info" style={{ fontSize:12 }}>🔒 Nur ansehen — Änderungen kann nur der Admin vornehmen.</div>}
+              {error && <div className="alert alert-danger">❌ {localizeMessage(error)}</div>}
+              {!isAdmin && <div className="alert alert-info" style={{ fontSize:12 }}>{tr("ui.74a716ea0751")}</div>}
               {isAdmin && modal === 'edit' && (
                 <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', background:'var(--bg)', borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12.5 }}>
-                  <span style={{ color:'var(--text-secondary)' }}>App-Zugang:</span>
-                  <strong>{{ active:'✅ Aktiv', pending:'⏳ Wartet auf Freigabe', disabled:'🔒 Gesperrt', invited:'📨 Eingeladen' }[access[form.id]] || '– keiner'}</strong>
+                  <span style={{ color:'var(--text-secondary)' }}>{tr("ui.2673adcedbb0")}</span>
+                  <strong>{{ active:tr("ui.e293a477e7a2"), pending:tr("ui.e1041ba52468"), disabled:tr("ui.a9dba4d3545f"), invited:tr("ui.cf1375be0028") }[access[form.id]] || tr("access.none")}</strong>
                   <button type="button" className="btn btn-sm" style={{ marginLeft:'auto' }}
                     onClick={() => { const id = form.id; setModal(null); navigate(access[id] ? '/benutzer' : `/benutzer?invite=${id}`) }}>
-                    {access[form.id] ? 'Login & Rolle verwalten →' : '📨 App-Zugang einladen'}
+                    {access[form.id] ? tr("ui.4d914f496dcd") : tr("ui.09c4b067fdbe")}
                   </button>
                 </div>
               )}
               <fieldset disabled={!isAdmin} style={{ border:'none', padding:0, margin:0, minWidth:0 }}>
               <div className="two-col">
-                <div className="form-group"><label>Vorname *</label><input value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder="Max" /></div>
-                <div className="form-group"><label>Nachname *</label><input value={form.last_name}  onChange={e => f('last_name', e.target.value)} placeholder="Mustermann" /></div>
+                <div className="form-group"><label>{tr("ui.5e3182902258")}</label><input value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder={tr("ui.a1a5936d3b0f")} /></div>
+                <div className="form-group"><label>{tr("ui.20b2178fa509")}</label><input value={form.last_name}  onChange={e => f('last_name', e.target.value)} placeholder={tr("ui.c9ff763e960d")} /></div>
               </div>
               <div className="form-group">
                 <label>
-                  {modal === 'edit' ? 'Kontakt-E-Mail' : 'E-Mail *'}
-                  {modal === 'edit' && <span style={{ fontSize:10, fontWeight:400, color:'var(--text-muted)', marginLeft:6 }}>
-                    (Login-E-Mail kann nur der Mitarbeiter selbst ändern)
-                  </span>}
+                  {modal === 'edit' ? tr("ui.1fdaca2f9659") : tr("ui.7368dce2f90e")}
+                  {modal === 'edit' && <span style={{ fontSize:10, fontWeight:400, color:'var(--text-muted)', marginLeft:6 }}>{tr("ui.03adc8ca59f7")}</span>}
                 </label>
-                <input type="email" value={form.email} onChange={e => f('email', e.target.value)} placeholder="max@cafebuur.de" />
+                <input type="email" value={form.email} onChange={e => f('email', e.target.value)} placeholder={tr("ui.aa71e8319ba4")} />
               </div>
               <div className="two-col">
-                <div className="form-group"><label>Telefon</label><input value={form.phone || ''} onChange={e => f('phone', e.target.value)} placeholder="+49 170 1234567" /></div>
-                <div className="form-group"><label>Geburtsdatum</label><input type="date" value={form.birth_date || ''} onChange={e => f('birth_date', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.fa6906d76ee9")}</label><input value={form.phone || ''} onChange={e => f('phone', e.target.value)} placeholder="+49 170 1234567" /></div>
+                <div className="form-group"><label>{tr("ui.6882904da71a")}</label><input type="date" value={form.birth_date || ''} onChange={e => f('birth_date', e.target.value)} /></div>
               </div>
               <div className="two-col">
-                <div className="form-group"><label>Position</label><input value={form.position || ''} onChange={e => f('position', e.target.value)} placeholder="Barista, Service, Küche..." /></div>
+                <div className="form-group"><label>{tr("ui.6d031af10da7")}</label><input value={form.position || ''} onChange={e => f('position', e.target.value)} placeholder={tr("ui.183e568d81e8")} /></div>
                 <div className="form-group">
-                  <label>Beschäftigung</label>
+                  <label>{tr("ui.50614a65c54c")}</label>
                   <select value={form.employment_type} onChange={e => {
                       const type = e.target.value
                       f('employment_type', type)
                       const defaults = { vollzeit: 40, teilzeit: 20, werkstudent: 20, minijob: 10 }
                       if (defaults[type] !== undefined) f('hours_per_week', defaults[type])
                     }}>
-                    <option value="vollzeit">Vollzeit</option>
-                    <option value="teilzeit">Teilzeit</option>
-                    <option value="werkstudent">Werkstudent</option>
-                    <option value="minijob">Minijob</option>
+                    <option value="vollzeit">{tr("ui.49dbe1b0b4b3")}</option>
+                    <option value="teilzeit">{tr("ui.df763b1cc689")}</option>
+                    <option value="werkstudent">{tr("ui.fa23b3bc413a")}</option>
+                    <option value="minijob">{tr("ui.b3fc8da9deb1")}</option>
                   </select>
                 </div>
               </div>
               <div className="two-col">
                 <div className="form-group">
-                  <label>Stunden/Woche *</label>
+                  <label>{tr("ui.b8139666f8ca")}</label>
                   <input type="number" value={form.hours_per_week} onChange={e => f('hours_per_week', e.target.value)} min="1" max="60" />
                   {form.employment_type === 'werkstudent' && parseFloat(form.hours_per_week) > 20 && (
-                    <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 3 }}>⚠️ Max. 20h/Woche für Werkstudenten</div>
+                    <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 3 }}>{tr("ui.c4f2372a2379")}</div>
                   )}
                 </div>
                 <div className="form-group">
-                  <label>Stundenlohn (€) *</label>
+                  <label>{tr("ui.04d8b7c7a102")}</label>
                   <input type="number" step="0.01" value={form.hourly_rate} onChange={e => f('hourly_rate', e.target.value)} placeholder="12.41" />
                   {form.hourly_rate && parseFloat(form.hourly_rate) < MINDESTLOHN && (
-                    <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>⚠️ Unter Mindestlohn ({MINDESTLOHN} €/Std)</div>
+                    <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>{tr("ui.beb41500da12")}{MINDESTLOHN}{tr("ui.2e48fc993743")}</div>
                   )}
                   {modal === 'edit' && form.hourly_rate && parseFloat(form.hourly_rate) >= MINDESTLOHN && (
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>ℹ️ Gilt sofort — beeinflusst aktuelle Lohn&Stunden Berechnung</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{tr("ui.a3b0277ec83e")}</div>
                   )}
                 </div>
               </div>
               <div className="two-col">
                 <div className="form-group">
-                  <label>Urlaubstage/Jahr</label>
+                  <label>{tr("ui.0ba856e3d3d8")}</label>
                   <input type="number" min="0" max="365" value={form.vacation_days_per_year} onChange={e => f('vacation_days_per_year', e.target.value)} />
                   {modal === 'edit' && parseInt(form.vacation_days_per_year) !== form._origVac && (
-                    <div style={{ fontSize:10, color:'var(--warn)', marginTop:3 }}>⚠️ Systemprüfung beim Speichern: bereits genehmigte Tage werden überprüft</div>
+                    <div style={{ fontSize:10, color:'var(--warn)', marginTop:3 }}>{tr("ui.3cd3af9b9ef7")}</div>
                   )}
                 </div>
-                <div className="form-group"><label>Eintrittsdatum *</label><input type="date" value={form.start_date || ''} onChange={e => f('start_date', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.5de567a16489")}</label><input type="date" value={form.start_date || ''} onChange={e => f('start_date', e.target.value)} /></div>
               </div>
-              <div style={{ fontWeight:700, fontSize:13, margin:'18px 0 10px', paddingTop:14, borderTop:'1px solid var(--border)' }}>
-                🧾 Personaldaten (Lohnabrechnung)
-                {form.onboarding_completed_at && <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:8 }}>vom Mitarbeiter selbst erfasst</span>}
+              <div style={{ fontWeight:700, fontSize:13, margin:'18px 0 10px', paddingTop:14, borderTop:'1px solid var(--border)' }}>{tr("ui.c89f3b303b04")}{form.onboarding_completed_at && <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:8 }}>{tr("ui.b3915789c10b")}</span>}
               </div>
               <div className="two-col">
-                <div className="form-group"><label>Geburtsname</label><input value={form.birth_name || ''} onChange={e => f('birth_name', e.target.value)} /></div>
-                <div className="form-group"><label>Geburtsort</label><input value={form.birth_place || ''} onChange={e => f('birth_place', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.807b1204e06c")}</label><input value={form.birth_name || ''} onChange={e => f('birth_name', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.590571d3da6b")}</label><input value={form.birth_place || ''} onChange={e => f('birth_place', e.target.value)} /></div>
               </div>
-              <div className="form-group"><label>Staatsangehörigkeit</label><input value={form.nationality || ''} onChange={e => f('nationality', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.3e3a47041a87")}</label><input value={form.nationality || ''} onChange={e => f('nationality', e.target.value)} /></div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 90px', gap:12 }}>
-                <div className="form-group"><label>Straße</label><input value={form.street || ''} onChange={e => f('street', e.target.value)} /></div>
-                <div className="form-group"><label>Nr.</label><input value={form.house_number || ''} onChange={e => f('house_number', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.58a3778c18c4")}</label><input value={form.street || ''} onChange={e => f('street', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.318ca5480cb8")}</label><input value={form.house_number || ''} onChange={e => f('house_number', e.target.value)} /></div>
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'90px 1fr', gap:12 }}>
-                <div className="form-group"><label>PLZ</label><input inputMode="numeric" maxLength={5} value={form.postal_code || ''} onChange={e => f('postal_code', e.target.value.replace(/\D/g, ''))} /></div>
-                <div className="form-group"><label>Ort</label><input value={form.city || ''} onChange={e => f('city', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.c6127fd4465d")}</label><input inputMode="numeric" maxLength={5} value={form.postal_code || ''} onChange={e => f('postal_code', e.target.value.replace(/\D/g, ''))} /></div>
+                <div className="form-group"><label>{tr("ui.30fb259129e5")}</label><input value={form.city || ''} onChange={e => f('city', e.target.value)} /></div>
               </div>
               {!form.street && (
-                <div className="form-group"><label>Adresse (alte Freitext-Angabe)</label><input value={form.address || ''} onChange={e => f('address', e.target.value)} placeholder="Musterstr. 1, 60000 Frankfurt" /></div>
+                <div className="form-group"><label>{tr("ui.bc815da9b21b")}</label><input value={form.address || ''} onChange={e => f('address', e.target.value)} placeholder={tr("ui.01fd2c11ba5c")} /></div>
               )}
-              <div className="form-group"><label>IBAN</label><input value={form.iban ? formatIBAN(form.iban) : ''} onChange={e => f('iban', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} placeholder="DE89 3704 0044 0532 0130 00" style={{ fontFamily:'monospace' }} /></div>
+              <div className="form-group"><label>IBAN</label><input value={form.iban ? formatIBAN(form.iban) : ''} onChange={e => f('iban', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} placeholder={tr("ui.7f377fd57c25")} style={{ fontFamily:'monospace' }} /></div>
               <div className="two-col">
-                <div className="form-group"><label>Kontoinhaber</label><input value={form.account_holder || ''} onChange={e => f('account_holder', e.target.value)} /></div>
-                <div className="form-group"><label>Krankenkasse</label><input value={form.health_insurance || ''} onChange={e => f('health_insurance', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.e2ddc853f6c8")}</label><input value={form.account_holder || ''} onChange={e => f('account_holder', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.500348e73c9e")}</label><input value={form.health_insurance || ''} onChange={e => f('health_insurance', e.target.value)} /></div>
               </div>
               <div className="two-col">
-                <div className="form-group"><label>Steuer-ID</label><input inputMode="numeric" value={form.tax_id || ''} onChange={e => f('tax_id', e.target.value.replace(/[^0-9 ]/g, ''))} style={{ fontFamily:'monospace' }} /></div>
-                <div className="form-group"><label>SV-Nummer</label><input value={form.social_security_number || ''} onChange={e => f('social_security_number', e.target.value.replace(/[^A-Za-z0-9 ]/g, '').toUpperCase())} placeholder="12 345678 A 123" style={{ fontFamily:'monospace' }} /></div>
+                <div className="form-group"><label>{tr("ui.45239f930c27")}</label><input inputMode="numeric" value={form.tax_id || ''} onChange={e => f('tax_id', e.target.value.replace(/[^0-9 ]/g, ''))} style={{ fontFamily:'monospace' }} /></div>
+                <div className="form-group"><label>{tr("ui.019891f68f41")}</label><input value={form.social_security_number || ''} onChange={e => f('social_security_number', e.target.value.replace(/[^A-Za-z0-9 ]/g, '').toUpperCase())} placeholder={tr("ui.ac2e02feab3d")} style={{ fontFamily:'monospace' }} /></div>
               </div>
               <div className="two-col">
                 <div className="form-group">
-                  <label>Weitere Beschäftigung</label>
+                  <label>{tr("ui.ec918980364d")}</label>
                   <select value={form.other_employment === true ? 'ja' : form.other_employment === false ? 'nein' : ''}
                     onChange={e => f('other_employment', e.target.value === 'ja' ? true : e.target.value === 'nein' ? false : null)}>
-                    <option value="">— unbekannt —</option>
-                    <option value="nein">Nein</option>
-                    <option value="ja">Ja</option>
+                    <option value="">{tr("ui.0c3b3b84e6b6")}</option>
+                    <option value="nein">{tr("ui.90ebc1bde6f3")}</option>
+                    <option value="ja">{tr("ui.cde9e58a9a4e")}</option>
                   </select>
                 </div>
                 {form.other_employment === true && (
-                  <div className="form-group"><label>Welche?</label><input value={form.other_employment_note || ''} onChange={e => f('other_employment_note', e.target.value)} /></div>
+                  <div className="form-group"><label>{tr("ui.e55bff7f9626")}</label><input value={form.other_employment_note || ''} onChange={e => f('other_employment_note', e.target.value)} /></div>
                 )}
               </div>
               <div className="two-col">
-                <div className="form-group"><label>Notfallkontakt</label><input value={form.emergency_contact_name || ''} onChange={e => f('emergency_contact_name', e.target.value)} /></div>
-                <div className="form-group"><label>Telefon Notfallkontakt</label><input value={form.emergency_contact_phone || ''} onChange={e => f('emergency_contact_phone', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.b285b3cd6355")}</label><input value={form.emergency_contact_name || ''} onChange={e => f('emergency_contact_name', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.0d21914d5fd4")}</label><input value={form.emergency_contact_phone || ''} onChange={e => f('emergency_contact_phone', e.target.value)} /></div>
               </div>
-              <div className="form-group"><label>Interne Notizen</label><textarea rows="2" value={form.notes || ''} onChange={e => f('notes', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.74c060e64273")}</label><textarea rows="2" value={form.notes || ''} onChange={e => f('notes', e.target.value)} /></div>
               </fieldset>
 
               {/* ── Dokumente (nur im Edit-Modus) ────────────────── */}
               {modal === 'edit' && (
                 <div style={{ marginTop:20, paddingTop:16, borderTop:'2px solid var(--border)' }}>
-                  <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>📁 Dokumente & Verträge</div>
+                  <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>{tr("ui.34fe9717933a")}</div>
 
                   {/* Dokument hochladen */}
                   <div style={{ background:'var(--bg)', borderRadius:10, border:'1px solid var(--border)', padding:14, marginBottom:14 }}>
-                    <div style={{ fontWeight:600, fontSize:12, color:'var(--text-secondary)', marginBottom:10, letterSpacing:'.04em', textTransform:'uppercase' }}>Neues Dokument hochladen</div>
+                    <div style={{ fontWeight:600, fontSize:12, color:'var(--text-secondary)', marginBottom:10, letterSpacing:'.04em', textTransform:'uppercase' }}>{tr("ui.2ef0f41d7589")}</div>
                     <div className="two-col">
                       <div className="form-group" style={{ marginBottom:10 }}>
-                        <label style={{ fontSize:12 }}>Dokumenttyp</label>
+                        <label style={{ fontSize:12 }}>{tr("ui.d34fdfab4164")}</label>
                         <select value={docForm.document_type} onChange={e => setDocForm(p=>({...p, document_type:e.target.value}))}>
                           {Object.entries(DOC_TYPES).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
                       </div>
                       <div className="form-group" style={{ marginBottom:10 }}>
-                        <label style={{ fontSize:12 }}>Titel *</label>
-                        <input placeholder="z.B. Arbeitsvertrag 2026" value={docForm.title} onChange={e => setDocForm(p=>({...p, title:e.target.value}))} />
+                        <label style={{ fontSize:12 }}>{tr("ui.fe0fc68dab2d")}</label>
+                        <input placeholder={tr("ui.0380d18a5633")} value={docForm.title} onChange={e => setDocForm(p=>({...p, title:e.target.value}))} />
                       </div>
                     </div>
                     <div className="two-col">
                       <div className="form-group" style={{ marginBottom:10 }}>
-                        <label style={{ fontSize:12 }}>Gültig ab</label>
+                        <label style={{ fontSize:12 }}>{tr("ui.c30bc49049b9")}</label>
                         <input type="date" value={docForm.valid_from} onChange={e => setDocForm(p=>({...p, valid_from:e.target.value}))} />
                       </div>
                       <div className="form-group" style={{ marginBottom:10 }}>
-                        <label style={{ fontSize:12 }}>Gültig bis</label>
+                        <label style={{ fontSize:12 }}>{tr("ui.ad350696ac38")}</label>
                         <input type="date" value={docForm.valid_until} onChange={e => setDocForm(p=>({...p, valid_until:e.target.value}))} />
                       </div>
                     </div>
                     <div className="form-group" style={{ marginBottom:10 }}>
-                      <label style={{ fontSize:12 }}>Beschreibung (optional)</label>
-                      <input placeholder="z.B. Ergänzung § 3 Arbeitszeit" value={docForm.description} onChange={e => setDocForm(p=>({...p, description:e.target.value}))} />
+                      <label style={{ fontSize:12 }}>{tr("ui.5a3c9c535f09")}</label>
+                      <input placeholder={tr("ui.a3a53e8f27a4")} value={docForm.description} onChange={e => setDocForm(p=>({...p, description:e.target.value}))} />
                     </div>
                     {/* Datei-Upload */}
                     {docFile ? (
@@ -745,7 +733,7 @@ export default function Employees() {
                         <span style={{ fontSize:20 }}>📄</span>
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:600, fontSize:12, color:'var(--success)' }}>✅ {docFile.name}</div>
-                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>{(docFile.size/1024).toFixed(0)} KB · bereit zum Hochladen</div>
+                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>{(docFile.size/1024).toLocaleString(getIntlLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{tr("ui.0efab8e1457f")}</div>
                         </div>
                         <button className="btn btn-sm" onClick={() => { setDocFile(null); if(docFileRef.current) docFileRef.current.value='' }}>✕</button>
                       </div>
@@ -753,16 +741,16 @@ export default function Employees() {
                       <div style={{ border:'2px dashed var(--border)', borderRadius:8, padding:'12px', textAlign:'center', cursor:'pointer', marginBottom:10 }}
                         onClick={() => docFileRef.current?.click()}>
                         <div style={{ fontSize:20, marginBottom:4 }}>📎</div>
-                        <div style={{ fontSize:12 }}>Datei auswählen oder hier ablegen</div>
-                        <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>PDF, max. 20 MB</div>
+                        <div style={{ fontSize:12 }}>{tr("ui.674c84fa9a3b")}</div>
+                        <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{tr("ui.aa60f073a46e")}</div>
                       </div>
                     )}
                     <input ref={docFileRef} type="file" accept="application/pdf" style={{ display:'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0]
                         if (!file) return
-                        if (file.size > 20971520) { toast.warn('Datei zu groß — max. 20 MB'); e.target.value=''; return }
-                        if (file.type !== 'application/pdf') { toast.warn('Nur PDF-Dateien erlaubt'); e.target.value=''; return }
+                        if (file.size > 20971520) { toast.warn(appMessage("ui.4c2aef50a6c1")); e.target.value=''; return }
+                        if (file.type !== 'application/pdf') { toast.warn(appMessage("ui.1d26c75e57a5")); e.target.value=''; return }
                         setDocFile(file)
                         if (!docForm.title) setDocForm(p=>({...p, title: DOC_TYPES[p.document_type]}))
                       }} />
@@ -770,15 +758,15 @@ export default function Employees() {
                       className="btn btn-primary" style={{ width:'100%' }}
                       disabled={docUploading || !docFile || !docForm.title.trim()}
                       onClick={uploadDoc}>
-                      {docUploading ? '⏳ Wird hochgeladen…' : '📤 Dokument hochladen'}
+                      {docUploading ? tr("ui.0d2d5e917311") : tr("ui.0336c4d4a1f3")}
                     </button>
                   </div>
 
                   {/* Dokument-Liste */}
                   {docsLoading ? (
-                    <div style={{ textAlign:'center', padding:16, fontSize:13, color:'var(--text-muted)' }}>⏳ Dokumente werden geladen…</div>
+                    <div style={{ textAlign:'center', padding:16, fontSize:13, color:'var(--text-muted)' }}>{tr("ui.a28b8a0f4826")}</div>
                   ) : empDocs.length === 0 ? (
-                    <div style={{ textAlign:'center', padding:16, fontSize:13, color:'var(--text-muted)' }}>Noch keine Dokumente für diesen Mitarbeiter hinterlegt.</div>
+                    <div style={{ textAlign:'center', padding:16, fontSize:13, color:'var(--text-muted)' }}>{tr("ui.0f11c7238346")}</div>
                   ) : (
                     <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                       {empDocs.map(doc => (
@@ -792,30 +780,30 @@ export default function Employees() {
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ fontWeight:600, fontSize:13 }}>
                                 {doc.title}
-                                {!doc.is_active && <span style={{ marginLeft:8, fontSize:10, background:'#F3F4F6', color:'#6B7280', padding:'1px 5px', borderRadius:3 }}>Archiviert</span>}
+                                {!doc.is_active && <span style={{ marginLeft:8, fontSize:10, background:'#F3F4F6', color:'#6B7280', padding:'1px 5px', borderRadius:3 }}>{tr("ui.e28232fa256a")}</span>}
                               </div>
                               <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
                                 {DOC_TYPES[doc.document_type] || doc.document_type}
-                                {doc.valid_from && ` · ab ${formatDate(doc.valid_from)}`}
-                                {doc.valid_until && ` bis ${formatDate(doc.valid_until)}`}
+                                {doc.valid_from && tr("ui.aa00ad8eb7cc", { p1: (formatDate(doc.valid_from)) })}
+                                {doc.valid_until && tr("ui.75a2ca4efd47", { p1: (formatDate(doc.valid_until)) })}
                               </div>
                               <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>
-                                {doc.file_name} · {doc.file_size ? `${(doc.file_size/1024).toFixed(0)} KB` : ''} · hochgeladen {formatDate(doc.uploaded_at?.split('T')[0])}
-                                {doc.uploaded_by_name && ` von ${doc.uploaded_by_name}`}
+                                {doc.file_name} · {doc.file_size ? `${(doc.file_size/1024).toLocaleString(getIntlLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 0 })} KB` : ''}{tr("ui.754718ecefb8")}{formatDate(doc.uploaded_at?.split('T')[0])}
+                                {doc.uploaded_by_name && tr("ui.7e82fadcda3d", { p1: (doc.uploaded_by_name) })}
                               </div>
                               {doc.description && <div style={{ fontSize:11, marginTop:2, color:'var(--text-secondary)' }}>{doc.description}</div>}
                             </div>
                             <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-                              <button className="btn btn-sm" disabled={!!docActionId} onClick={() => openDoc(doc)} title="Öffnen">
+                              <button className="btn btn-sm" disabled={!!docActionId} onClick={() => openDoc(doc)} title={tr("ui.bc385a30b537")}>
                                 {docActionId===doc.id+':open' ? '⏳' : '📄'}
                               </button>
                               <button className="btn btn-sm" style={{ background:'var(--info-bg)', color:'var(--info)', border:'1px solid var(--info)' }}
-                                disabled={!!docActionId} onClick={() => downloadDoc(doc, form)} title="Herunterladen">
+                                disabled={!!docActionId} onClick={() => downloadDoc(doc, form)} title={tr("ui.b3025b16bfa6")}>
                                 {docActionId===doc.id+':dl' ? '⏳' : '⬇'}
                               </button>
                               {doc.is_active && (
                                 <button className="btn btn-sm" style={{ background:'#FEF3C7', color:'#D97706', border:'1px solid #FDE68A' }}
-                                  disabled={!!docActionId} onClick={() => archiveDoc(doc)} title="Archivieren">
+                                  disabled={!!docActionId} onClick={() => archiveDoc(doc)} title={tr("ui.a54c8debab88")}>
                                   {docActionId===doc.id+':arch' ? '⏳' : '🗄'}
                                 </button>
                               )}
@@ -829,8 +817,8 @@ export default function Employees() {
               )}
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setModal(null)}>Abbrechen</button>
-              {isAdmin && <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Speichern...' : '💾 Speichern'}</button>}
+              <button className="btn" onClick={() => setModal(null)}>{tr("ui.f7ff1178af20")}</button>
+              {isAdmin && <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? tr("ui.cbebb66c9d26") : tr("ui.22158eab4b10")}</button>}
             </div>
           </div>
         </div>

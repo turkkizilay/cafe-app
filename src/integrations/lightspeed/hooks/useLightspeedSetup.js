@@ -1,3 +1,4 @@
+import { t as tr, getIntlLocale, message as appMessage, errorMessage } from '../../../i18n/runtime.js'
 /**
  * useLightspeedSetup — Einrichtungsassistent-State (B1, B14, B15)
  *
@@ -25,17 +26,17 @@ import { supabase } from '../../../lib/supabase.js'
 
 // Bestimmt den nächsten Schritt aus dem Status (B15)
 function determineNextStep(status) {
-  if (!status)                          return { key: 'check',      label: 'System prüfen' }
-  if (!status.databaseReady)            return { key: 'migration',  label: 'Datenbank-Migration ausführen' }
-  if (!status.functionsReady)           return { key: 'functions',  label: 'Edge Functions deployen' }
-  if (!status.environmentConfigured)    return { key: 'environment',label: 'Lightspeed-Umgebung als Supabase Secret setzen' }
-  if (!status.clientIdConfigured)       return { key: 'clientId',   label: 'Client-ID im Lightspeed Developer Portal erstellen und als Secret hinterlegen' }
-  if (!status.clientSecretConfigured)   return { key: 'clientSecret',label: 'Client Secret sicher als Supabase Secret hinterlegen' }
-  if (!status.redirectUriConfigured)    return { key: 'redirect',   label: 'Redirect-URI konfigurieren' }
-  if (!status.oauthConnected)           return { key: 'connect',    label: 'Lightspeed verbinden' }
-  if (!status.locationMapped)           return { key: 'location',   label: 'Standort auswählen' }
-  if (!status.syncReady)                return { key: 'sync',        label: 'Synchronisation einrichten' }
-  return { key: 'manage', label: 'Verbindung verwalten' }
+  if (!status)                          return { key: 'check',      label: tr("ui.22d18db99187") }
+  if (!status.databaseReady)            return { key: 'migration',  label: tr("ui.78fc90686750") }
+  if (!status.functionsReady)           return { key: 'functions',  label: tr("ui.dbddcbfbe4cd") }
+  if (!status.environmentConfigured)    return { key: 'environment',label: tr("ui.8639e5251aca") }
+  if (!status.clientIdConfigured)       return { key: 'clientId',   label: tr("ui.6ccaa4c2369f") }
+  if (!status.clientSecretConfigured)   return { key: 'clientSecret',label: tr("ui.08b8b58e9126") }
+  if (!status.redirectUriConfigured)    return { key: 'redirect',   label: tr("ui.712e25654196") }
+  if (!status.oauthConnected)           return { key: 'connect',    label: tr("ui.5ad863758478") }
+  if (!status.locationMapped)           return { key: 'location',   label: tr("ui.b45481ed038a") }
+  if (!status.syncReady)                return { key: 'sync',        label: tr("ui.a5c851fe606f") }
+  return { key: 'manage', label: tr("ui.9fdb369552ab") }
 }
 
 export function useLightspeedSetup() {
@@ -55,9 +56,7 @@ export function useLightspeedSetup() {
     } catch (err) {
       // Function nicht erreichbar → als Blocker anzeigen, nicht crashen
       setError(
-        err.message?.includes('Failed to fetch') || err.message?.includes('not found')
-          ? 'Edge Function nicht erreichbar. Bitte Functions deployen: supabase functions deploy'
-          : (err.message || 'Statusprüfung fehlgeschlagen')
+        err.message?.includes('Failed to fetch') || err.message?.includes('not found') ? (appMessage("ui.a519a2697d1a")) : ((errorMessage(err) || appMessage("ui.3321889ff318")))
       )
       setStatus(null)
     } finally {

@@ -1,6 +1,9 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts, formatParam } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useSearchParams } from 'react-router-dom'
 import React, { useState, useEffect, useRef } from 'react'
-import { supabase, formatDate, toLocalDateStr } from '../lib/supabase'
+import { supabase, toLocalDateStr } from '../lib/supabase'
+import { formatDate } from '../i18n/format.js'
 import { openSignedFile } from '../lib/openFile'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { useProfile } from '../context/ProfileContext'
@@ -17,6 +20,7 @@ import {
 } from '../lib/vacationLogic'
 
 export default function Vacation() {
+  useLocale()
   const { isAdmin, isManager, profile, refetch } = useProfile()
   const toast     = useToast()
   const canManage = isAdmin || isManager
@@ -66,9 +70,9 @@ export default function Vacation() {
       ])
 
       // Fehler-Check: zeige konkrete Fehlermeldung statt silent empty state
-      if (vacRes.error)  { toast.error('Urlaub-Fehler: '  + vacRes.error.message);  }
-      if (sickRes.error) { toast.error('Krank-Fehler: '   + sickRes.error.message); }
-      if (holRes.error)  { toast.error('Feiertag-Fehler: '+ holRes.error.message);  }
+      if (vacRes.error)  { toast.error(messageParts([appMessage("ui.7006ce026791"), errorMessage(vacRes.error)]));  }
+      if (sickRes.error) { toast.error(messageParts([appMessage("ui.ab26cc01cc01"), errorMessage(sickRes.error)])); }
+      if (holRes.error)  { toast.error(messageParts([appMessage("ui.242ecdcec487"), errorMessage(holRes.error)]));  }
 
       const allVacs    = vacRes.data  || []
       const allSick    = sickRes.data || []
@@ -101,7 +105,7 @@ export default function Vacation() {
         }
       }
     } catch (err) {
-      toast.error('Fehler beim Laden: ' + err.message)
+      toast.error(messageParts([appMessage("ui.f1abd7e4336c"), errorMessage(err)]))
     }
     setLoading(false)
   }
@@ -142,9 +146,9 @@ export default function Vacation() {
           thisVac.start_date <= ex.end_date && thisVac.end_date >= ex.start_date
         )
         if (conflict) {
-          const von = new Date(conflict.start_date + 'T12:00:00').toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'})
-          const bis = new Date(conflict.end_date   + 'T12:00:00').toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'})
-          toast.error(`Konflikt: Überschneidung mit bestehendem Urlaub (${von} – ${bis}). Bitte zuerst den anderen Antrag prüfen.`)
+          const von = formatParam('date', new Date(conflict.start_date + 'T12:00:00'), {day:'2-digit',month:'2-digit',year:'numeric'})
+          const bis = formatParam('date', new Date(conflict.end_date   + 'T12:00:00'), {day:'2-digit',month:'2-digit',year:'numeric'})
+          toast.error(appMessage("ui.7f2a2c2e2769", { p1: (von), p2: (bis) }))
           setActionWorking(false); return
         }
       }
@@ -158,7 +162,7 @@ export default function Vacation() {
       })
       .eq('id', id)
     if (error) { toast.error(translateSupabaseError(error)); setActionWorking(false); return }
-    toast.success(status === 'approved' ? '✅ Urlaub genehmigt' : 'Antrag abgelehnt')
+    toast.success(status === 'approved' ? (appMessage("ui.6b8d7a1ddcc8")) : (appMessage("ui.af0f632149dd")))
 
     // Protokoll
     const vac = vacations.find(v => v.id === id)
@@ -186,10 +190,10 @@ export default function Vacation() {
     setFormError('')
     const empId = canManage ? form.employee_id : profile?.employee_id
     if (!empId || !form.start_date || !form.end_date) {
-      setFormError('Bitte Start- und Enddatum auswählen.'); return
+      setFormError(appMessage("ui.e356cf56fb30")); return
     }
     if (form.start_date > form.end_date) {
-      setFormError('Startdatum muss vor dem Enddatum liegen.'); return
+      setFormError(appMessage("ui.5630c0b15b57")); return
     }
 
     // ── Vergangenheits-Check ─────────────────────────────────────
@@ -197,14 +201,14 @@ export default function Vacation() {
     const now = new Date()
     const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
     if (form.start_date < todayStr) {
-      setFormError('⛔ Urlaubsanträge für vergangene Tage sind nicht möglich. Bitte wähle ein Datum ab heute (' + now.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ').')
+      setFormError(messageParts([appMessage("ui.b83d623deb29"), formatParam("date", now, {day:'2-digit',month:'2-digit',year:'numeric'}), ').']))
       savingRef.current = false; return
     }
 
     // Exakte Tagesberechnung inkl. Feiertage (Feiertage werden nicht als Urlaubstage gezählt)
     const requestedDays = calculateRequestedDays(form.start_date, form.end_date, holidays)
     if (requestedDays === 0) {
-      setFormError('Keine Arbeitstage im gewählten Zeitraum (nur Wochenenden/Feiertage).'); return
+      setFormError(appMessage("ui.d5b1e7a1a8a7")); return
     }
 
     // §9 BUrlG: Krank-Überschneidung aufzeigen (info, kein Block)
@@ -234,14 +238,14 @@ export default function Vacation() {
       .in('status', ['pending', 'approved'])
 
     if (fetchVacErr) {
-      setFormError('Fehler beim Prüfen bestehender Urlaubsanträge. Bitte erneut versuchen.')
+      setFormError(appMessage("ui.f9c045b64df6"))
       setSaving(false); savingRef.current = false; return
     }
     for (const ex of (freshVacs || [])) {
       if (form.start_date <= ex.end_date && form.end_date >= ex.start_date) {
-        const von = new Date(ex.start_date + 'T12:00:00').toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'})
-        const bis = new Date(ex.end_date   + 'T12:00:00').toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'})
-        setFormError(`Für diesen Zeitraum existiert bereits ein Urlaubsantrag (${von} – ${bis}). Bitte bestehenden Antrag prüfen oder Zeitraum anpassen.`)
+        const von = formatParam('date', new Date(ex.start_date + 'T12:00:00'), {day:'2-digit',month:'2-digit',year:'numeric'})
+        const bis = formatParam('date', new Date(ex.end_date   + 'T12:00:00'), {day:'2-digit',month:'2-digit',year:'numeric'})
+        setFormError(appMessage("ui.634d20c3b949", { p1: (von), p2: (bis) }))
         setSaving(false); savingRef.current = false; return
       }
     }
@@ -258,9 +262,9 @@ export default function Vacation() {
     if (error) { toast.error(translateSupabaseError(error)); setSaving(false); sickSavingRef.current = false; return }
 
     if (conflict.overlaps) {
-      toast.info(`✅ Antrag gestellt. ${conflict.message}`)
+      toast.info(appMessage("ui.92603e36a8c0", { p1: (errorMessage(conflict)) }))
     } else {
-      toast.success(`✅ Urlaubsantrag für ${requestedDays} Tag${requestedDays > 1 ? 'e' : ''} gestellt`)
+      toast.success(appMessage("vacation.requested", { count: (requestedDays) }))
     }
 
     // Protokoll
@@ -282,7 +286,7 @@ export default function Vacation() {
     sickSavingRef.current = true
     setFormError('')
     const empId = canManage ? form.employee_id : profile?.employee_id
-    if (!empId || !form.start_date) { setFormError('Bitte Startdatum angeben.'); sickSavingRef.current = false; return }
+    if (!empId || !form.start_date) { setFormError(appMessage("ui.649ee731c344")); sickSavingRef.current = false; return }
     // ── Zentrale Input-Validierung (Zukunft/Vergangenheit/Rolle) ──────────
     const validation = validateSickLeaveInput({
       startDate: form.start_date,
@@ -291,15 +295,15 @@ export default function Vacation() {
       today:     toLocalDateStr(new Date()),
     })
     if (!validation.valid) {
-      setFormError(validation.message)
+      setFormError(errorMessage(validation))
       sickSavingRef.current = false; return
     }
     // Warnungen anzeigen aber nicht blockieren
     if (validation.severity === 'warn') {
-      setFormError(validation.message) // gelbe Warnung, kein Abbruch
+      setFormError(errorMessage(validation)) // gelbe Warnung, kein Abbruch
     }
     if (form.end_date && new Date(form.end_date) < new Date(form.start_date)) {
-      setFormError('Enddatum darf nicht vor dem Startdatum liegen.')
+      setFormError(appMessage("ui.aeefb04ae6e1"))
       sickSavingRef.current = false; return
     }
 
@@ -312,7 +316,7 @@ export default function Vacation() {
       .eq('employee_id', empId)
 
     if (fetchErr) {
-      setFormError('Fehler beim Prüfen bestehender Krankmeldungen. Bitte erneut versuchen.')
+      setFormError(appMessage("ui.f02d3561bbb0"))
       sickSavingRef.current = false; return
     }
 
@@ -342,14 +346,11 @@ export default function Vacation() {
       // Ab hier: echte Überschneidung → blockieren
       if (!exEnd) {
         setFormError(
-          `Es gibt bereits eine offene Krankmeldung (seit ${formatDate(ex.start_date)}).` +
-          ` Bitte ergänze dort das Attest oder setze ein Enddatum, bevor du eine neue Meldung erstellst.`
+          messageParts([appMessage("ui.f68fcf159175", { p1: (formatParam('date', new Date(ex.start_date + 'T00:00:00'), {day:'2-digit',month:'2-digit',year:'numeric'})) }), appMessage("ui.702e9ad837ca")])
         )
       } else {
         setFormError(
-          `Dieser Zeitraum überschneidet sich mit einer bestehenden Krankmeldung` +
-          ` (${formatDate(ex.start_date)} bis ${formatDate(ex.end_date)}).` +
-          ` Bitte bearbeite die bestehende Meldung oder lade dort ein weiteres Attest hoch.`
+          messageParts([appMessage("ui.dbeb68a1044b"), appMessage("ui.9785ff29fc68", { p1: (formatParam('date', new Date(ex.start_date + 'T00:00:00'), {day:'2-digit',month:'2-digit',year:'numeric'})), p2: (formatParam('date', new Date(ex.end_date + 'T00:00:00'), {day:'2-digit',month:'2-digit',year:'numeric'})) }), appMessage("ui.a250eb280107")])
         )
       }
       sickSavingRef.current = false; return
@@ -384,15 +385,15 @@ export default function Vacation() {
           certificate_file_name:   file.name,
         }).eq('id', sickRecord.id)
       } else {
-        toast.warn('Krankmeldung gespeichert, Datei-Upload fehlgeschlagen: ' + upErr.message)
+        toast.warn(messageParts([appMessage("ui.c6b3e686f9fd"), errorMessage(upErr)]))
       }
     }
 
     // §9 BUrlG Hinweis anzeigen wenn relevant
     sickSavingRef.current = false
-    toast.success('✅ Krankmeldung erfasst')
+    toast.success(appMessage("ui.dd3c0506d6a2"))
     if (overlap.overlaps) {
-      setTimeout(() => toast.info(overlap.message, 8000), 500)
+      setTimeout(() => toast.info(errorMessage(overlap), 8000), 500)
     }
 
     // Protokoll (kein medizinischer Inhalt, nur DASS eine Meldung erfasst wurde)
@@ -428,25 +429,24 @@ export default function Vacation() {
     if (deletingSickId) return
     const isOwnLeave = ownEmployeeId === (profile?.employee_id)
     if (!canManage && !isOwnLeave) {
-      toast.error('Keine Berechtigung — bitte Manager/Admin kontaktieren')
+      toast.error(appMessage("ui.fc5b42196a31"))
       return
     }
     const attestNote = hasAttest
-      ? '\n\n⚠️ Diese Krankmeldung hat ein hochgeladenes Attest. Der Datenbankeintrag wird gelöscht; die Datei im sicheren Speicher bleibt aus Datenschutzgründen ggf. erhalten und muss ggf. separat verwaltet werden.'
+      ? tr("ui.c3a0a85a3e76")
       : ''
     if (!window.confirm(
-      `Krankmeldung ab ${dateLabel} löschen?${attestNote}\n\nDiese Aktion kann nicht rückgängig gemacht werden.`
+      tr("ui.17a11bb99dde", { p1: (dateLabel), p2: (attestNote) })
     )) return
     setDeletingSickId(sickId)
     setSick(prev => prev.filter(s => s.id !== sickId))
     const { data: deleted, error } = await supabase.from('sick_leave').delete().eq('id', sickId).select('id')
     if (error || !deleted?.length) {
       // Datenbank lässt Mitarbeitern nur frische (24 h) Meldungen ohne Attest löschen
-      toast.error(error ? 'Fehler beim Löschen: ' + error.message
-        : 'Diese Krankmeldung kann nur noch das Management löschen (älter als 24 Std. oder mit Attest).', 8000)
+      toast.error(error ? (messageParts([appMessage("ui.3b6ed3d1f8f5"), errorMessage(error)])) : (appMessage("ui.531b7318f9d9")), 8000)
       fetchAll()
     } else {
-      toast.success('✅ Krankmeldung gelöscht')
+      toast.success(appMessage("ui.effdf556532d"))
     }
     setDeletingSickId(null)
   }
@@ -458,14 +458,14 @@ export default function Vacation() {
         .from('sick-certs').createSignedUrl(filePath, 120)
       if (error) throw error
       return data.signedUrl
-    }, 'Attest öffnen').catch(() => toast.error('Das Attest konnte nicht geöffnet werden. Bitte erneut versuchen.'))
+    }, appMessage("ui.0125cf6ff8d7")).catch(() => toast.error(appMessage("ui.fe7a4cc5a8ff")))
   }
 
   async function downloadCert(filePath, fileName) {
     // Signierte Download-URL (erzwingt Download statt Öffnen im Browser)
     const { data, error } = await supabase.storage
       .from('sick-certs').createSignedUrl(filePath, 60, { download: fileName || true })
-    if (error) { toast.error('Fehler beim Download: ' + error.message); return }
+    if (error) { toast.error(messageParts([appMessage("ui.b83dc85a91fe"), errorMessage(error)])); return }
     // Programmatischer Download via <a>-Tag
     const a = document.createElement('a')
     a.href = data.signedUrl
@@ -478,7 +478,7 @@ export default function Vacation() {
   async function uploadAttestForExisting(sickId, empId, file) {
     if (!file) return
     if (uploadingSickId) return
-    if (file.size > 10 * 1024 * 1024) { toast.warn('Datei zu groß — max. 10 MB'); return }
+    if (file.size > 10 * 1024 * 1024) { toast.warn(appMessage("ui.59acd2fe5194")); return }
     setUploadingSickId(sickId)
     try {
       const ext  = file.name.split('.').pop().toLowerCase()
@@ -487,7 +487,7 @@ export default function Vacation() {
       // 1. Storage Upload
       const { error: upErr } = await supabase.storage
         .from('sick-certs').upload(path, file, { upsert: true })
-      if (upErr) { toast.error('Upload fehlgeschlagen: ' + upErr.message); return }
+      if (upErr) { toast.error(messageParts([appMessage("ui.69d9669978d1"), errorMessage(upErr)])); return }
 
       // 2. DB Update — mit .select() um 0 Zeilen (RLS-Block) zu erkennen
       const { data: updated, error: dbErr } = await supabase
@@ -495,19 +495,19 @@ export default function Vacation() {
         .update({ certificate_received: true, certificate_file_path: path, certificate_file_name: file.name })
         .eq('id', sickId)
         .select('id')
-      if (dbErr) { toast.error('Fehler beim Speichern: ' + dbErr.message); return }
+      if (dbErr) { toast.error(messageParts([appMessage("ui.a4497d16d103"), errorMessage(dbErr)])); return }
       if (!updated || updated.length === 0) {
-        toast.error('Keine Berechtigung — bitte Admin kontaktieren')
+        toast.error(appMessage("ui.f8e752f6990f"))
         return
       }
 
       // 3. Optimistisches UI-Update: sofort lokalen State aktualisieren
-      setSick(prev => prev.map(s =>
+      setSick(prev => prev.map((s, labelIndex) =>
         s.id === sickId
           ? { ...s, certificate_received: true, certificate_file_path: path, certificate_file_name: file.name }
           : s
       ))
-      toast.success('✅ Attest hochgeladen!')
+      toast.success(appMessage("ui.b046db6c302b"))
       const attestActor = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Mitarbeiter'
       logActivity({
         action: 'sick_leave.attest_uploaded', category: 'sick_leave',
@@ -528,31 +528,31 @@ export default function Vacation() {
   const effectivePreview = previewDays - (vacConflict?.sickDays || 0)
 
   const STATUS = {
-    pending:  <span className="badge badge-amber">Ausstehend</span>,
-    approved: <span className="badge badge-green">Genehmigt</span>,
-    rejected: <span className="badge badge-red">Abgelehnt</span>,
+    pending:  <span className="badge badge-amber">{tr("ui.0b5e85dd2508")}</span>,
+    approved: <span className="badge badge-green">{tr("ui.9b3015a9dbf0")}</span>,
+    rejected: <span className="badge badge-red">{tr("ui.a9148e8654e8")}</span>,
   }
 
-  if (loading) return <div style={{ padding:24 }}>Lädt…</div>
+  if (loading) return <div style={{ padding:24 }}>{tr("ui.ebbb1d1f265f")}</div>
 
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">Urlaub & Krankmeldungen</div>
+        <div className="topbar-title">{tr("ui.70171f345790")}</div>
         <div className="topbar-right">
           {tab === 'urlaub' && (
             <button className="btn btn-primary" onClick={() => {
               setFormError(''); setVacConflict(null)
               setForm({ employee_id: canManage ? (employees[0]?.id||'') : profile?.employee_id, start_date:'', end_date:'', reason:'' })
               setModal('vacation')
-            }}>+ Urlaubsantrag</button>
+            }}>{tr("ui.6d2092656740")}</button>
           )}
           {tab === 'krank' && (
             <button className="btn btn-primary" onClick={() => {
               setFormError('')
               setForm({ employee_id: canManage ? (employees[0]?.id||'') : profile?.employee_id, start_date: toLocalDateStr(new Date()), notes:'' })
               setModal('sick')
-            }}>+ Krankmeldung</button>
+            }}>{tr("ui.d3ee11d0960b")}</button>
           )}
         </div>
       </div>
@@ -564,45 +564,34 @@ export default function Vacation() {
             <div className="card-body" style={{ padding:'16px 18px' }}>
               <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
                 <div>
-                  <div style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:4 }}>
-                    Mein Urlaubskonto {new Date().getFullYear()}
+                  <div style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:4 }}>{tr("ui.bade2068667e")}{new Date().getFullYear()}
                   </div>
                   <div style={{ fontSize:26, fontWeight:700, color: myBalance.remaining < 0 ? 'var(--danger)' : myBalance.remaining < 5 ? 'var(--warn)' : 'var(--success)' }}>
-                    {myBalance.remaining} {myBalance.remaining === 1 ? 'Tag' : 'Tage'} verfügbar
-                    {myBalance.sick_review > 0 && (
-                      <span style={{ fontSize:12, fontWeight:400, color:'var(--warn)', marginLeft:8 }}>(vorläufig)</span>
+                    {myBalance.remaining} {myBalance.remaining === 1 ? tr("ui.1503916a2ab2") : tr("ui.6770c319ff7b")}{tr("ui.addff0163a31")}{myBalance.sick_review > 0 && (
+                      <span style={{ fontSize:12, fontWeight:400, color:'var(--warn)', marginLeft:8 }}>{tr("ui.69b6e1d3ea0b")}</span>
                     )}
                   </div>
                   {myBalance.pending > 0 && (
                     <div style={{ fontSize:12, color:'var(--warn)', marginTop:2 }}>
-                      + {myBalance.pending} Tage ausstehend
-                    </div>
+                      + {myBalance.pending}{tr("ui.32042b3bbc6c")}</div>
                   )}
                 </div>
                 <div style={{ fontSize:13, color:'var(--text-secondary)', textAlign:'right', lineHeight:1.9 }}>
-                  <div>Jahresanspruch: <strong>{myBalance.entitlement}</strong> Tage</div>
+                  <div>{tr("ui.f27bd5c7c231")}<strong>{myBalance.entitlement}</strong>{tr("ui.d00de448b9e2")}</div>
                   {myBalance.approved_total > 0 && (
-                    <div>Genehmigter Urlaub: <strong>{myBalance.approved_total}</strong> Tage</div>
+                    <div>{tr("ui.1658b46c9ffd")}<strong>{myBalance.approved_total}</strong>{tr("ui.d00de448b9e2")}</div>
                   )}
                   {myBalance.returned_sick > 0 && (
-                    <div style={{ color:'var(--success)', fontSize:12 }}>
-                      ✅ §9 BUrlG: <strong>{myBalance.returned_sick}</strong> {myBalance.returned_sick === 1 ? 'Tag' : 'Tage'} zurückgegeben (Attest vorhanden)
-                    </div>
+                    <div style={{ color:'var(--success)', fontSize:12 }}>{tr("ui.180a9b18d3bb")}<strong>{myBalance.returned_sick}</strong> {myBalance.returned_sick === 1 ? tr("ui.1503916a2ab2") : tr("ui.6770c319ff7b")}{tr("ui.bb976edbcdfb")}</div>
                   )}
                   {myBalance.sick_review > 0 && (
-                    <div style={{ color:'var(--warn)', fontSize:12, fontWeight:500 }}>
-                      ⚠️ §9 BUrlG: <strong>{myBalance.sick_review}</strong> {myBalance.sick_review === 1 ? 'Tag' : 'Tage'} erkannt — Attest fehlt, Prüfung erforderlich
-                    </div>
+                    <div style={{ color:'var(--warn)', fontSize:12, fontWeight:500 }}>{tr("ui.80a230a0f82f")}<strong>{myBalance.sick_review}</strong> {myBalance.sick_review === 1 ? tr("ui.1503916a2ab2") : tr("ui.6770c319ff7b")}{tr("ui.eea228eea676")}</div>
                   )}
                   {myBalance.returned_holiday > 0 && (
-                    <div style={{ color:'var(--success)', fontSize:12 }}>
-                      ✅ Feiertage: <strong>{myBalance.returned_holiday}</strong> {myBalance.returned_holiday === 1 ? 'Tag' : 'Tage'} nicht abgezogen
-                    </div>
+                    <div style={{ color:'var(--success)', fontSize:12 }}>{tr("ui.9ac8a8422bda")}<strong>{myBalance.returned_holiday}</strong> {myBalance.returned_holiday === 1 ? tr("ui.1503916a2ab2") : tr("ui.6770c319ff7b")}{tr("ui.03f14a6dab10")}</div>
                   )}
-                  <div style={{ borderTop:'1px solid var(--border)', paddingTop:2, marginTop:2 }}>
-                    Tatsächlich genutzt: <strong>{myBalance.used}</strong> Tage
-                    {myBalance.sick_review > 0 && (
-                      <span style={{ fontSize:11, color:'var(--warn)', marginLeft:4 }}>(inkl. {myBalance.sick_review}T vorläufig)</span>
+                  <div style={{ borderTop:'1px solid var(--border)', paddingTop:2, marginTop:2 }}>{tr("ui.1b17fd3ad40d")}<strong>{myBalance.used}</strong>{tr("ui.d00de448b9e2")}{myBalance.sick_review > 0 && (
+                      <span style={{ fontSize:11, color:'var(--warn)', marginLeft:4 }}>{tr("ui.9bb4a6e2c971")}{myBalance.sick_review}{tr("ui.657d20bf9403")}</span>
                     )}
                   </div>
                 </div>
@@ -620,8 +609,7 @@ export default function Vacation() {
                   )
                   return hasOverlap ? (
                     <div style={{ marginTop:10, padding:'8px 12px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:8, fontSize:12, color:'#92400E' }}>
-                      ⚠️ <strong>Überlappende Urlaubsanträge erkannt.</strong> Das Konto wurde korrekt berechnet (Tage nur einmal gezählt). Bitte doppelte Anträge mit dem Management klären.
-                    </div>
+                      ⚠️ <strong>{tr("ui.36ba31be2040")}</strong>{tr("ui.7c66b59606e1")}</div>
                   ) : null
                 })()}
                 <div style={{ width:'100%' }}>
@@ -642,27 +630,25 @@ export default function Vacation() {
                   for (let j = i+1; j < relevant.length; j++) {
                     const a = relevant[i], b = relevant[j]
                     if (a.start_date <= b.end_date && a.end_date >= b.start_date) {
-                      const fmt = d => new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})
-                      found.push(`${fmt(a.start_date)}–${fmt(a.end_date)} und ${fmt(b.start_date)}–${fmt(b.end_date)}`)
+                      found.push([a, b])
                     }
                   }
                 }
                 if (!found.length) return null
+                const fmt = d => new Date(d+'T12:00:00').toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit'})
+                const pairs = found.map(([a, b]) => tr('vacation.overlapPair', { first: `${fmt(a.start_date)}–${fmt(a.end_date)}`, second: `${fmt(b.start_date)}–${fmt(b.end_date)}` }))
                 return (
-                  <div style={{ marginTop:10, padding:'8px 12px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:8, fontSize:12, color:'#92400E' }}>
-                    ⚠️ Überlappende Urlaubsanträge erkannt ({found.join(' · ')}). Bitte prüfen und bereinigen.
-                  </div>
+                  <div style={{ marginTop:10, padding:'8px 12px', background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:8, fontSize:12, color:'#92400E' }}>{tr("ui.e394d6ec9802")}{pairs.join(' · ')}{tr("ui.1a99f19a35ac")}</div>
                 )
               })()}
 
               {myBalance.breakdown.length > 0 && (
                 <div style={{ marginTop:12, padding:'10px 12px', background:'var(--success-bg)', borderRadius:8, fontSize:12 }}>
-                  <strong style={{ color:'var(--success)' }}>§9 BUrlG / Feiertage — Rückgaben:</strong>
+                  <strong style={{ color:'var(--success)' }}>{tr("ui.e72ea847346d")}</strong>
                   {myBalance.breakdown.map((b, i) => (
                     <div key={i} style={{ marginTop:4, color:'var(--success)' }}>
-                      • {formatDate(b.start)} – {formatDate(b.end)}: {b.effectiveDays} statt {b.originalDays} Tage gezählt
-                      {b.sickDays > 0 && ` (${b.sickDays} Krankheitstage zurück)`}
-                      {b.holidayDays > 0 && ` (${b.holidayDays} Feiertage nicht abgezogen)`}
+                      • {formatDate(b.start)} – {formatDate(b.end)}: {b.effectiveDays}{tr("ui.46b151c76386")}{b.originalDays}{tr("ui.7d31ec1c66bc")}{b.sickDays > 0 && tr("ui.0d24c4f0e244", { p1: (b.sickDays) })}
+                      {b.holidayDays > 0 && tr("ui.79ee0c2ba6dd", { p1: (b.holidayDays) })}
                     </div>
                   ))}
                 </div>
@@ -673,17 +659,13 @@ export default function Vacation() {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-5" style={{ marginBottom:16 }}>
-          <button className={`btn${tab==='urlaub'?' btn-primary':''}`} onClick={() => setTab('urlaub')}>
-            🌴 Urlaubsanträge
-            {canManage && vacations.filter(v=>v.status==='pending').length > 0 && (
+          <button className={`btn${tab==='urlaub'?' btn-primary':''}`} onClick={() => setTab('urlaub')}>{tr("ui.33eb3a95746b")}{canManage && vacations.filter(v=>v.status==='pending').length > 0 && (
               <span style={{ background:'var(--warn)', color:'#fff', borderRadius:10, fontSize:10, fontWeight:700, padding:'1px 6px', marginLeft:6 }}>
                 {vacations.filter(v=>v.status==='pending').length}
               </span>
             )}
           </button>
-          <button className={`btn${tab==='krank'?' btn-primary':''}`} onClick={() => setTab('krank')}>
-            🤒 Krankmeldungen
-            {sick.filter(s=>!s.end_date).length > 0 && (
+          <button className={`btn${tab==='krank'?' btn-primary':''}`} onClick={() => setTab('krank')}>{tr("ui.aa681bca6636")}{sick.filter(s=>!s.end_date).length > 0 && (
               <span style={{ background:'var(--danger)', color:'#fff', borderRadius:10, fontSize:10, fontWeight:700, padding:'1px 6px', marginLeft:6 }}>
                 {sick.filter(s=>!s.end_date).length}
               </span>
@@ -697,14 +679,12 @@ export default function Vacation() {
               {vacations.length === 0
                 ? <div className="empty-state">
                     <div className="empty-state-icon">🌴</div>
-                    <div className="empty-state-text">Keine Urlaubsanträge</div>
-                    {canManage && <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:8 }}>
-                      Falls du Anträge im Dashboard siehst aber hier nicht: Supabase → SQL Editor ausführen um den Datenbankstatus zu prüfen.
-                    </div>}
+                    <div className="empty-state-text">{tr("ui.b744ba813488")}</div>
+                    {canManage && <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:8 }}>{tr("ui.747d7196243b")}</div>}
                   </div>
                 : <table>
                     <thead>
-                      <tr>{canManage && <th>Mitarbeiter</th>}<th>Von</th><th>Bis</th><th>Tage*</th><th>Status</th>{canManage&&<th>Aktion</th>}</tr>
+                      <tr>{canManage && <th>{tr("ui.f4cb6891b9e5")}</th>}<th>{tr("ui.640e86cbc244")}</th><th>{tr("ui.078a815372af")}</th><th>{tr("ui.d2a94bcff13a")}</th><th>{tr("ui.920e413c7d41")}</th>{canManage&&<th>{tr("ui.a4ad259e71cb")}</th>}</tr>
                     </thead>
                     <tbody>
                       {vacations.map(v => {
@@ -736,7 +716,7 @@ export default function Vacation() {
                               if (!affected) return null
                               return (
                                 <span style={{ marginLeft:6, fontSize:11, color:'var(--success)' }}>
-                                  {affected.sickDays > 0 ? `→ ${affected.effectiveDays} abgezogen` : null}
+                                  {affected.sickDays > 0 ? tr("vacation.deducted", { days: affected.effectiveDays }) : null}
                                 </span>
                               )
                             })()}
@@ -744,8 +724,7 @@ export default function Vacation() {
                           <td>
                             {STATUS[v.status]}
                             {rowHasConflict && (
-                              <div style={{ fontSize:11, color:'#92400E', marginTop:3, fontWeight:500 }}>
-                                ⚠️ Überschneidet mit {conflictingVac.employees?.first_name ?? ''} {conflictingVac.employees?.last_name ?? ''} {formatDate(conflictingVac.start_date)}–{formatDate(conflictingVac.end_date)}
+                              <div style={{ fontSize:11, color:'#92400E', marginTop:3, fontWeight:500 }}>{tr("ui.48ef5787ea06")}{conflictingVac.employees?.first_name ?? ''} {conflictingVac.employees?.last_name ?? ''} {formatDate(conflictingVac.start_date)}–{formatDate(conflictingVac.end_date)}
                               </div>
                             )}
                             {v.approved_by_name && (v.status === 'approved' || v.status === 'rejected') && (
@@ -767,24 +746,24 @@ export default function Vacation() {
                                 <button
                                   className="btn btn-sm btn-danger"
                                   style={{ fontSize:11 }}
-                                  title={`Urlaub ${formatDate(v.start_date)}–${formatDate(v.end_date)} ablehnen`}
+                                  title={tr("ui.248dab382a85", { p1: (formatDate(v.start_date)), p2: (formatDate(v.end_date)) })}
                                   onClick={() => {
                                     const isDuplicate =
                                       v.start_date >= conflictingVac.start_date &&
                                       v.end_date   <= conflictingVac.end_date
                                     const hint = isDuplicate
-                                      ? `\n\nHinweis: Dieser Antrag (${formatDate(v.start_date)}–${formatDate(v.end_date)}) liegt komplett innerhalb des anderen Antrags → wahrscheinlich das Duplikat.`
+                                      ? tr("ui.1d496a3db61e", { p1: (formatDate(v.start_date)), p2: (formatDate(v.end_date)) })
                                       : ''
                                     if (window.confirm(
-                                      `Urlaub ${formatDate(v.start_date)}–${formatDate(v.end_date)} ablehnen um Überschneidung zu bereinigen?${hint}\n\nDiese Aktion kann nicht rückgängig gemacht werden.`
+                                      tr("ui.2b76f8f6b693", { p1: (formatDate(v.start_date)), p2: (formatDate(v.end_date)), p3: (hint) })
                                     )) {
                                       vacAction(v.id, 'rejected')
                                     }
                                   }}
-                                >✗ Bereinigen{
+                                >{tr("ui.c904fda89ac4")}{
                                   v.start_date >= conflictingVac.start_date &&
                                   v.end_date   <= conflictingVac.end_date
-                                    ? ' (Duplikat)' : ''
+                                    ? tr("ui.15f040f0d48a") : ''
                                 }</button>
                               )}
                             </td>
@@ -796,9 +775,7 @@ export default function Vacation() {
                   </table>
               }
             </div>
-            <div style={{ padding:'8px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>
-              * Arbeitstage ohne Wochenenden & gesetzliche Hessische Feiertage. "eff." = effektiv nach Abzug von Krankheitstagen (§9 BUrlG).
-            </div>
+            <div style={{ padding:'8px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>{tr("ui.b0687b5c1818")}</div>
           </div>
         )}
 
@@ -809,11 +786,11 @@ export default function Vacation() {
               <div className="card" style={{ marginBottom:16 }}>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:0 }}>
                   {[
-                    { label:'Krankmeldungen ' + new Date().getFullYear(), value: sick.filter(s => new Date(s.start_date).getFullYear() === new Date().getFullYear()).length, icon:'🤒' },
-                    { label:'Aktuell krank',   value: sick.filter(s => !s.end_date).length, icon:'🏥', color: sick.filter(s=>!s.end_date).length > 0 ? 'var(--danger)' : undefined },
-                    { label:'Mit Attest',       value: sick.filter(s => s.certificate_received).length, icon:'📄' },
-                  ].map(s => (
-                    <div key={s.label} style={{ padding:'14px 16px', borderRight:'1px solid var(--border)', textAlign:'center' }}>
+                    { label:tr("ui.44aa40ade27a") + new Date().getFullYear(), value: sick.filter(s => new Date(s.start_date).getFullYear() === new Date().getFullYear()).length, icon:'🤒' },
+                    { label:tr("ui.891f25d4f8da"),   value: sick.filter(s => !s.end_date).length, icon:'🏥', color: sick.filter(s=>!s.end_date).length > 0 ? 'var(--danger)' : undefined },
+                    { label:tr("ui.8f4091ae36f3"),       value: sick.filter(s => s.certificate_received).length, icon:'📄' },
+                  ].map((s, labelIndex) => (
+                    <div key={labelIndex} style={{ padding:'14px 16px', borderRight:'1px solid var(--border)', textAlign:'center' }}>
                       <div style={{ fontSize:18, marginBottom:4 }}>{s.icon}</div>
                       <div style={{ fontSize:20, fontWeight:700, color: s.color || 'var(--text-primary)' }}>{s.value}</div>
                       <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{s.label}</div>
@@ -825,17 +802,17 @@ export default function Vacation() {
           <div className="card">
             <div className="table-wrap">
               {sick.length === 0
-                ? <div className="empty-state"><div className="empty-state-icon">🤒</div><div className="empty-state-text">Keine Krankmeldungen</div></div>
+                ? <div className="empty-state"><div className="empty-state-icon">🤒</div><div className="empty-state-text">{tr("ui.7f0c943892ac")}</div></div>
                 : <table>
                     <thead>
                         <tr>
-                          {canManage && <th>Mitarbeiter</th>}
-                          <th>AU-Fall seit</th>
-                          <th>Bis</th>
-                          <th>Lohnfortz. bis</th>
-                          <th>Status</th>
-                          <th>§9 BUrlG</th>
-                          <th>Attest</th>
+                          {canManage && <th>{tr("ui.f4cb6891b9e5")}</th>}
+                          <th>{tr("ui.3a04db51f7a1")}</th>
+                          <th>{tr("ui.078a815372af")}</th>
+                          <th>{tr("ui.4494993a0fd0")}</th>
+                          <th>{tr("ui.920e413c7d41")}</th>
+                          <th>{tr("ui.4a4ffb2dc785")}</th>
+                          <th>{tr("ui.c81da7e67a9d")}</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -864,8 +841,7 @@ export default function Vacation() {
                                       <strong>{sc.employee?.first_name} {sc.employee?.last_name}</strong>
                                       {sc.leaves.length > 1 && (
                                         <span style={{ display:'block', fontSize:11, color:'var(--text-muted)' }}>
-                                          {sc.leaves.length} Meldungen
-                                        </span>
+                                          {sc.leaves.length}{tr("ui.fb07970d47ac")}</span>
                                       )}
                                     </td>
                                   )}
@@ -873,12 +849,12 @@ export default function Vacation() {
                                   <td>
                                     {sc.end_date
                                       ? formatDate(sc.end_date)
-                                      : <span className="badge badge-amber">noch krank</span>}
+                                      : <span className="badge badge-amber">{tr("ui.5920b018bf9f")}</span>}
                                   </td>
                                   <td style={{ fontSize:12 }}>
                                     {status === 'health_insurance_review'
-                                      ? <span style={{ color:'#DC2626', fontWeight:600 }}>endete {payEnd.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>
-                                      : <span>{payEnd.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>
+                                      ? <span style={{ color:'#DC2626', fontWeight:600 }}>{tr("ui.9addee09de7e")}{payEnd.toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})}</span>
+                                      : <span>{payEnd.toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})}</span>
                                     }
                                   </td>
                                   <td>
@@ -889,24 +865,24 @@ export default function Vacation() {
                                   </td>
                                   <td>
                                     {bUrlG.overlaps
-                                      ? <span className="badge badge-green" title={bUrlG.message}>↩ {bUrlG.returnedDays}T zurück</span>
+                                      ? <span className="badge badge-green" title={localizeMessage(bUrlG.message)}>↩ {bUrlG.returnedDays}{tr("ui.a6f0cdc2ee1f")}</span>
                                       : <span style={{ fontSize:12, color:'var(--text-muted)' }}>–</span>}
                                   </td>
                                   <td>
                                     {latestLeave.certificate_file_path
                                       ? <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                                          <button className="btn btn-sm" onClick={() => viewCert(latestLeave.certificate_file_path)}>📄 Öffnen</button>
+                                          <button className="btn btn-sm" onClick={() => viewCert(latestLeave.certificate_file_path)}>{tr("ui.ced8ed5a3dca")}</button>
                                           <button className="btn btn-sm" style={{ background:'var(--info-bg)', color:'var(--info)', border:'1px solid var(--info)' }}
-                                            onClick={() => downloadCert(latestLeave.certificate_file_path, latestLeave.certificate_file_name)}>⬇ Download</button>
+                                            onClick={() => downloadCert(latestLeave.certificate_file_path, latestLeave.certificate_file_name)}>{tr("ui.fee265346c65")}</button>
                                         </div>
                                       : latestLeave.certificate_received
-                                        ? <span className="badge badge-green">✓ erhalten</span>
+                                        ? <span className="badge badge-green">{tr("ui.e65f6c7a20d5")}</span>
                                         : <label style={{ cursor:'pointer' }}>
                                             <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display:'none' }}
                                               onChange={e => { const f = e.target.files?.[0]; if(f) uploadAttestForExisting(latestLeave.id, latestLeave.employee_id || myEmployee?.id, f); e.target.value='' }} />
                                             {uploadingSickId === latestLeave.id
-                                              ? <span style={{ fontSize:12, color:'var(--text-muted)' }}>⏳ Lädt…</span>
-                                              : <span className="btn btn-sm" style={{ background:'var(--warn-bg)', color:'var(--warn)', border:'1px solid var(--warn)' }}>📤 Attest hochladen</span>}
+                                              ? <span style={{ fontSize:12, color:'var(--text-muted)' }}>{tr("ui.e770d51fc2cc")}</span>
+                                              : <span className="btn btn-sm" style={{ background:'var(--warn-bg)', color:'var(--warn)', border:'1px solid var(--warn)' }}>{tr("ui.b64a6b039400")}</span>}
                                           </label>}
                                   </td>
                                   <td>
@@ -931,15 +907,13 @@ export default function Vacation() {
                                     <td colSpan={canManage ? 8 : 7} style={{ padding:'6px 12px 10px', background:'#FFFBEB', borderLeft:'3px solid #F59E0B' }}>
                                       {warnings.map((w,i) => (
                                         <div key={i} style={{ fontSize:12, color: w.level === 'error' ? '#DC2626' : w.level === 'info' ? '#1D4ED8' : '#92400E', marginTop: i>0 ? 4 : 0, lineHeight:1.5 }}>
-                                          {w.level === 'error' ? '🔴' : w.level === 'info' ? 'ℹ️' : '⚠️'} {w.text}
+                                          {w.level === 'error' ? '🔴' : w.level === 'info' ? 'ℹ️' : '⚠️'} {localizeMessage(w.text)}
                                         </div>
                                       ))}
                                       {/* Detailansicht aller Einzelmeldungen wenn mehrere im Fall */}
                                       {sc.leaves.length > 1 && (
                                         <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid #E5E7EB' }}>
-                                          <div style={{ fontSize:12, fontWeight:600, marginBottom:6, color:'var(--text-secondary)' }}>
-                                            Einzelne Meldungen in diesem AU-Fall:
-                                          </div>
+                                          <div style={{ fontSize:12, fontWeight:600, marginBottom:6, color:'var(--text-secondary)' }}>{tr("ui.077b21eede27")}</div>
                                           {sc.leaves.map((lv, idx) => {
                                             const isFirst = idx === 0
                                             const prevLv  = idx > 0 ? sc.leaves[idx - 1] : null
@@ -953,16 +927,16 @@ export default function Vacation() {
                                                 <span style={{ color:'var(--text-muted)', minWidth:20 }}>{idx + 1}.</span>
                                                 <span style={{ flex:1 }}>
                                                   <strong>{formatDate(lv.start_date)}</strong>
-                                                  {lv.end_date ? ` bis ${formatDate(lv.end_date)}` : ' (noch offen)'}
-                                                  {isFirst && <span style={{ marginLeft:6, fontSize:11, background:'#EFF6FF', color:'#2563EB', padding:'1px 5px', borderRadius:3 }}>Erstmeldung</span>}
-                                                  {!isFirst && lsContinuation && <span style={{ marginLeft:6, fontSize:11, background:'#F0FDF4', color:'#16A34A', padding:'1px 5px', borderRadius:3 }}>Folgebescheinigung</span>}
-                                                  {!isFirst && !lsContinuation && <span style={{ marginLeft:6, fontSize:11, background:'#FEF3C7', color:'#D97706', padding:'1px 5px', borderRadius:3 }}>Überschneidend</span>}
+                                                  {lv.end_date ? tr("ui.75a2ca4efd47", { p1: (formatDate(lv.end_date)) }) : tr("ui.acdb1877c9c2")}
+                                                  {isFirst && <span style={{ marginLeft:6, fontSize:11, background:'#EFF6FF', color:'#2563EB', padding:'1px 5px', borderRadius:3 }}>{tr("ui.3e6375f451f2")}</span>}
+                                                  {!isFirst && lsContinuation && <span style={{ marginLeft:6, fontSize:11, background:'#F0FDF4', color:'#16A34A', padding:'1px 5px', borderRadius:3 }}>{tr("ui.a07b00b6ebe0")}</span>}
+                                                  {!isFirst && !lsContinuation && <span style={{ marginLeft:6, fontSize:11, background:'#FEF3C7', color:'#D97706', padding:'1px 5px', borderRadius:3 }}>{tr("ui.5e081e7b8268")}</span>}
                                                 </span>
                                                 {lv.certificate_file_path
                                                   ? <button className="btn btn-sm" style={{ fontSize:11 }} onClick={() => viewCert(lv.certificate_file_path)}>📄</button>
                                                   : lv.certificate_received
                                                     ? <span style={{ fontSize:11, color:'#059669' }}>✓</span>
-                                                    : <span style={{ fontSize:11, color:'#DC2626' }}>Attest fehlt</span>
+                                                    : <span style={{ fontSize:11, color:'#DC2626' }}>{tr("ui.24e80f20f406")}</span>
                                                 }
                                                 {(canManage || (lv.employee_id === profile?.employee_id && canSelfDeleteSick(lv))) && (
                                                   <button
@@ -988,9 +962,7 @@ export default function Vacation() {
                   </table>
               }
             </div>
-            <div style={{ padding:'8px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>
-              📋 Lohnfortzahlung: max. {LOHNFORTZAHLUNG_TAGE} Kalendertage je AU-Fall (§3 EFZG) — §9 BUrlG: Bei Erkrankung im Urlaub werden nachgewiesene Krankheitstage nicht auf den Jahresurlaub angerechnet (Hinweis erscheint bei Überschneidung)
-            </div>
+            <div style={{ padding:'8px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>{tr("ui.3111897089e2")}{LOHNFORTZAHLUNG_TAGE}{tr("ui.cb6fec7d7880")}</div>
           </div>
           </div>
         )}
@@ -1000,33 +972,32 @@ export default function Vacation() {
       {modal === 'vacation' && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
           <div className="modal" style={{ maxWidth:500 }}>
-            <div className="modal-header"><div className="modal-title">🌴 Urlaubsantrag</div><button className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.8e2f41b0af17")}</div><button className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
             <div className="modal-body">
-              {formError && <div className="alert alert-danger">{formError}</div>}
+              {formError && <div className="alert alert-danger">{localizeMessage(formError)}</div>}
 
               {canManage ? (
                 <div className="form-group">
-                  <label>Mitarbeiter</label>
+                  <label>{tr("ui.f4cb6891b9e5")}</label>
                   <select value={form.employee_id||''} onChange={e => f('employee_id', e.target.value)}>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name} ({e.vacation_days_per_year} Tage/Jahr)</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name} ({e.vacation_days_per_year}{tr("ui.9d50ab8d134f")}</option>)}
                   </select>
                 </div>
               ) : myBalance && (
-                <div className="alert alert-info" style={{ marginBottom:12 }}>
-                  Antrag für: <strong>{myEmployee?.first_name} {myEmployee?.last_name}</strong>
-                  <span style={{ marginLeft:8 }}>· <strong>{myBalance.remaining}</strong> Tage verfügbar</span>
+                <div className="alert alert-info" style={{ marginBottom:12 }}>{tr("ui.da9ceaf8d683")}<strong>{myEmployee?.first_name} {myEmployee?.last_name}</strong>
+                  <span style={{ marginLeft:8 }}>· <strong>{myBalance.remaining}</strong>{tr("ui.fd9bddf4c00a")}</span>
                 </div>
               )}
 
               <div className="two-col">
                 <div className="form-group">
-                  <label>Erster Urlaubstag</label>
+                  <label>{tr("ui.5ab20db9e839")}</label>
                   <input type="date" value={form.start_date||''}
                     min={(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` })()}
                     onChange={e => f('start_date', e.target.value)} />
                 </div>
                 <div className="form-group">
-                  <label>Letzter Urlaubstag</label>
+                  <label>{tr("ui.d82bc660bbce")}</label>
                   <input type="date" value={form.end_date||''} min={form.start_date||''}
                     onChange={e => f('end_date', e.target.value)} />
                 </div>
@@ -1038,34 +1009,28 @@ export default function Vacation() {
                   background: vacConflict ? 'var(--info-bg)' : 'var(--success-bg)',
                   color:      vacConflict ? 'var(--info)'    : 'var(--success)',
                   marginBottom:12, fontSize:13,
-                }}>
-                  📅 Urlaub vom <strong>{new Date(form.start_date+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</strong> bis <strong>{new Date(form.end_date+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</strong> — <strong>{previewDays} Arbeitstag{previewDays>1?'e':''}</strong> beantragt.
-                  {previewDays !== effectivePreview && (
-                    <div style={{ marginTop:4, fontSize:12 }}>
-                      ℹ️ §9 BUrlG: {vacConflict?.sickDays} davon fallen in eine Krankmeldung → effektiv <strong>{effectivePreview}</strong> Tage abgezogen
-                    </div>
+                }}>{tr("ui.925f7ed0d7ea")}<strong>{new Date(form.start_date+'T12:00:00').toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})}</strong>{tr("ui.cffcbd9e175f")}<strong>{new Date(form.end_date+'T12:00:00').toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})}</strong> — <strong>{tr("count.workdays", { count: previewDays })}</strong>{tr("ui.84123473136c")}{previewDays !== effectivePreview && (
+                    <div style={{ marginTop:4, fontSize:12 }}>{tr("ui.2f570506eaf6")}{vacConflict?.sickDays}{tr("ui.7afb3835fe15")}<strong>{effectivePreview}</strong>{tr("ui.e05017b50845")}</div>
                   )}
                 </div>
               )}
               {form.start_date && !form.end_date && (
-                <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:8 }}>
-                  Bitte noch den letzten Urlaubstag auswählen.
-                </div>
+                <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:8 }}>{tr("ui.d9e4c2667678")}</div>
               )}
 
               {/* §9 BUrlG Konflikt-Info */}
               {vacConflict && vacConflict.overlaps && (
                 <div className="alert alert-info" style={{ marginBottom:12, fontSize:12 }}>
-                  {vacConflict.message}
+                  {localizeMessage(vacConflict.message)}
                 </div>
               )}
 
-              <div className="form-group"><label>Grund (optional)</label><textarea rows="2" value={form.reason||''} onChange={e => f('reason', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.a96aed7de9d5")}</label><textarea rows="2" value={form.reason||''} onChange={e => f('reason', e.target.value)} /></div>
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setModal(null)}>Abbrechen</button>
+              <button className="btn" onClick={() => setModal(null)}>{tr("ui.f7ff1178af20")}</button>
               <button className="btn btn-primary" onClick={saveVacation} disabled={saving || previewDays === 0}>
-                {saving ? '…' : '💾 Antrag stellen'}
+                {saving ? '…' : tr("ui.cca7a6c2ed41")}
               </button>
             </div>
           </div>
@@ -1076,28 +1041,25 @@ export default function Vacation() {
       {modal === 'sick' && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
           <div className="modal">
-            <div className="modal-header"><div className="modal-title">🤒 Krankmeldung</div><button className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.26339448d884")}</div><button className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
             <div className="modal-body">
-              {formError && <div className="alert alert-danger">{formError}</div>}
+              {formError && <div className="alert alert-danger">{localizeMessage(formError)}</div>}
               {canManage ? (
                 <div className="form-group">
-                  <label>Mitarbeiter</label>
+                  <label>{tr("ui.f4cb6891b9e5")}</label>
                   <select value={form.employee_id||''} onChange={e => f('employee_id', e.target.value)}>
                     {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
                   </select>
                 </div>
               ) : myEmployee && (
-                <div className="alert alert-info" style={{ marginBottom:12 }}>
-                  Für: <strong>{myEmployee.first_name} {myEmployee.last_name}</strong>
+                <div className="alert alert-info" style={{ marginBottom:12 }}>{tr("ui.2400f1d4e7a0")}<strong>{myEmployee.first_name} {myEmployee.last_name}</strong>
                 </div>
               )}
 
-              <div className="form-group"><label>Krank seit</label><input type="date" value={form.start_date||''} onChange={e => f('start_date', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.99f9a2da8069")}</label><input type="date" value={form.start_date||''} onChange={e => f('start_date', e.target.value)} /></div>
 
               <div className="form-group">
-                <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  Wieder gesund ab
-                  <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:400 }}>(leer lassen wenn noch krank)</span>
+                <label style={{ display:'flex', alignItems:'center', gap:6 }}>{tr("ui.e2c735e44191")}<span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:400 }}>{tr("ui.e93f94a77abc")}</span>
                 </label>
                 <input
                   type="date"
@@ -1106,12 +1068,11 @@ export default function Vacation() {
                   onChange={e => f('end_date', e.target.value || null)}
                 />
                 {form.start_date && form.end_date && new Date(form.end_date) < new Date(form.start_date) && (
-                  <div className="alert alert-danger" style={{ marginTop:6, fontSize:12 }}>Enddatum liegt vor dem Startdatum.</div>
+                  <div className="alert alert-danger" style={{ marginTop:6, fontSize:12 }}>{tr("ui.b73b91f43f72")}</div>
                 )}
                 {form.start_date && form.end_date && (
                   <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:4 }}>
-                    {Math.ceil((new Date(form.end_date) - new Date(form.start_date)) / 86400000) + 1} Krankheitstag(e)
-                  </div>
+                    {Math.ceil((new Date(form.end_date) - new Date(form.start_date)) / 86400000) + 1}{tr("ui.c59166deaff8")}</div>
                 )}
               </div>
 
@@ -1123,24 +1084,22 @@ export default function Vacation() {
                 if (!overlap.overlaps) return null
                 return (
                   <div className="alert alert-success" style={{ marginBottom:12, fontSize:12 }}>
-                    {overlap.message}
+                    {localizeMessage(overlap.message)}
                   </div>
                 )
               })()}
 
               <div className="alert alert-info" style={{ marginBottom:12, fontSize:12 }}>
                 {form.end_date
-                  ? `📋 Krankheitsdauer: ${Math.ceil((new Date(form.end_date) - new Date(form.start_date || form.end_date)) / 86400000) + 1} Tag(e) — Lohnfortzahlung gilt bis max. ${LOHNFORTZAHLUNG_TAGE} Tage.`
-                  : `📋 Kein Enddatum gesetzt → "noch krank". Lohnfortzahlung läuft bis max. ${LOHNFORTZAHLUNG_TAGE} Tage ab Startdatum (§3 EFZG).`
+                  ? tr("ui.6a9bc974e3a1", { p1: (Math.ceil((new Date(form.end_date) - new Date(form.start_date || form.end_date)) / 86400000) + 1), p2: (LOHNFORTZAHLUNG_TAGE) })
+                  : tr("ui.42232f25609f", { p1: (LOHNFORTZAHLUNG_TAGE) })
                 }
               </div>
               {/* Attest Upload — mit Datei-Vorschau */}
               <div className="form-group">
                 <label style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span>📄 Attest hochladen</span>
-                  <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:400 }}>
-                    (ab 3. Krankheitstag Pflicht — PDF, JPG, PNG, max. 10 MB)
-                  </span>
+                  <span>{tr("ui.2f44991e7485")}</span>
+                  <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:400 }}>{tr("ui.c938973ba74b")}</span>
                 </label>
 
                 {selectedFile ? (
@@ -1155,15 +1114,14 @@ export default function Vacation() {
                           ✅ {selectedFile.name}
                         </div>
                         <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>
-                          {(selectedFile.size / 1024).toFixed(0)} KB · {selectedFile.type || 'Unbekannter Typ'} · Bereit zum Absenden
-                        </div>
+                          {(selectedFile.size / 1024).toFixed(0)}{tr("ui.ad0444fc45d4")}{selectedFile.type || tr("ui.2bcdf6920e37")}{tr("ui.a8d3ba49c171")}</div>
                       </div>
                       <button
                         type="button"
                         className="btn btn-sm"
                         style={{ flexShrink:0 }}
                         onClick={() => { setSelectedFile(null); if (fileRef.current) fileRef.current.value = '' }}
-                      >✕ Entfernen</button>
+                      >{tr("ui.20fdb002a8ac")}</button>
                     </div>
                   </div>
                 ) : (
@@ -1180,7 +1138,7 @@ export default function Vacation() {
                       e.currentTarget.style.borderColor = 'var(--border)'
                       const dropped = e.dataTransfer.files[0]
                       if (dropped) {
-                        if (dropped.size > 10485760) { toast.warn('Datei zu groß — max. 10 MB'); return }
+                        if (dropped.size > 10485760) { toast.warn(appMessage("ui.59acd2fe5194")); return }
                         if (fileRef.current) {
                           const dt = new DataTransfer(); dt.items.add(dropped)
                           fileRef.current.files = dt.files
@@ -1190,8 +1148,8 @@ export default function Vacation() {
                     }}
                   >
                     <div style={{ fontSize:28, marginBottom:6 }}>📎</div>
-                    <div style={{ fontSize:13, fontWeight:500 }}>Datei hier ablegen oder klicken</div>
-                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>PDF, JPG, PNG, HEIC · max. 10 MB</div>
+                    <div style={{ fontSize:13, fontWeight:500 }}>{tr("ui.e829fc39d152")}</div>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>{tr("ui.93081d65fa60")}</div>
                   </div>
                 )}
 
@@ -1203,7 +1161,7 @@ export default function Vacation() {
                     const f2 = e.target.files?.[0]
                     if (!f2) { setSelectedFile(null); return }
                     if (f2.size > 10485760) {
-                      toast.warn('Datei zu groß! Max. 10 MB erlaubt.')
+                      toast.warn(appMessage("ui.4741713b54ef"))
                       e.target.value = ''
                       setSelectedFile(null)
                       return
@@ -1213,13 +1171,13 @@ export default function Vacation() {
                 />
               </div>
               <div className="form-group">
-                <label>Notizen (optional)</label>
-                <textarea rows="2" value={form.notes||''} onChange={e => f('notes', e.target.value)} placeholder="z.B. Attest wird per Post nachgereicht…" />
+                <label>{tr("ui.115aef1019b4")}</label>
+                <textarea rows="2" value={form.notes||''} onChange={e => f('notes', e.target.value)} placeholder={tr("ui.63bb086386d4")} />
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn" onClick={() => setModal(null)}>Abbrechen</button>
-              <button className="btn btn-primary" onClick={saveSick} disabled={saving}>{saving?'…':'💾 Einreichen'}</button>
+              <button className="btn" onClick={() => setModal(null)}>{tr("ui.f7ff1178af20")}</button>
+              <button className="btn btn-primary" onClick={saveSick} disabled={saving}>{saving?'…':tr("ui.ac21d3424fe6")}</button>
             </div>
           </div>
         </div>

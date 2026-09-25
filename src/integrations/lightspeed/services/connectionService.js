@@ -1,3 +1,4 @@
+import { t as tr } from '../../../i18n/runtime.js'
 /**
  * POS Connection Service
  *
@@ -118,10 +119,10 @@ export const connectionService = {
    */
   async disconnect(connectionId, disconnectedByUserId) {
     if (!window.confirm(
-      'Lightspeed-Verbindung wirklich trennen?\n\n' +
-      'Bereits synchronisierte Daten bleiben erhalten.\n' +
-      'Automatische Synchronisation wird gestoppt.\n\n' +
-      'Diese Aktion wird revisionssicher protokolliert.'
+      tr("ui.ed3455d705f1") +
+      tr("ui.9fe6c343fcb9") +
+      tr("ui.288987c36243") +
+      tr("ui.d524859b43dc")
     )) return false
 
     const { error } = await supabase.functions.invoke('lightspeed-disconnect', {

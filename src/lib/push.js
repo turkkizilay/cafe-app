@@ -1,3 +1,4 @@
+import { message as appMessage, messageError } from '../i18n/runtime.js'
 // Push-Benachrichtigungen im Browser (Web Push).
 // iPhone/iPad: nur wenn die App über „Zum Home-Bildschirm“ installiert ist (ab iOS 16.4).
 import { supabase } from './supabase'
@@ -45,13 +46,13 @@ export async function pushState() {
 
 /** Einschalten: Erlaubnis holen, Abo anlegen, beim Server anmelden. */
 export async function enablePush() {
-  if (!pushSupported()) throw new Error(isIOS() ? 'Auf dem iPhone bitte zuerst die App zum Home-Bildschirm hinzufügen.' : 'Dieser Browser unterstützt keine Benachrichtigungen.')
+  if (!pushSupported()) throw messageError(isIOS() ? appMessage("push.error.0") : appMessage("push.error.1"))
   const perm = await Notification.requestPermission()
-  if (perm !== 'granted') throw new Error('Benachrichtigungen wurden nicht erlaubt.')
+  if (perm !== 'granted') throw messageError(appMessage("push.error.2"))
   const { data: key, error } = await supabase.rpc('push_public_key')
-  if (error || !key) throw new Error('Benachrichtigungen sind gerade nicht verfügbar. Bitte später erneut versuchen.')
+  if (error || !key) throw messageError(appMessage("push.error.3"))
   const reg = await getRegistration()
-  if (!reg) throw new Error('Benachrichtigungen konnten nicht eingerichtet werden.')
+  if (!reg) throw messageError(appMessage("push.error.4"))
   await navigator.serviceWorker.ready
   let sub = await reg.pushManager.getSubscription()
   // Abo mit anderem Schlüssel (z. B. nach Schlüsselwechsel) ersetzen
@@ -65,7 +66,7 @@ export async function enablePush() {
   const { data, error: e2 } = await supabase.rpc('push_subscribe', {
     p_endpoint: j.endpoint, p_p256dh: j.keys?.p256dh, p_auth: j.keys?.auth, p_ua: navigator.userAgent.slice(0, 200),
   })
-  if (e2 || !data?.success) throw new Error(data?.error || 'Anmeldung für Benachrichtigungen fehlgeschlagen.')
+  if (e2 || !data?.success) throw messageError(data?.error || appMessage("push.error.5"))
   return true
 }
 

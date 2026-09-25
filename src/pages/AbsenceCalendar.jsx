@@ -1,10 +1,14 @@
+import { t as tr, getIntlLocale, message as appMessage, errorMessage, messageParts } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect } from 'react'
-import { supabase, formatMonthYear } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
+import { formatMonthYear } from '../i18n/format.js'
 import Avatar from '../components/UI/Avatar'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 
 export default function AbsenceCalendar() {
+  useLocale()
   const { isAdmin, isManager } = useProfile()
   const toast = useToast()
   const now = new Date()
@@ -31,13 +35,13 @@ export default function AbsenceCalendar() {
           .lte('start_date', end)
           .or(`end_date.gte.${start},end_date.is.null`),
       ])
-      if (e1) toast.error('Fehler beim Laden der Mitarbeiter')
-      if (e2) toast.error('Fehler beim Laden der Urlaube')
-      if (e3) toast.error('Fehler beim Laden der Krankmeldungen')
+      if (e1) toast.error(appMessage("ui.d89c1f2d2438"))
+      if (e2) toast.error(appMessage("ui.8588e208bbda"))
+      if (e3) toast.error(appMessage("ui.993de38ad0e2"))
       setEmployees(emps || [])
       setVacations(vacs || [])
       setSick(sicks || [])
-    } catch(err) { toast.error('Fehler: ' + err.message) }
+    } catch(err) { toast.error(messageParts([appMessage("ui.60efe70adb51"), errorMessage(err)])) }
     setLoading(false)
   }
 
@@ -56,9 +60,9 @@ export default function AbsenceCalendar() {
   }
 
   const ABSENCE_STYLE = {
-    'vacation':         { background:'#059669', title:'Urlaub (genehmigt)' },
-    'vacation-pending': { background:'#D97706', title:'Urlaub (ausstehend)' },
-    'sick':             { background:'#DC2626', title:'Krank' },
+    'vacation':         { background:'#059669', title:tr("ui.ccaf7bd8bc10") },
+    'vacation-pending': { background:'#D97706', title:tr("ui.1c38db36e44c") },
+    'sick':             { background:'#DC2626', title:tr("ui.be1600b499c6") },
   }
 
   // Summary — FIX: use .getTime() for Math.max/min (old bug: Math.max(date) = invalid)
@@ -100,12 +104,12 @@ export default function AbsenceCalendar() {
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">Abwesenheitskalender</div>
+        <div className="topbar-title">{tr("ui.15e5ec97be8c")}</div>
         <div className="topbar-right">
           <button className="btn btn-sm" onClick={() => navMonth(-1)}>←</button>
           <span style={{ padding:'0 12px', fontSize:14, fontWeight:500 }}>{monthLabel}</span>
           <button className="btn btn-sm" onClick={() => navMonth(1)}>→</button>
-          <button className="btn btn-sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()) }}>Heute</button>
+          <button className="btn btn-sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()) }}>{tr("ui.46ea2fff7a5b")}</button>
         </div>
       </div>
 
@@ -119,9 +123,7 @@ export default function AbsenceCalendar() {
             </div>
           ))}
           <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
-            <div style={{ width:14, height:14, borderRadius:3, background:'var(--border)' }} />
-            Wochenende
-          </div>
+            <div style={{ width:14, height:14, borderRadius:3, background:'var(--border)' }} />{tr("ui.fd7058ac0c38")}</div>
         </div>
 
         {/* Zusammenfassung */}
@@ -131,8 +133,8 @@ export default function AbsenceCalendar() {
               <div key={emp.id} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px', fontSize:13, display:'flex', alignItems:'center', gap:8 }}>
                 <Avatar src={emp.avatar_url} firstName={emp.first_name} lastName={emp.last_name} color={emp.avatar_color} size={24} />
                 <span style={{ fontWeight:500 }}>{emp.first_name} {emp.last_name}</span>
-                {emp.vacDays  > 0 && <span style={{ color:'#059669', fontSize:12 }}>🌴 {emp.vacDays}T</span>}
-                {emp.sickDays > 0 && <span style={{ color:'#DC2626', fontSize:12 }}>🤒 {emp.sickDays}T</span>}
+                {emp.vacDays  > 0 && <span style={{ color:'#059669', fontSize:12 }}>🌴 {emp.vacDays}{tr("ui.e632b7095b0b")}</span>}
+                {emp.sickDays > 0 && <span style={{ color:'#DC2626', fontSize:12 }}>🤒 {emp.sickDays}{tr("ui.e632b7095b0b")}</span>}
               </div>
             ))}
           </div>
@@ -140,17 +142,15 @@ export default function AbsenceCalendar() {
 
         {/* Kalender */}
         {loading ? (
-          <div style={{ padding:32, textAlign:'center', color:'var(--text-muted)' }}>Lädt…</div>
+          <div style={{ padding:32, textAlign:'center', color:'var(--text-muted)' }}>{tr("ui.ebbb1d1f265f")}</div>
         ) : employees.length === 0 ? (
-          <div className="empty-state"><div className="empty-state-icon">📆</div><div className="empty-state-text">Keine aktiven Mitarbeiter</div></div>
+          <div className="empty-state"><div className="empty-state-icon">📆</div><div className="empty-state-text">{tr("ui.29355a80c13c")}</div></div>
         ) : (
           <div className="card" style={{ overflowX:'auto' }}>
             <table style={{ borderCollapse:'collapse', width:'100%', minWidth: Math.max(700, daysInMonth * 28 + 200) }}>
               <thead>
                 <tr style={{ background:'var(--bg)' }}>
-                  <th style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, textTransform:'uppercase', color:'var(--text-secondary)', minWidth:160, position:'sticky', left:0, background:'var(--bg)', zIndex:2, borderBottom:'1px solid var(--border)' }}>
-                    Mitarbeiter
-                  </th>
+                  <th style={{ padding:'10px 14px', textAlign:'left', fontSize:11, fontWeight:600, textTransform:'uppercase', color:'var(--text-secondary)', minWidth:160, position:'sticky', left:0, background:'var(--bg)', zIndex:2, borderBottom:'1px solid var(--border)' }}>{tr("ui.f4cb6891b9e5")}</th>
                   {days.map(d => {
                     const date = new Date(year, month, d)
                     const isWe = date.getDay()===0 || date.getDay()===6
@@ -165,7 +165,7 @@ export default function AbsenceCalendar() {
                       }}>
                         <div>{d}</div>
                         <div style={{ fontSize:9, opacity:0.7 }}>
-                          {['So','Mo','Di','Mi','Do','Fr','Sa'][date.getDay()]}
+                          {[tr("ui.fb1df1a24e3f"),tr("ui.d23e867e38e8"),tr("ui.16ab72874809"),tr("ui.d8f33a13ae6e"),tr("ui.30094e0bec00"),tr("ui.eed8f901692d"),tr("ui.a951efc79deb")][date.getDay()]}
                         </div>
                       </th>
                     )

@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts } from '../../../../i18n/runtime.js'
+import { useLocale } from '../../../../context/LocaleContext.jsx'
 /**
  * SetupWizard — Lightspeed Einrichtungsassistent (B1–B6, B15, B17)
  *
@@ -13,12 +15,13 @@ import { connectionService }  from '../../services/connectionService.js'
 import { useState } from 'react'
 
 function CheckRow({ state, label, detail }) {
+  useLocale()
   // state: 'ready' | 'missing' | 'pending' | 'notyet'
   const config = {
-    ready:   { icon: '✓', color: 'var(--success)',    badge: 'Bereit',                   badgeBg: '#ECFDF5', badgeColor: '#059669' },
-    missing: { icon: '○', color: 'var(--warn)',       badge: 'Fehlt noch',               badgeBg: '#FFFBEB', badgeColor: '#D97706' },
-    pending: { icon: '○', color: 'var(--text-muted)', badge: 'Noch nicht verbunden',     badgeBg: '#F9FAFB', badgeColor: '#6B7280' },
-    notyet:  { icon: '○', color: 'var(--text-muted)', badge: 'Später konfigurierbar',    badgeBg: '#F9FAFB', badgeColor: '#6B7280' },
+    ready:   { icon: '✓', color: 'var(--success)',    badge: tr("ui.8d4d4830b4da"),                   badgeBg: '#ECFDF5', badgeColor: '#059669' },
+    missing: { icon: '○', color: 'var(--warn)',       badge: tr("ui.94adf462c539"),               badgeBg: '#FFFBEB', badgeColor: '#D97706' },
+    pending: { icon: '○', color: 'var(--text-muted)', badge: tr("ui.4c8b7e8ff4e7"),     badgeBg: '#F9FAFB', badgeColor: '#6B7280' },
+    notyet:  { icon: '○', color: 'var(--text-muted)', badge: tr("ui.d51b3551352d"),    badgeBg: '#F9FAFB', badgeColor: '#6B7280' },
   }[state] || {}
 
   return (
@@ -38,6 +41,7 @@ function CheckRow({ state, label, detail }) {
 }
 
 export function SetupWizard({ organizationId }) {
+  useLocale()
   const { status, loading, checking, error, nextStep, checkStatus, isFullyConfigured } = useLightspeedSetup()
   const [connecting, setConnecting] = useState(false)
   const [connectError, setConnectError] = useState('')
@@ -51,10 +55,10 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
   async function copyCommands() {
     try {
       await navigator.clipboard.writeText(cliCommands)
-      setCmdCopyMsg('✓ Kopiert')
+      setCmdCopyMsg(appMessage("ui.02d2f77f5936"))
       setTimeout(() => setCmdCopyMsg(''), 2000)
     } catch {
-      setCmdCopyMsg('Manuell kopieren')
+      setCmdCopyMsg(appMessage("ui.8221d544f01b"))
     }
   }
 
@@ -62,10 +66,10 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
     if (!status?.redirectUri) return
     try {
       await navigator.clipboard.writeText(status.redirectUri)
-      setCopyMsg('✓ Kopiert')
+      setCopyMsg(appMessage("ui.02d2f77f5936"))
       setTimeout(() => setCopyMsg(''), 2000)
     } catch {
-      setCopyMsg('Manuell kopieren')
+      setCopyMsg(appMessage("ui.8221d544f01b"))
     }
   }
 
@@ -76,16 +80,14 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       const url = await connectionService.startOAuthFlow(organizationId)
       window.location.href = url
     } catch (err) {
-      setConnectError('Verbindung konnte nicht gestartet werden: ' + err.message)
+      setConnectError(messageParts([appMessage("ui.00feff079192"), errorMessage(err)]))
       setConnecting(false)
     }
   }
 
   if (loading) {
     return (
-      <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text-muted)', fontSize:14 }}>
-        ⏳ Konfiguration wird geprüft…
-      </div>
+      <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text-muted)', fontSize:14 }}>{tr("ui.a1a6d095d8ba")}</div>
     )
   }
 
@@ -95,10 +97,8 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       {/* Fehler wenn Function nicht erreichbar */}
       {error && (
         <div style={{ background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:10, padding:'12px 16px', fontSize:13, color:'#DC2626' }}>
-          <strong>⚠️ {error}</strong>
-          <button className="btn btn-sm" style={{ marginLeft:12 }} onClick={checkStatus}>
-            🔄 Erneut prüfen
-          </button>
+          <strong>⚠️ {localizeMessage(error)}</strong>
+          <button className="btn btn-sm" style={{ marginLeft:12 }} onClick={checkStatus}>{tr("ui.7e446c35a634")}</button>
         </div>
       )}
 
@@ -106,50 +106,50 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       {status && (
         <div className="card">
           <div className="card-header">
-            <div className="card-title">Systemprüfung</div>
+            <div className="card-title">{tr("ui.dc839361758f")}</div>
             <button className="btn btn-sm" onClick={checkStatus} disabled={checking}>
-              {checking ? '⏳ Prüft…' : '🔄 Erneut prüfen'}
+              {checking ? tr("ui.88774c7a943b") : tr("ui.7e446c35a634")}
             </button>
           </div>
           <div style={{ padding:'4px 16px 16px' }}>
             <CheckRow
               state={status.databaseReady ? 'ready' : 'missing'}
-              label="Datenbank-Migration ausgeführt"
-              detail={status.databaseReady ? 'Alle pos_* Tabellen vorhanden' : 'Bitte migration_pos_tables.sql im Supabase SQL Editor ausführen.'} />
+              label={tr("ui.9fc1eef69ca7")}
+              detail={status.databaseReady ? tr("ui.001dde4a6497") : tr("ui.8bed897b0421")} />
             <CheckRow
               state={status.functionsReady ? 'ready' : 'missing'}
-              label="Edge Functions erreichbar"
-              detail={status.functionsReady ? 'Serverseitige Functions antworten' : 'Bitte Functions deployen: supabase functions deploy'} />
+              label={tr("ui.db5e1d6bd5cf")}
+              detail={status.functionsReady ? tr("ui.589f2f904643") : tr("ui.3d6eddc040a4")} />
             <CheckRow
               state={status.environmentConfigured ? 'ready' : 'missing'}
-              label="Lightspeed-Umgebung gesetzt"
+              label={tr("ui.680355da0942")}
               detail={status.environmentConfigured
-                ? `Umgebung: ${status.environment}`
-                : 'Lightspeed-Umgebung fehlt. Bitte setze in Supabase das Secret LIGHTSPEED_ENV auf trial oder production.'} />
+                ? tr("ui.7036c5bf7cc6", { p1: (status.environment) })
+                : tr("ui.d788d259c950")} />
             <CheckRow
               state={status.clientIdConfigured ? 'ready' : 'missing'}
-              label="Client-ID hinterlegt"
+              label={tr("ui.61b501ca2af8")}
               detail={status.clientIdConfigured
-                ? 'In Supabase Secrets vorhanden'
-                : 'Client-ID fehlt. Bitte erstelle im Lightspeed Developer Portal einen API-Client und hinterlege die Client-ID als Supabase Secret LIGHTSPEED_CLIENT_ID.'} />
+                ? tr("ui.37ddfaadfbf3")
+                : tr("ui.bfaaef52495d")} />
             <CheckRow
               state={status.clientSecretConfigured ? 'ready' : 'missing'}
-              label="Client Secret hinterlegt"
+              label={tr("ui.04716ce66cfc")}
               detail={status.clientSecretConfigured
-                ? 'Sicher serverseitig gespeichert'
-                : 'Client Secret fehlt. Bitte hinterlege das Client Secret ausschließlich als Supabase Secret LIGHTSPEED_CLIENT_SECRET. Es darf niemals im Frontend gespeichert werden.'} />
+                ? tr("ui.d766fefd521a")
+                : tr("ui.d35003bb6337")} />
             <CheckRow
               state={status.redirectUriConfigured ? 'ready' : 'missing'}
-              label="Redirect-URI verfügbar"
-              detail={status.redirectUriConfigured ? 'Aus Projekt-URL abgeleitet' : 'Supabase-Projekt-URL nicht gefunden.'} />
+              label={tr("ui.dd6350d1b6ea")}
+              detail={status.redirectUriConfigured ? tr("ui.4ab659a99916") : tr("ui.e52ad46a8b2a")} />
             <CheckRow
               state={status.oauthConnected ? 'ready' : 'pending'}
-              label="OAuth-Verbindung aktiv"
-              detail={status.oauthConnected ? `Verbunden: ${status.connection?.businessName || 'Account'}` : 'Wird nach dem Setzen der Zugangsdaten möglich.'} />
+              label={tr("ui.e8be1482a656")}
+              detail={status.oauthConnected ? tr("ui.e295b9a9aae4", { p1: (status.connection?.businessName || tr("ui.7e1b0d5641f2")) }) : tr("ui.b4492a0e798b")} />
             <CheckRow
               state={status.locationMapped ? 'ready' : 'notyet'}
-              label="Standort zugeordnet"
-              detail={status.locationMapped ? 'Standort-Mapping aktiv' : 'Nach erfolgreicher Verbindung konfigurierbar.'} />
+              label={tr("ui.b3b734dce09e")}
+              detail={status.locationMapped ? tr("ui.15734b6674eb") : tr("ui.0d1fc43e5645")} />
           </div>
         </div>
       )}
@@ -157,17 +157,15 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       {/* Redirect-URI (B4) */}
       {status?.redirectUri && (
         <div className="card">
-          <div className="card-header"><div className="card-title">Redirect-URI</div></div>
+          <div className="card-header"><div className="card-title">{tr("ui.c6ed699e394d")}</div></div>
           <div style={{ padding:16 }}>
-            <p style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:10 }}>
-              Diese URL muss <strong>exakt</strong> im Lightspeed Developer Portal als Redirect-URI eingetragen werden. Schon ein fehlender Buchstabe oder ein zusätzlicher Schrägstrich kann die OAuth-Verbindung verhindern.
-            </p>
+            <p style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:10 }}>{tr("ui.a86b8e57aa3a")}<strong>{tr("ui.09a4f0e923d3")}</strong>{tr("ui.c645b65970cc")}</p>
             <div style={{ display:'flex', gap:8, alignItems:'center' }}>
               <code style={{ flex:1, background:'var(--bg-secondary)', padding:'10px 12px', borderRadius:8, fontSize:12, wordBreak:'break-all', border:'1px solid var(--border)' }}>
                 {status.redirectUri}
               </code>
               <button className="btn btn-sm btn-primary" onClick={copyRedirect} style={{ whiteSpace:'nowrap' }}>
-                {copyMsg || '📋 Kopieren'}
+                {localizeMessage(copyMsg) || tr("ui.c68c00fc706c")}
               </button>
             </div>
           </div>
@@ -177,11 +175,9 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       {/* Scopes (B5) */}
       {status?.scopes && (
         <div className="card">
-          <div className="card-header"><div className="card-title">Benötigte Berechtigungen (Scopes)</div></div>
+          <div className="card-header"><div className="card-title">{tr("ui.f4118f4d1180")}</div></div>
           <div style={{ padding:16 }}>
-            <p style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:10 }}>
-              Diese Scopes müssen im Developer Portal für den API-Client freigeschaltet sein:
-            </p>
+            <p style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:10 }}>{tr("ui.22a1e0e0f0ca")}</p>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
               {status.scopes.map(scope => (
                 <span key={scope} style={{ background:'var(--accent-light)', color:'var(--accent-text)', padding:'4px 12px', borderRadius:20, fontSize:12, fontWeight:500 }}>
@@ -189,9 +185,7 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
                 </span>
               ))}
             </div>
-            <div style={{ marginTop:10, fontSize:11, color:'var(--text-muted)' }}>
-              Quelle: offizielle K-Series Access-Scopes-Dokumentation (verifiziert)
-            </div>
+            <div style={{ marginTop:10, fontSize:11, color:'var(--text-muted)' }}>{tr("ui.abb6d0bb5a6a")}</div>
           </div>
         </div>
       )}
@@ -199,17 +193,15 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       {/* Anleitung Developer Portal (B17 — ehrlich, keine falschen Automatik-Versprechen) */}
       {status && !status.oauthConnected && (
         <div style={{ background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:12, padding:16, fontSize:13 }}>
-          <div style={{ fontWeight:700, marginBottom:8, color:'#1D4ED8' }}>📋 Einmalige Schritte im Lightspeed Developer Portal</div>
+          <div style={{ fontWeight:700, marginBottom:8, color:'#1D4ED8' }}>{tr("ui.9b32f4c70b4b")}</div>
           <ol style={{ margin:0, paddingLeft:20, color:'var(--text-secondary)', lineHeight:1.9 }}>
-            <li>Bei <a href="https://developer-portal.lsk-demo.app" target="_blank" rel="noopener noreferrer" style={{ color:'var(--accent)' }}>developer-portal.lsk-demo.app</a> anmelden</li>
-            <li>API-Client erstellen (Trial oder Production)</li>
-            <li>Redirect-URI von oben exakt eintragen</li>
-            <li>Scopes freischalten: financial-api, orders-api, staff-api, offline_access</li>
-            <li>Client-ID und Client Secret als Supabase Secrets hinterlegen</li>
+            <li>{tr("ui.7d2fc598bec8")}<a href="https://developer-portal.lsk-demo.app" target="_blank" rel="noopener noreferrer" style={{ color:'var(--accent)' }}>{tr("ui.2bcc3412b6f0")}</a>{tr("ui.811758d0a068")}</li>
+            <li>{tr("ui.3fd4f093e513")}</li>
+            <li>{tr("ui.36183aff69e9")}</li>
+            <li>{tr("ui.e548e631c9dc")}</li>
+            <li>{tr("ui.42dc16b9fd5e")}</li>
           </ol>
-          <div style={{ marginTop:8, fontSize:12, color:'var(--text-muted)' }}>
-            Café Buur kann keinen Developer Account automatisch erstellen — das erlaubt Lightspeed nur über das Portal.
-          </div>
+          <div style={{ marginTop:8, fontSize:12, color:'var(--text-muted)' }}>{tr("ui.7006cae9974e")}</div>
         </div>
       )}
 
@@ -217,21 +209,17 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       {status && !status.syncReady && (
         <div className="card">
           <div className="card-header">
-            <div className="card-title">Beispielbefehle für Supabase CLI</div>
+            <div className="card-title">{tr("ui.2bf4e9eae73e")}</div>
             <button className="btn btn-sm" onClick={copyCommands}>
-              {cmdCopyMsg || '📋 Befehle kopieren'}
+              {localizeMessage(cmdCopyMsg) || tr("ui.7180770f81cf")}
             </button>
           </div>
           <div style={{ padding:16 }}>
-            <p style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:10 }}>
-              Diese Befehle im Terminal ausführen und die Platzhalter durch deine echten Werte aus dem Lightspeed Developer Portal ersetzen:
-            </p>
+            <p style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:10 }}>{tr("ui.da8c6000ae30")}</p>
             <pre style={{ background:'var(--bg-secondary)', padding:'12px 14px', borderRadius:8, fontSize:12, overflow:'auto', border:'1px solid var(--border)', margin:0, lineHeight:1.7 }}>
 {cliCommands}
             </pre>
-            <div style={{ marginTop:10, fontSize:11, color:'var(--text-muted)' }}>
-              Die Werte werden ausschließlich serverseitig gespeichert und niemals im Browser angezeigt.
-            </div>
+            <div style={{ marginTop:10, fontSize:11, color:'var(--text-muted)' }}>{tr("ui.979fbc230756")}</div>
           </div>
         </div>
       )}
@@ -240,32 +228,26 @@ supabase secrets set LIGHTSPEED_CLIENT_SECRET=dein_client_secret`
       <div className="card">
         <div style={{ padding:20, textAlign:'center' }}>
           {isFullyConfigured ? (
-            <div style={{ color:'var(--success)', fontSize:14, fontWeight:600 }}>
-              ✅ Einrichtung abgeschlossen — Lightspeed ist einsatzbereit
-            </div>
+            <div style={{ color:'var(--success)', fontSize:14, fontWeight:600 }}>{tr("ui.c034b2bef983")}</div>
           ) : (
             <>
-              <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:10 }}>Nächster Schritt:</div>
+              <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:10 }}>{tr("ui.6a224b133d01")}</div>
               <div style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>{nextStep.label}</div>
               {nextStep.key === 'connect' && (
                 <button className="btn btn-primary" onClick={startConnect} disabled={connecting}>
-                  {connecting ? '⏳ Wird vorbereitet…' : '🔗 Lightspeed verbinden'}
+                  {connecting ? tr("ui.6e931273af6a") : tr("ui.6ccc65eb61d7")}
                 </button>
               )}
               {nextStep.key === 'credentials' && (
-                <div style={{ fontSize:13, color:'var(--text-secondary)' }}>
-                  Client-ID und Secret als Supabase Secrets hinterlegen, dann „Erneut prüfen".
-                </div>
+                <div style={{ fontSize:13, color:'var(--text-secondary)' }}>{tr("ui.f8a998bce86d")}</div>
               )}
               {nextStep.key === 'migration' && (
                 <div style={{ fontSize:13, color:'var(--text-secondary)' }}>
-                  <code>migration_pos_tables.sql</code> in Supabase SQL Editor ausführen.
-                </div>
+                  <code>{tr("ui.03dabae8c214")}</code>{tr("ui.22f541c77463")}</div>
               )}
               {nextStep.key === 'environment' && (
                 <div style={{ fontSize:13, color:'var(--text-secondary)' }}>
-                  <code>LIGHTSPEED_ENV=trial</code> als Supabase Secret setzen.
-                </div>
+                  <code>{tr("ui.4c23e51ecea1")}</code>{tr("ui.7dff38986084")}</div>
               )}
             </>
           )}

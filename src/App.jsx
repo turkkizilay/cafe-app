@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts } from './i18n/runtime.js'
+import { useLocale, LocaleContext } from './context/LocaleContext.jsx'
 import { useState, useEffect, useCallback, useRef, Component } from 'react'
 import { BrandBadge } from './components/UI/Brand'
 import { useAutoLogout } from './hooks/useAutoLogout'
@@ -38,16 +40,17 @@ const RECOVERY_LINK_DETECTED =
 
 // ── Auth-Fehler aus URL-Hash abfangen (#error=...) ───────────
 function AuthErrorScreen() {
+  useLocale()
   const hash   = window.location.hash
   const params = new URLSearchParams(hash.replace('#', ''))
   const code   = params.get('error_code') || params.get('error')
-  const desc   = params.get('error_description')?.replace(/\+/g, ' ') || 'Unbekannter Fehler'
+  const desc   = params.get('error_description')?.replace(/\+/g, ' ') || tr("ui.617580f0f7ef")
 
   const MSG = {
-    otp_expired:   { icon:'⏱', title:'Link abgelaufen', text:'Der Bestätigungslink ist abgelaufen. Bitte logge dich erneut ein — ein neuer Link wird bei Bedarf verschickt.' },
-    access_denied: { icon:'🔒', title:'Zugriff verweigert', text: desc },
+    otp_expired:   { icon:'⏱', title:tr("ui.a389cc7ba387"), text:tr("ui.dc3cd226b479") },
+    access_denied: { icon:'🔒', title:tr("ui.1919bc928bd0"), text: desc },
   }
-  const m = MSG[code] || { icon:'❌', title:'Fehler beim Einloggen', text: desc }
+  const m = MSG[code] || { icon:'❌', title:tr("ui.4b4fbb2740c4"), text: desc }
 
   useEffect(() => {
     window.history.replaceState(null, '', window.location.pathname)
@@ -60,9 +63,7 @@ function AuthErrorScreen() {
           <div style={{ fontSize:44, marginBottom:14 }}>{m.icon}</div>
           <h2 style={{ fontSize:20, fontWeight:600, marginBottom:10 }}>{m.title}</h2>
           <p style={{ color:'#78716C', fontSize:14, lineHeight:1.7, marginBottom:24 }}>{m.text}</p>
-          <button className="btn btn-primary" onClick={() => { window.location.href = '/' }}>
-            Zurück zum Login
-          </button>
+          <button className="btn btn-primary" onClick={() => { window.location.href = '/' }}>{tr("ui.7f109146b296")}</button>
         </div>
       </div>
     </DarkModeProvider>
@@ -70,6 +71,7 @@ function AuthErrorScreen() {
 }
 
 function PendingScreen({ session, onRetry }) {
+  useLocale()
   const [retrying, setRetrying] = useState(false)
 
   async function handleRetry() {
@@ -82,22 +84,16 @@ function PendingScreen({ session, onRetry }) {
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#1C1917' }}>
       <div style={{ background:'#fff', borderRadius:14, padding:'40px 36px', maxWidth:440, textAlign:'center', boxShadow:'0 20px 40px rgba(0,0,0,0.3)' }}>
         <BrandBadge size={64} style={{ margin:'0 auto 14px' }} />
-        <h2 style={{ fontSize:20, fontWeight:600, marginBottom:10 }}>Account wartet auf Freigabe</h2>
-        <p style={{ color:'#78716C', fontSize:14, lineHeight:1.7, marginBottom:8 }}>
-          Dein Account <strong>{session?.user?.email}</strong> wurde erstellt und wartet auf die Genehmigung der Geschäftsführung des Café Buur.
-        </p>
-        <p style={{ color:'#A8A29E', fontSize:12, marginBottom:24 }}>
-          Bitte wende dich an den Chef. Sobald dein Account freigeschaltet ist, klicke auf "Neu laden".
-        </p>
+        <h2 style={{ fontSize:20, fontWeight:600, marginBottom:10 }}>{tr("ui.a6fd5c3625ab")}</h2>
+        <p style={{ color:'#78716C', fontSize:14, lineHeight:1.7, marginBottom:8 }}>{tr("ui.13d90ce3ce74")}<strong>{session?.user?.email}</strong>{tr("ui.95a27955bc0b")}</p>
+        <p style={{ color:'#A8A29E', fontSize:12, marginBottom:24 }}>{tr("ui.99c33aa37301")}</p>
         <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
           <button onClick={handleRetry} disabled={retrying}
             style={{ padding:'9px 20px', border:'none', borderRadius:8, background:'#C2793A', color:'#fff', cursor:'pointer', fontSize:14, fontWeight:600 }}>
-            {retrying ? '...' : '🔄 Neu laden'}
+            {retrying ? '...' : tr("ui.39244d6e0a54")}
           </button>
           <button onClick={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }}
-            style={{ padding:'9px 20px', border:'1px solid #E7E4DF', borderRadius:8, background:'none', cursor:'pointer', fontSize:14, color:'#78716C' }}>
-            Abmelden
-          </button>
+            style={{ padding:'9px 20px', border:'1px solid #E7E4DF', borderRadius:8, background:'none', cursor:'pointer', fontSize:14, color:'#78716C' }}>{tr("ui.545f8be33bf0")}</button>
         </div>
       </div>
     </div>
@@ -105,19 +101,16 @@ function PendingScreen({ session, onRetry }) {
 }
 
 function ErrorScreen({ error, onRetry }) {
+  useLocale()
   return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#1C1917' }}>
       <div style={{ background:'#fff', borderRadius:14, padding:'40px 36px', maxWidth:420, textAlign:'center' }}>
         <div style={{ fontSize:36, marginBottom:12 }}>⚠️</div>
-        <h2 style={{ fontSize:18, fontWeight:600, marginBottom:8 }}>Verbindungsfehler</h2>
-        <p style={{ color:'#78716C', fontSize:13, marginBottom:20 }}>{error}</p>
+        <h2 style={{ fontSize:18, fontWeight:600, marginBottom:8 }}>{tr("ui.201b62edea7b")}</h2>
+        <p style={{ color:'#78716C', fontSize:13, marginBottom:20 }}>{localizeMessage(error)}</p>
         <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-          <button onClick={onRetry} style={{ padding:'9px 20px', border:'none', borderRadius:8, background:'#C2793A', color:'#fff', cursor:'pointer', fontSize:14, fontWeight:600 }}>
-            🔄 Erneut versuchen
-          </button>
-          <button onClick={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }} style={{ padding:'9px 20px', border:'1px solid #E7E4DF', borderRadius:8, background:'none', cursor:'pointer', fontSize:14, color:'#78716C' }}>
-            Abmelden
-          </button>
+          <button onClick={onRetry} style={{ padding:'9px 20px', border:'none', borderRadius:8, background:'#C2793A', color:'#fff', cursor:'pointer', fontSize:14, fontWeight:600 }}>{tr("ui.7df1d235ed7f")}</button>
+          <button onClick={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }} style={{ padding:'9px 20px', border:'1px solid #E7E4DF', borderRadius:8, background:'none', cursor:'pointer', fontSize:14, color:'#78716C' }}>{tr("ui.545f8be33bf0")}</button>
         </div>
       </div>
     </div>
@@ -125,18 +118,17 @@ function ErrorScreen({ error, onRetry }) {
 }
 
 class ErrorBoundary extends Component {
+  static contextType = LocaleContext
   state = { error: null }
   static getDerivedStateFromError(error) { return { error } }
   render() {
     if (this.state.error) return (
       <div style={{ padding:40, textAlign:'center', fontFamily:'system-ui' }}>
         <div style={{ fontSize:40, marginBottom:16 }}>⚠️</div>
-        <h2 style={{ fontSize:18, marginBottom:8 }}>Etwas ist schiefgelaufen</h2>
-        <p style={{ color:'#666', marginBottom:20, fontSize:14 }}>{this.state.error.message}</p>
+        <h2 style={{ fontSize:18, marginBottom:8 }}>{tr("ui.6c52e3f2ffd7")}</h2>
+        <p style={{ color:'#666', marginBottom:20, fontSize:14 }}>{localizeMessage(this.state.error.message)}</p>
         <button onClick={() => { this.setState({error:null}); window.location.reload() }}
-          style={{ padding:'10px 24px', background:'#C2793A', color:'#fff', border:'none', borderRadius:8, cursor:'pointer' }}>
-          🔄 Seite neu laden
-        </button>
+          style={{ padding:'10px 24px', background:'#C2793A', color:'#fff', border:'none', borderRadius:8, cursor:'pointer' }}>{tr("ui.48a67009af21")}</button>
       </div>
     )
     return this.props.children
@@ -144,6 +136,7 @@ class ErrorBoundary extends Component {
 }
 
 export default function App() {
+  useLocale()
   const [session,     setSession]     = useState(null)
   const [profile,     setProfile]     = useState(null)
   const [pending,     setPending]     = useState(0)
@@ -195,7 +188,7 @@ export default function App() {
 
       if (error) {
         console.error('Profile fetch error:', error)
-        setFetchErr(/JWT|token/i.test(error.message || '') ? 'Die Anmeldung konnte nicht bestätigt werden. Bitte „Erneut versuchen“ tippen.' : 'Profil konnte nicht geladen werden: ' + error.message)
+        setFetchErr(/JWT|token/i.test(error.message || '') ? (appMessage("ui.4e68ca04d0c5")) : (messageParts([appMessage("ui.85443be5173c"), errorMessage(error)])))
         setProfile(null)
         setLoading(false)
         lastFetchRef.current.at = 0          // „Erneut versuchen“ muss sofort gehen
@@ -226,7 +219,7 @@ export default function App() {
         setSickPending(sCount || 0)
       }
     } catch (err) {
-      setFetchErr('Netzwerkfehler: ' + err.message)
+      setFetchErr(messageParts([appMessage("ui.720fa1a222ad"), errorMessage(err)]))
       setProfile(null)
     }
     setLoading(false)
@@ -306,8 +299,7 @@ export default function App() {
 
   if (loading && !profile) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#1C1917', color:'#fff', fontSize:18, gap:10 }}>
-      <BrandBadge size={40} /> Café Buur wird geladen…
-    </div>
+      <BrandBadge size={40} />{tr("ui.707d066b168c")}</div>
   )
 
   if (!session) return (
@@ -320,7 +312,7 @@ export default function App() {
 
   if (fetchErr) return (
     <DarkModeProvider>
-      <ErrorScreen error={fetchErr} onRetry={() => fetchProfile(session.user.id, true)} />
+      <ErrorScreen error={localizeMessage(fetchErr)} onRetry={() => fetchProfile(session.user.id, true)} />
     </DarkModeProvider>
   )
 
@@ -328,9 +320,9 @@ export default function App() {
     <DarkModeProvider>
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:16, padding:32, textAlign:'center', background:'var(--bg)' }}>
         <div style={{ fontSize:48 }}>🔒</div>
-        <h2 style={{ fontSize:20, fontWeight:700, margin:0 }}>Account deaktiviert</h2>
-        <p style={{ fontSize:14, color:'var(--text-secondary)', maxWidth:360, margin:0 }}>Dein Account wurde deaktiviert. Bitte wende dich an deinen Administrator.</p>
-        <button className="btn" onClick={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }}>Abmelden</button>
+        <h2 style={{ fontSize:20, fontWeight:700, margin:0 }}>{tr("ui.11d7dd5e75b9")}</h2>
+        <p style={{ fontSize:14, color:'var(--text-secondary)', maxWidth:360, margin:0 }}>{tr("ui.fc79d99bf8cb")}</p>
+        <button className="btn" onClick={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }}>{tr("ui.545f8be33bf0")}</button>
         <div style={{ maxWidth:420, width:'100%' }}><DeleteAccountCard email={session?.user?.email} compact /></div>
       </div>
     </DarkModeProvider>
@@ -354,11 +346,9 @@ export default function App() {
     <DarkModeProvider>
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:14, padding:32, textAlign:'center', background:'var(--bg)' }}>
         <div style={{ fontSize:44 }}>👋</div>
-        <h2 style={{ fontSize:19, fontWeight:700, margin:0 }}>Dieses Konto gibt es nicht mehr</h2>
-        <p style={{ fontSize:14, color:'var(--text-secondary)', maxWidth:360, margin:0, lineHeight:1.6 }}>
-          Der Zugang wurde gelöscht. Wenn du die App wieder nutzen möchtest, bitte die Geschäftsführung um eine neue Einladung.
-        </p>
-        <button className="btn btn-primary" onClick={async () => { await supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember'); window.location.href = '/' }}>Zur Anmeldung</button>
+        <h2 style={{ fontSize:19, fontWeight:700, margin:0 }}>{tr("ui.9c76c0fda80e")}</h2>
+        <p style={{ fontSize:14, color:'var(--text-secondary)', maxWidth:360, margin:0, lineHeight:1.6 }}>{tr("ui.34705562381e")}</p>
+        <button className="btn btn-primary" onClick={async () => { await supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember'); window.location.href = '/' }}>{tr("ui.7977d98eb111")}</button>
       </div>
     </DarkModeProvider>
   )
@@ -390,7 +380,7 @@ export default function App() {
                     sessionStorage.removeItem('cafe_timeout_logout')
                     setTimeout(() => {
                       const t = document.createElement('div')
-                      t.textContent = '🔒 Du wurdest aus Sicherheitsgründen automatisch abgemeldet.'
+                      t.textContent = tr("ui.059d7bbacb71")
                       t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.3)'
                       document.body.appendChild(t)
                       setTimeout(() => t.remove(), 5000)
@@ -434,12 +424,8 @@ export default function App() {
                   border:'1px solid var(--border)',
                 }}>
                   <div style={{ fontSize:44, marginBottom:12 }}>🔒</div>
-                  <h2 style={{ fontSize:19, fontWeight:700, marginBottom:10, color:'var(--text-primary)' }}>
-                    Sitzung läuft bald ab
-                  </h2>
-                  <p style={{ color:'var(--text-secondary)', fontSize:14, lineHeight:1.65, marginBottom:20 }}>
-                    Du warst längere Zeit inaktiv. Aus Sicherheitsgründen wirst du automatisch abgemeldet.
-                  </p>
+                  <h2 style={{ fontSize:19, fontWeight:700, marginBottom:10, color:'var(--text-primary)' }}>{tr("ui.17be0d77841a")}</h2>
+                  <p style={{ color:'var(--text-secondary)', fontSize:14, lineHeight:1.65, marginBottom:20 }}>{tr("ui.5427a8b9c75f")}</p>
                   <div style={{
                     fontSize:28, fontWeight:700, marginBottom:24,
                     color: countdown <= 30 ? 'var(--danger)' : 'var(--warn)',
@@ -448,12 +434,8 @@ export default function App() {
                     {String(Math.floor(countdown / 60)).padStart(2,'0')}:{String(countdown % 60).padStart(2,'0')}
                   </div>
                   <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-                    <button className="btn btn-primary" style={{ minWidth:160 }} onClick={extendSession}>
-                      ✓ Angemeldet bleiben
-                    </button>
-                    <button className="btn" style={{ minWidth:140, color:'var(--danger)', border:'1px solid var(--danger)' }} onClick={() => performLogout('manual')}>
-                      Jetzt abmelden
-                    </button>
+                    <button className="btn btn-primary" style={{ minWidth:160 }} onClick={extendSession}>{tr("ui.307ded5df518")}</button>
+                    <button className="btn" style={{ minWidth:140, color:'var(--danger)', border:'1px solid var(--danger)' }} onClick={() => performLogout('manual')}>{tr("ui.60dc6c3a17af")}</button>
                   </div>
                 </div>
               </div>

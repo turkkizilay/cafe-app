@@ -1,3 +1,4 @@
+import { t as tr, getIntlLocale, message as appMessage, localizeMessage } from '../i18n/runtime.js'
 // Gemeinsame Prüf- und Formatierungsregeln für Personaldaten.
 // Spiegelt die serverseitigen Prüfungen in save_onboarding / update_own_personal_data.
 // Der Server prüft immer selbst — das hier ist nur für schnelles, verständliches Feedback.
@@ -45,26 +46,31 @@ export const isValidSV = v => /^[0-9]{8}[A-Z][0-9]{3}$/.test(cleanSV(v))
 export const isValidPLZ = v => /^[0-9]{5}$/.test((v || '').trim())
 
 export function birthDateProblem(iso) {
-  if (!iso) return 'Bitte gib dein Geburtsdatum an.'
+  if (!iso) return appMessage("ui.05fd7f5ca1a8")
   const d = new Date(iso + 'T00:00:00')
-  if (isNaN(d)) return 'Das Geburtsdatum ist ungültig.'
+  if (isNaN(d)) return appMessage("ui.35161719bf60")
   const now = new Date()
   const min = new Date(now.getFullYear() - 100, now.getMonth(), now.getDate())
   const max = new Date(now.getFullYear() - 14, now.getMonth(), now.getDate())
-  if (d < min || d > max) return 'Bitte prüfe dein Geburtsdatum.'
+  if (d < min || d > max) return appMessage("ui.92714978d366")
   return null
 }
 
-export const FIELD_LABELS = {
-  first_name: 'Vorname', last_name: 'Nachname', birth_name: 'Geburtsname',
-  birth_date: 'Geburtsdatum', birth_place: 'Geburtsort', nationality: 'Staatsangehörigkeit',
-  street: 'Straße', house_number: 'Hausnummer', postal_code: 'PLZ', city: 'Ort', phone: 'Telefon',
-  iban: 'IBAN', account_holder: 'Kontoinhaber', tax_id: 'Steuer-ID',
-  social_security_number: 'Sozialversicherungsnummer', health_insurance: 'Krankenkasse',
-  other_employment: 'Weitere Beschäftigung', other_employment_note: 'Angaben zur weiteren Beschäftigung',
-  emergency_contact_name: 'Notfallkontakt (Name)', emergency_contact_phone: 'Notfallkontakt (Telefon)',
-  privacy_accepted: 'Datenschutzhinweis',
-}
+export const FIELD_MESSAGES = Object.freeze({
+  first_name: appMessage("ui.d2d77b6ffa70"), last_name: appMessage("ui.b25358edd497"), birth_name: appMessage("ui.807b1204e06c"),
+  birth_date: appMessage("ui.6882904da71a"), birth_place: appMessage("ui.590571d3da6b"), nationality: appMessage("ui.3e3a47041a87"),
+  street: appMessage("ui.58a3778c18c4"), house_number: appMessage("ui.f5cff23f21bc"), postal_code: appMessage("ui.c6127fd4465d"), city: appMessage("ui.30fb259129e5"), phone: appMessage("ui.fa6906d76ee9"),
+  iban: 'IBAN', account_holder: appMessage("ui.e2ddc853f6c8"), tax_id: appMessage("ui.45239f930c27"),
+  social_security_number: appMessage("ui.5acdea3be6d5"), health_insurance: appMessage("ui.500348e73c9e"),
+  other_employment: appMessage("ui.ec918980364d"), other_employment_note: appMessage("ui.79b6935488aa"),
+  emergency_contact_name: appMessage("field.emergency_contact_name"), emergency_contact_phone: appMessage("ui.c8026f02cec3"),
+  privacy_accepted: appMessage("ui.f9d49ce8555b"),
+})
+
+// Immediate labels and retained parameters share the same field keys.
+export const FIELD_LABELS = Object.defineProperties({}, Object.fromEntries(
+  Object.entries(FIELD_MESSAGES).map(([field, value]) => [field, { enumerable: true, get: () => localizeMessage(value) }])
+))
 
 // Pflichtfelder (identisch mit dem Server)
 export const REQUIRED_FIELDS = [
@@ -73,23 +79,23 @@ export const REQUIRED_FIELDS = [
   'other_employment', 'emergency_contact_name', 'emergency_contact_phone',
 ]
 
-/** Prüft die angegebenen Felder; liefert { feld: 'Fehlertext' } */
+/** Prüft die angegebenen Felder; liefert { feld: Nachrichtendeskriptor } */
 export function validatePersonal(form, fields) {
   const err = {}
   const empty = v => v === null || v === undefined || String(v).trim() === ''
   for (const f of fields) {
     const v = form[f]
-    if (REQUIRED_FIELDS.includes(f) && empty(v)) { err[f] = 'Pflichtfeld'; continue }
+    if (REQUIRED_FIELDS.includes(f) && empty(v)) { err[f] = appMessage("ui.f5fd476de96f"); continue }
     if (empty(v)) continue
     if (f === 'birth_date') { const p = birthDateProblem(v); if (p) err[f] = p }
-    if (f === 'postal_code' && !isValidPLZ(v)) err[f] = 'Die PLZ muss 5 Ziffern haben.'
-    if (f === 'iban' && !isValidIBAN(v)) err[f] = 'Diese IBAN ist ungültig. Bitte genau prüfen.'
-    if (f === 'tax_id' && !isValidTaxIdFormat(v)) err[f] = 'Die Steuer-ID besteht aus 11 Ziffern.'
-    if (f === 'social_security_number' && !isValidSV(v)) err[f] = 'Format: 12 345678 A 123 (8 Ziffern, 1 Buchstabe, 3 Ziffern).'
-    if ((f === 'phone' || f === 'emergency_contact_phone') && !/^[+0-9 ()/-]{6,}$/.test(String(v).trim())) err[f] = 'Bitte eine gültige Telefonnummer angeben.'
+    if (f === 'postal_code' && !isValidPLZ(v)) err[f] = appMessage("ui.b81a5a4789c4")
+    if (f === 'iban' && !isValidIBAN(v)) err[f] = appMessage("ui.60dfef793833")
+    if (f === 'tax_id' && !isValidTaxIdFormat(v)) err[f] = appMessage("ui.b626330306ae")
+    if (f === 'social_security_number' && !isValidSV(v)) err[f] = appMessage("ui.671552d6a9b8")
+    if ((f === 'phone' || f === 'emergency_contact_phone') && !/^[+0-9 ()/-]{6,}$/.test(String(v).trim())) err[f] = appMessage("ui.f64f6ea3e495")
   }
   if (fields.includes('other_employment_note') && form.other_employment === true && empty(form.other_employment_note)) {
-    err.other_employment_note = 'Bitte kurz angeben (z. B. Minijob bei …, ca. 400 € / Monat).'
+    err.other_employment_note = appMessage("ui.6d3ee19a7bc7")
   }
   return err
 }

@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage } from '../../i18n/runtime.js'
+import { useLocale } from '../../context/LocaleContext.jsx'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { BrandBadge, BrandWordmark } from '../UI/Brand'
 import { supabase } from '../../lib/supabase'
@@ -16,7 +18,7 @@ function checkPasswordStrength(pw) {
   return { checks, score, valid: checks.length && checks.uppercase && checks.number }
 }
 const STRENGTH_COLOR = ['', '#DC2626', '#D97706', '#16A34A', '#16A34A']
-const STRENGTH_LABEL = ['', 'Schwach', 'Mittel', 'Gut', 'Stark']
+const STRENGTH_LABEL = () => ['', tr("ui.e5ded9770387"), tr("ui.6604277e642c"), tr("ui.7a26d266bf0c"), tr("ui.0857c7a77ba1")]
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -24,15 +26,15 @@ function isValidEmail(email) {
 
 function translateError(msg = '') {
   const m = msg.toLowerCase()
-  if (m.includes('invalid login credentials'))    return 'Die eingegebenen Zugangsdaten sind nicht korrekt.'
-  if (m.includes('email not confirmed'))          return 'E-Mail noch nicht bestätigt. Bitte Postfach prüfen.'
-  if (m.includes('email rate limit exceeded'))    return 'Zu viele Versuche. Bitte kurze Zeit warten.'
-  if (m.includes('user already registered'))      return 'Diese E-Mail ist bereits registriert. Bitte anmelden.'
-  if (m.includes('already been registered'))      return 'Diese E-Mail ist bereits registriert. Bitte anmelden.'
-  if (m.includes('password should be at least'))  return 'Passwort muss mindestens 8 Zeichen lang sein.'
-  if (m.includes('too many requests'))            return 'Zu viele Anfragen. Bitte kurz warten.'
-  if (m.includes('signup is disabled'))           return 'Registrierung deaktiviert. Bitte Administrator kontaktieren.'
-  return 'Ein Fehler ist aufgetreten. Bitte erneut versuchen.'
+  if (m.includes('invalid login credentials'))    return appMessage("ui.528708713f77")
+  if (m.includes('email not confirmed'))          return appMessage("ui.7848027ee8dc")
+  if (m.includes('email rate limit exceeded'))    return appMessage("ui.a762af5d35d8")
+  if (m.includes('user already registered'))      return appMessage("ui.87230c6ca327")
+  if (m.includes('already been registered'))      return appMessage("ui.87230c6ca327")
+  if (m.includes('password should be at least'))  return appMessage("ui.e57e73cb1ff6")
+  if (m.includes('too many requests'))            return appMessage("ui.35bd89251439")
+  if (m.includes('signup is disabled'))           return appMessage("ui.4a588c162c39")
+  return appMessage("ui.653f008b3b98")
 }
 
 async function emailIsRegistered(email) {
@@ -45,6 +47,7 @@ async function emailIsRegistered(email) {
 }
 
 function PasswordStrengthBar({ password }) {
+  useLocale()
   const { checks, score } = useMemo(() => checkPasswordStrength(password), [password])
   if (!password) return null
   return (
@@ -59,16 +62,16 @@ function PasswordStrengthBar({ password }) {
         ))}
       </div>
       <div style={{ fontSize:11, color: STRENGTH_COLOR[score], fontWeight:500, marginBottom:4 }}>
-        {STRENGTH_LABEL[score]}
+        {STRENGTH_LABEL()[score]}
       </div>
       <div style={{ display:'flex', flexWrap:'wrap', gap:'3px 12px' }}>
         {[
-          { ok: checks.length,    label: `Min. 8 Zeichen (${password.length})` },
-          { ok: checks.uppercase, label: 'Großbuchstabe' },
-          { ok: checks.number,    label: 'Zahl' },
-          { ok: checks.special,   label: 'Sonderzeichen (empfohlen)' },
-        ].map(({ ok, label }) => (
-          <span key={label} style={{ fontSize:11, color: ok ? '#16A34A' : 'var(--text-muted)', transition:'color 0.2s' }}>
+          { ok: checks.length,    label: tr("ui.54337aef3205", { p1: (password.length) }) },
+          { ok: checks.uppercase, label: tr("ui.901ce87b84c6") },
+          { ok: checks.number,    label: tr("ui.654eb4c0a380") },
+          { ok: checks.special,   label: tr("ui.16ef4bb34777") },
+        ].map(({ ok, label }, labelIndex) => (
+          <span key={labelIndex} style={{ fontSize:11, color: ok ? '#16A34A' : 'var(--text-muted)', transition:'color 0.2s' }}>
             {ok ? '✓' : '○'} {label}
           </span>
         ))}
@@ -78,6 +81,7 @@ function PasswordStrengthBar({ password }) {
 }
 
 export default function Login() {
+  useLocale()
   const [mode,       setMode]       = useState('login')
   const [firstName,  setFirstName]  = useState('')
   const [lastName,   setLastName]   = useState('')
@@ -137,15 +141,15 @@ export default function Login() {
   // ── Login ─────────────────────────────────────────────────────────────
   async function handleLogin() {
     if (!email.trim()) {
-      setErrorWithShake('Bitte gib deine E-Mail-Adresse ein.')
+      setErrorWithShake(appMessage("ui.d0787e7210a3"))
       emailRef.current?.focus(); return
     }
     if (!isValidEmail(email)) {
-      setErrorWithShake('Bitte gib eine gültige E-Mail-Adresse ein.')
+      setErrorWithShake(appMessage("ui.8846e1250e08"))
       emailRef.current?.focus(); return
     }
     if (!password) {
-      setErrorWithShake('Bitte gib dein Passwort ein.')
+      setErrorWithShake(appMessage("ui.1416725ed5f7"))
       passwordRef.current?.querySelector('input')?.focus(); return
     }
     const { error } = await supabase.auth.signInWithPassword({
@@ -171,20 +175,20 @@ export default function Login() {
 
   // ── Registrierung ─────────────────────────────────────────────────────
   async function handleSignup() {
-    if (!firstName.trim())     { setErrorWithShake('Bitte gib deinen Vornamen ein.'); return }
-    if (!lastName.trim())      { setErrorWithShake('Bitte gib deinen Nachnamen ein.'); return }
-    if (!isValidEmail(email))  { setErrorWithShake('Bitte gib eine gültige E-Mail-Adresse ein.'); return }
+    if (!firstName.trim())     { setErrorWithShake(appMessage("ui.b8a90f690438")); return }
+    if (!lastName.trim())      { setErrorWithShake(appMessage("ui.754d169a0d5a")); return }
+    if (!isValidEmail(email))  { setErrorWithShake(appMessage("ui.8846e1250e08")); return }
     const { valid } = checkPasswordStrength(password)
-    if (!valid) { setPassword(''); setPassword2(''); setErrorWithShake('Passwort zu schwach. Min. 8 Zeichen, Großbuchstabe und Zahl.'); return }
-    if (password !== password2) { setPassword2(''); setErrorWithShake('Die Passwörter stimmen nicht überein.'); return }
+    if (!valid) { setPassword(''); setPassword2(''); setErrorWithShake(appMessage("ui.95ea5bf4a359")); return }
+    if (password !== password2) { setPassword2(''); setErrorWithShake(appMessage("ui.0b96cfcc88e1")); return }
 
     const emailCheck = await emailIsRegistered(email)
     if (emailCheck?.exists) {
       setPassword(''); setPassword2('')
       if (emailCheck.reason === 'employee') {
-        setErrorWithShake('Diese E-Mail ist bereits einem Mitarbeiter zugewiesen. Bitte nutze deinen Einladungslink oder wende dich an den Administrator.')
+        setErrorWithShake(appMessage("ui.44f83dfbf62b"))
       } else {
-        setErrorWithShake('Diese E-Mail ist bereits registriert.')
+        setErrorWithShake(appMessage("ui.0b23911039f7"))
         switchMode('login')
       }
       return
@@ -201,7 +205,7 @@ export default function Login() {
 
     if (error) {
       if (error.message.toLowerCase().includes('already') || error.status === 422) {
-        setErrorWithShake('Diese E-Mail ist bereits registriert. Bitte melde dich an.')
+        setErrorWithShake(appMessage("ui.0c8a06b7c865"))
         switchMode('login')
       } else {
         setErrorWithShake(translateError(error.message))
@@ -209,7 +213,7 @@ export default function Login() {
       return
     }
     if (!data?.user?.identities?.length) {
-      setErrorWithShake('Diese E-Mail ist bereits registriert. Bitte melde dich an.')
+      setErrorWithShake(appMessage("ui.0c8a06b7c865"))
       switchMode('login'); return
     }
     setMode('pending')
@@ -217,13 +221,13 @@ export default function Login() {
 
   // ── Passwort vergessen ───────────────────────────────────────────────
   async function handleForgot() {
-    if (!email.trim()) { setErrorWithShake('Bitte gib deine E-Mail-Adresse ein.'); return }
-    if (!isValidEmail(email)) { setErrorWithShake('Bitte gib eine gültige E-Mail-Adresse ein.'); return }
+    if (!email.trim()) { setErrorWithShake(appMessage("ui.d0787e7210a3")); return }
+    if (!isValidEmail(email)) { setErrorWithShake(appMessage("ui.8846e1250e08")); return }
     const { error } = await supabase.auth.resetPasswordForEmail(
       email.trim().toLowerCase(), { redirectTo: window.location.origin }
     )
     if (error) setErrorWithShake(translateError(error.message))
-    else setInfo('📧 Sofern diese E-Mail registriert ist, erhältst du einen Reset-Link. Bitte auch den Spam-Ordner prüfen.')
+    else setInfo(appMessage("ui.6df68349dfc7"))
   }
 
   async function handleSubmit(e) {
@@ -245,33 +249,25 @@ export default function Login() {
       <div className="login-page">
         <div className="login-card" style={{ maxWidth:400, textAlign:'center' }}>
           <BrandBadge size={64} style={{ margin:'0 auto 12px' }} />
-          <h2 style={{ fontSize:18, fontWeight:700, marginBottom:10 }}>Willkommen, {firstName}!</h2>
-          <p style={{ color:'var(--text-secondary)', fontSize:14, lineHeight:1.7, marginBottom:8 }}>
-            Dein Account wurde erfolgreich erstellt.
-          </p>
+          <h2 style={{ fontSize:18, fontWeight:700, marginBottom:10 }}>{tr("ui.341811675742")}{firstName}!</h2>
+          <p style={{ color:'var(--text-secondary)', fontSize:14, lineHeight:1.7, marginBottom:8 }}>{tr("ui.1bcc30ebe6f1")}</p>
           <div style={{ background:'var(--accent-light)', borderRadius:10, padding:'14px 16px', marginBottom:20, textAlign:'left' }}>
-            <div style={{ fontSize:13, fontWeight:600, marginBottom:6, color:'var(--accent-text)' }}>Was passiert als nächstes?</div>
-            <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.8 }}>
-              📋 Das Management wurde informiert.<br/>
-              ✅ Sobald dein Account freigegeben ist, kannst du dich einloggen.<br/>
-              💬 Bei Fragen bitte direkt beim Management melden.
-            </div>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:6, color:'var(--accent-text)' }}>{tr("ui.91f9dc15e1d9")}</div>
+            <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.8 }}>{tr("ui.20d52051ad96")}<br/>{tr("ui.93447e129491")}<br/>{tr("ui.c59c4c1ded83")}</div>
           </div>
           <button
             onClick={() => supabase.auth.signOut().then(() => switchMode('login'))}
             style={{ padding:'10px 24px', border:'1px solid var(--border)', borderRadius:8, background:'none', cursor:'pointer', fontSize:13, color:'var(--text-secondary)' }}
-          >
-            Zurück zur Anmeldung
-          </button>
+          >{tr("ui.24e1219492b4")}</button>
         </div>
       </div>
     )
   }
 
   const BTN = {
-    login:  loading ? 'Anmeldung läuft…' : 'Anmelden',
-    signup: loading ? 'Account wird erstellt…' : 'Account erstellen',
-    forgot: loading ? 'Link wird gesendet…' : 'Reset-Link senden',
+    login:  loading ? tr("ui.5d25e65bf44b") : tr("ui.a329a32263a4"),
+    signup: loading ? tr("ui.79b5baee2b17") : tr("ui.a862634ebf36"),
+    forgot: loading ? tr("ui.8a64d4768e1a") : tr("ui.ebe030931182"),
   }
 
   return (
@@ -281,26 +277,26 @@ export default function Login() {
         <div className="login-logo">
           <BrandBadge size={76} style={{ margin:'0 auto 12px' }} />
           <BrandWordmark height={30} style={{ margin:'0 auto' }} />
-          <div className="login-logo-sub" style={{ marginTop:8 }}>Frankfurt · Personalverwaltung</div>
+          <div className="login-logo-sub" style={{ marginTop:8 }}>{tr("ui.cdaae3cbbe06")}</div>
         </div>
 
         {/* Mode-Überschrift */}
         <h2 style={{ fontSize:14, fontWeight:600, textAlign:'center', marginBottom:16, color:'var(--text-secondary)' }}>
-          {mode === 'login'  ? 'Anmelden' : ''}
-          {mode === 'signup' ? 'Neuen Account erstellen' : ''}
-          {mode === 'forgot' ? 'Passwort zurücksetzen'   : ''}
+          {mode === 'login'  ? tr("ui.a329a32263a4") : ''}
+          {mode === 'signup' ? tr("ui.cbe0ee2b1c75") : ''}
+          {mode === 'forgot' ? tr("ui.6c616ac63f2a")   : ''}
         </h2>
 
         {/* Fehlermeldung mit Animation */}
         {error && (
           <div
-            key={error}
+            key={localizeMessage(error)}
             className="alert alert-danger login-error-animate"
             role="alert"
             aria-live="polite"
             style={{ marginBottom:14, fontSize:13 }}
           >
-            {error}
+            {localizeMessage(error)}
             {unconfirmed && (
               <div style={{ marginTop:8 }}>
                 <button type="button" className="btn btn-sm" disabled={resending}
@@ -312,10 +308,10 @@ export default function Login() {
                     })
                     setResending(false)
                     setError('')
-                    if (rErr) setErrorWithShake('Die E-Mail konnte gerade nicht gesendet werden. Bitte in ein paar Minuten erneut versuchen.')
-                    else { setUnconfirmed(''); setInfo('📬 Bestätigungs-E-Mail wurde erneut gesendet. Bitte auch im Spam-Ordner nachsehen.') }
+                    if (rErr) setErrorWithShake(appMessage("ui.b6dc066c0381"))
+                    else { setUnconfirmed(''); setInfo(appMessage("ui.3af076295354")) }
                   }}>
-                  {resending ? 'Wird gesendet…' : '📬 Bestätigungs-E-Mail erneut senden'}
+                  {resending ? tr("ui.754ed3f63a88") : tr("ui.6af6edbc1012")}
                 </button>
               </div>
             )}
@@ -323,7 +319,7 @@ export default function Login() {
         )}
         {info && (
           <div className="alert alert-success login-error-animate" style={{ marginBottom:14, fontSize:13 }}>
-            {info}
+            {localizeMessage(info)}
           </div>
         )}
 
@@ -333,29 +329,29 @@ export default function Login() {
           {mode === 'signup' && (
             <div className="two-col" style={{ gap:10 }}>
               <div className="form-group">
-                <label htmlFor="signup-first">Vorname</label>
+                <label htmlFor="signup-first">{tr("ui.d2d77b6ffa70")}</label>
                 <input id="signup-first" type="text" value={firstName}
                   onChange={e => setFirstName(e.target.value)}
-                  placeholder="Max" autoComplete="given-name" required disabled={loading} />
+                  placeholder={tr("ui.a1a5936d3b0f")} autoComplete="given-name" required disabled={loading} />
               </div>
               <div className="form-group">
-                <label htmlFor="signup-last">Nachname</label>
+                <label htmlFor="signup-last">{tr("ui.b25358edd497")}</label>
                 <input id="signup-last" type="text" value={lastName}
                   onChange={e => setLastName(e.target.value)}
-                  placeholder="Mustermann" autoComplete="family-name" required disabled={loading} />
+                  placeholder={tr("ui.c9ff763e960d")} autoComplete="family-name" required disabled={loading} />
               </div>
             </div>
           )}
 
           {/* E-Mail */}
           <div className="form-group">
-            <label htmlFor="login-email">E-Mail-Adresse</label>
+            <label htmlFor="login-email">{tr("ui.c2f9765ad5ce")}</label>
             <input
               id="login-email" ref={emailRef}
               type="email" value={email}
               onChange={e => setEmail(e.target.value)}
               onBlur={e => setEmail(e.target.value.trim().toLowerCase())}
-              placeholder="deine@email.de"
+              placeholder={tr("ui.3757dcfb2130")}
               autoComplete="email" autoFocus={mode === 'login'} required disabled={loading}
             />
           </div>
@@ -364,7 +360,7 @@ export default function Login() {
           {mode !== 'forgot' && (
             <div className="form-group">
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                <label htmlFor="login-password" style={{ margin:0 }}>Passwort</label>
+                <label htmlFor="login-password" style={{ margin:0 }}>{tr("ui.a36c101570cc")}</label>
                 {mode === 'login' && (
                   <button
                     type="button"
@@ -377,9 +373,7 @@ export default function Login() {
                     }}
                     onMouseEnter={e => e.target.style.color = 'var(--accent)'}
                     onMouseLeave={e => e.target.style.color = 'var(--text-secondary)'}
-                  >
-                    Passwort vergessen?
-                  </button>
+                  >{tr("ui.78ef93e2ec17")}</button>
                 )}
               </div>
               <div ref={passwordRef}>
@@ -398,7 +392,7 @@ export default function Login() {
           {/* Passwort bestätigen */}
           {mode === 'signup' && (
             <div className="form-group">
-              <label htmlFor="login-password2">Passwort bestätigen</label>
+              <label htmlFor="login-password2">{tr("ui.7d338266c180")}</label>
               <PasswordInput
                 id="login-password2"
                 value={password2}
@@ -407,10 +401,10 @@ export default function Login() {
                 style={{ borderColor: password2 && password !== password2 ? 'var(--danger)' : undefined }}
               />
               {password2 && password !== password2 && (
-                <div style={{ fontSize:11, color:'var(--danger)', marginTop:4 }}>✗ Passwörter stimmen nicht überein</div>
+                <div style={{ fontSize:11, color:'var(--danger)', marginTop:4 }}>{tr("ui.ba3bac23575f")}</div>
               )}
               {password2 && password === password2 && (
-                <div style={{ fontSize:11, color:'#16A34A', marginTop:4 }}>✓ Passwörter stimmen überein</div>
+                <div style={{ fontSize:11, color:'#16A34A', marginTop:4 }}>{tr("ui.71c5b9984138")}</div>
               )}
             </div>
           )}
@@ -424,7 +418,7 @@ export default function Login() {
                 onChange={e => setRememberMe(e.target.checked)}
                 style={{ width:16, height:16, accentColor:'var(--accent)', cursor:'pointer', flexShrink:0 }}
               />
-              <span style={{ color:'var(--text-secondary)' }}>Angemeldet bleiben</span>
+              <span style={{ color:'var(--text-secondary)' }}>{tr("ui.2d1ae386210b")}</span>
             </label>
           )}
 
@@ -458,24 +452,15 @@ export default function Login() {
         {/* Navigation */}
         <div style={{ textAlign:'center', marginTop:20, display:'flex', flexDirection:'column', gap:10 }}>
           {mode === 'login' && (
-            <p style={{ fontSize:12, color:'var(--text-muted)', margin:0, lineHeight:1.6 }}>
-              Zugang benötigt? Bitte wende dich an dein Management.
-              <br />
-              Einladung erhalten? Öffne einfach den Link aus deiner Nachricht.
-            </p>
+            <p style={{ fontSize:12, color:'var(--text-muted)', margin:0, lineHeight:1.6 }}>{tr("ui.4ae343ff9c2b")}<br />{tr("ui.4f972e0e18b7")}</p>
           )}
           {mode === 'signup' && (
-            <span style={{ fontSize:13, color:'var(--text-secondary)' }}>
-              Bereits registriert?{' '}
-              <button onClick={() => switchMode('login')} style={{ background:'none', border:'none', color:'var(--accent)', cursor:'pointer', fontSize:13, fontWeight:600 }}>
-                Anmelden
-              </button>
+            <span style={{ fontSize:13, color:'var(--text-secondary)' }}>{tr("ui.4723a80e7564")}{' '}
+              <button onClick={() => switchMode('login')} style={{ background:'none', border:'none', color:'var(--accent)', cursor:'pointer', fontSize:13, fontWeight:600 }}>{tr("ui.a329a32263a4")}</button>
             </span>
           )}
           {mode === 'forgot' && (
-            <button onClick={() => switchMode('login')} style={{ background:'none', border:'none', color:'var(--accent)', cursor:'pointer', fontSize:13 }}>
-              ← Zurück zur Anmeldung
-            </button>
+            <button onClick={() => switchMode('login')} style={{ background:'none', border:'none', color:'var(--accent)', cursor:'pointer', fontSize:13 }}>{tr("ui.afce3f3cb9de")}</button>
           )}
         </div>
       </div>

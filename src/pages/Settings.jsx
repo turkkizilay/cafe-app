@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, Suspense, lazy } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase }      from '../lib/supabase'
@@ -14,6 +16,7 @@ const IntegrationCenter = lazy(() =>
 )
 
 export default function Settings() {
+  useLocale()
   const { profile } = useProfile()
   const toast = useToast()
   const [searchParams] = useSearchParams()
@@ -36,15 +39,15 @@ export default function Settings() {
   useEffect(() => {
     supabase.from('cafe_settings').select('*').eq('id', 1).maybeSingle()
       .then(({ data }) => { setCfg(data || {}); setLoading(false) })
-      .catch(err => { toast.error('Fehler beim Laden: ' + err.message); setLoading(false) })
+      .catch(err => { toast.error(messageParts([appMessage("ui.f1abd7e4336c"), errorMessage(err)])); setLoading(false) })
   }, [])
 
   function validateCoords(lat, lng) {
     const la = parseFloat(lat), lo = parseFloat(lng)
-    if (isNaN(la) || la < -90 || la > 90)   return 'Breitengrad muss zwischen -90 und 90 liegen.'
-    if (isNaN(lo) || lo < -180 || lo > 180) return 'Längengrad muss zwischen -180 und 180 liegen.'
+    if (isNaN(la) || la < -90 || la > 90)   return appMessage("ui.b34006b6c105")
+    if (isNaN(lo) || lo < -180 || lo > 180) return appMessage("ui.7b5ff40b7d91")
     if (la < 47 || la > 55 || lo < 6 || lo > 15)
-      return '⚠️ Koordinaten liegen außerhalb Deutschlands. Bitte prüfen.'
+      return appMessage("ui.2785953976b3")
     return null
   }
 
@@ -52,7 +55,7 @@ export default function Settings() {
     setSaving(true); setMsg('')
     if (cfg.gps_lat && cfg.gps_lng) {
       const coordErr = validateCoords(cfg.gps_lat, cfg.gps_lng)
-      if (coordErr) { setMsg('❌ ' + coordErr); setSaving(false); return }
+      if (coordErr) { setMsg(messageParts(['❌ ', coordErr])); setSaving(false); return }
     }
     const { error } = await supabase.from('cafe_settings').update({
       cafe_name:    cfg.cafe_name,
@@ -63,7 +66,7 @@ export default function Settings() {
       updated_at:   new Date().toISOString(),
     }).eq('id', 1)
     setSaving(false)
-    setMsg(error ? '❌ Fehler: ' + error.message : '✅ Einstellungen gespeichert!')
+    setMsg(error ? (messageParts([appMessage("ui.11f0fb59178c"), errorMessage(error)])) : (appMessage("ui.79c1106ef13d")))
     if (!error) {
       logActivity({
         action: 'settings.changed', category: 'settings',
@@ -79,38 +82,38 @@ export default function Settings() {
     const prev = !!cfg.clock_require_network
     setCfg(c => ({ ...c, clock_require_network: on }))
     const { error } = await supabase.from('cafe_settings').update({ clock_require_network: on, updated_at: new Date().toISOString() }).eq('id', 1)
-    if (error) { setCfg(c => ({ ...c, clock_require_network: prev })); toast.error('Speichern fehlgeschlagen. Bitte erneut versuchen.'); return }
-    toast.success(on ? 'Einclocken jetzt nur noch über das Café-WLAN.' : 'Einclocken wieder per GPS oder Café-WLAN.')
+    if (error) { setCfg(c => ({ ...c, clock_require_network: prev })); toast.error(appMessage("ui.e478b1785c61")); return }
+    toast.success(on ? (appMessage("ui.6b04dedc762f")) : (appMessage("ui.0b01ce430bb7")))
     logActivity({ action: 'settings.changed', category: 'settings',
       summary: on ? 'hat „Nur über Café-WLAN einclocken“ eingeschaltet.' : 'hat „Nur über Café-WLAN einclocken“ ausgeschaltet.', targetType: 'cafe_settings' })
   }
 
   function useCurrentGPS() {
-    if (!navigator.geolocation) { setMsg('❌ GPS nicht verfügbar auf diesem Gerät'); return }
+    if (!navigator.geolocation) { setMsg(appMessage("ui.289f357d6021")); return }
     setGpsLoading(true)
     navigator.geolocation.getCurrentPosition(
       pos => {
         setCfg(c => ({ ...c, gps_lat: pos.coords.latitude.toFixed(7), gps_lng: pos.coords.longitude.toFixed(7) }))
         setGpsLoading(false)
-        setMsg('📍 Aktueller Standort übernommen — bitte noch speichern!')
+        setMsg(appMessage("ui.d43b5368edf4"))
         setTimeout(() => setMsg(''), 4000)
       },
-      () => { setMsg('❌ GPS-Zugriff verweigert. Bitte in Safari-Einstellungen → Standort erlauben.'); setGpsLoading(false) }
+      () => { setMsg(appMessage("ui.47cfc7fd5699")); setGpsLoading(false) }
     )
   }
 
   function f(k, v) { setCfg(c => ({ ...c, [k]: v })) }
 
-  if (loading || !cfg) return <div style={{ padding:24 }}>Lädt…</div>
+  if (loading || !cfg) return <div style={{ padding:24 }}>{tr("ui.ebbb1d1f265f")}</div>
 
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">Einstellungen</div>
+        <div className="topbar-title">{tr("ui.f5750a5d7231")}</div>
         {activeTab === 'allgemein' && (
           <div className="topbar-right">
             <button className="btn btn-primary" onClick={save} disabled={saving}>
-              {saving ? 'Speichern…' : '💾 Speichern'}
+              {saving ? tr("ui.4f696a99f9c9") : tr("ui.22158eab4b10")}
             </button>
           </div>
         )}
@@ -120,8 +123,8 @@ export default function Settings() {
         {/* ── Tab-Leiste ── */}
         <div style={{ display:'flex', gap:4, marginBottom:20, borderBottom:'1px solid var(--border)', paddingBottom:0 }}>
           {[
-            ['allgemein',    '⚙️ Allgemein'],
-            ['integrationen','🔌 Integrationen'],
+            ['allgemein',    tr("ui.11045a5a31dc")],
+            ['integrationen',tr("ui.1cfb2712f61a")],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -138,60 +141,56 @@ export default function Settings() {
         {activeTab === 'allgemein' && (
           <>
             {msg && (
-              <div className={`alert ${msg.startsWith('✅') || msg.startsWith('📍') ? 'alert-success' : 'alert-danger'}`}>
-                {msg}
+              <div className={`alert ${localizeMessage(msg).startsWith('✅') || localizeMessage(msg).startsWith('📍') ? 'alert-success' : 'alert-danger'}`}>
+                {localizeMessage(msg)}
               </div>
             )}
 
             <div className="two-col">
               {/* Café Info */}
               <div className="card">
-                <div className="card-header"><div className="card-title">☕ Café Informationen</div></div>
+                <div className="card-header"><div className="card-title">{tr("ui.7f77543c1e2e")}</div></div>
                 <div className="card-body">
                   <div className="form-group">
-                    <label>Café Name</label>
-                    <input value={cfg.cafe_name || ''} onChange={e => f('cafe_name', e.target.value)} placeholder="Café Buur" />
+                    <label>{tr("ui.b65ac7a41e09")}</label>
+                    <input value={cfg.cafe_name || ''} onChange={e => f('cafe_name', e.target.value)} placeholder={tr("ui.3e8ae3d66b5d")} />
                   </div>
                   <div className="form-group">
-                    <label>Adresse</label>
-                    <textarea rows="3" value={cfg.address || ''} onChange={e => f('address', e.target.value)} placeholder={"Musterstraße 1\n60000 Frankfurt am Main"} />
+                    <label>{tr("ui.79e5cf20de0b")}</label>
+                    <textarea rows="3" value={cfg.address || ''} onChange={e => f('address', e.target.value)} placeholder={tr("ui.288fd718439f")} />
                   </div>
                 </div>
               </div>
 
               {/* GPS */}
               <div className="card">
-                <div className="card-header"><div className="card-title">📍 GPS Einclocken</div></div>
+                <div className="card-header"><div className="card-title">{tr("ui.cb4431516a08")}</div></div>
                 <div className="card-body">
-                  <div className="alert alert-info" style={{ marginBottom:14, fontSize:12 }}>
-                    Speichere hier die GPS-Koordinaten des Cafés. Mitarbeiter können einclocken, wenn sie im erlaubten Radius sind – oder mit dem Café-WLAN verbunden (siehe unten).
-                  </div>
+                  <div className="alert alert-info" style={{ marginBottom:14, fontSize:12 }}>{tr("ui.3b741072d2b2")}</div>
                   <button className="btn" style={{ width:'100%', justifyContent:'center', marginBottom:12 }}
                     onClick={useCurrentGPS} disabled={gpsLoading}>
-                    {gpsLoading ? '📍 Suche Standort…' : '📍 Aktuellen Standort vom Browser übernehmen'}
+                    {gpsLoading ? tr("ui.c1db3cad529b") : tr("ui.40a2eee08820")}
                   </button>
                   <div className="two-col">
                     <div className="form-group">
-                      <label>Breitengrad (Lat)</label>
+                      <label>{tr("ui.08280023e451")}</label>
                       <input type="number" step="0.0000001" value={cfg.gps_lat || ''} onChange={e => f('gps_lat', e.target.value)} placeholder="50.1109221" />
                     </div>
                     <div className="form-group">
-                      <label>Längengrad (Lng)</label>
+                      <label>{tr("ui.9479267b0a7c")}</label>
                       <input type="number" step="0.0000001" value={cfg.gps_lng || ''} onChange={e => f('gps_lng', e.target.value)} placeholder="8.6821267" />
                     </div>
                   </div>
                   <div className="form-group">
-                    <label>Erlaubter Radius: <strong>{cfg.gps_radius_m || 50}m</strong></label>
+                    <label>{tr("ui.f430da80cd59")}<strong>{cfg.gps_radius_m || 50}{tr("ui.62c66a7a5dd7")}</strong></label>
                     <input type="range" min="10" max="300" step="5" value={cfg.gps_radius_m || 50} onChange={e => f('gps_radius_m', e.target.value)} />
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text-muted)' }}>
-                      <span>10m</span><span>300m</span>
+                      <span>{tr("ui.6ef04fc2d275")}</span><span>{tr("ui.4c3e48ed2d09")}</span>
                     </div>
                   </div>
                   {cfg.gps_lat && cfg.gps_lng && (
                     <a href={`https://www.google.com/maps?q=${cfg.gps_lat},${cfg.gps_lng}`} target="_blank" rel="noreferrer"
-                      className="btn btn-sm" style={{ width:'100%', justifyContent:'center', marginTop:4 }}>
-                      🗺 Standort in Google Maps prüfen
-                    </a>
+                      className="btn btn-sm" style={{ width:'100%', justifyContent:'center', marginTop:4 }}>{tr("ui.b2c5069c6cbf")}</a>
                   )}
                 </div>
               </div>
@@ -204,27 +203,22 @@ export default function Settings() {
 
             {/* Gesetzliche Hinweise */}
             <div className="card" style={{ marginTop:16 }}>
-              <div className="card-header"><div className="card-title">📋 Gesetzliche Automatismen</div></div>
+              <div className="card-header"><div className="card-title">{tr("ui.c3358749628a")}</div></div>
               <div className="card-body">
                 <div className="three-col" style={{ gap:12 }}>
                   <div style={{ background:'var(--bg)', borderRadius:'var(--radius)', padding:'12px 14px' }}>
-                    <div style={{ fontWeight:600, marginBottom:4 }}>⏸ Pausenregelung (§4 ArbZG)</div>
-                    <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>
-                      Ab 6h Arbeit → 30 min Pause<br />Ab 9h Arbeit → 45 min Pause<br />
-                      <em>Wird automatisch beim Ausclocken abgezogen</em>
+                    <div style={{ fontWeight:600, marginBottom:4 }}>{tr("ui.a6f3db0a0bdf")}</div>
+                    <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>{tr("ui.9714ff08f88a")}<br />{tr("ui.25279b9b0b89")}<br />
+                      <em>{tr("ui.a49eae3ee258")}</em>
                     </div>
                   </div>
                   <div style={{ background:'var(--bg)', borderRadius:'var(--radius)', padding:'12px 14px' }}>
-                    <div style={{ fontWeight:600, marginBottom:4 }}>🤒 Lohnfortzahlung (§3 EFZG)</div>
-                    <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>
-                      6 Wochen = 42 Tage<br />Wird automatisch beim Erfassen der Krankmeldung berechnet
-                    </div>
+                    <div style={{ fontWeight:600, marginBottom:4 }}>{tr("ui.df011e80bc5e")}</div>
+                    <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>{tr("ui.683218dbe7c0")}<br />{tr("ui.b82461a076db")}</div>
                   </div>
                   <div style={{ background:'var(--bg)', borderRadius:'var(--radius)', padding:'12px 14px' }}>
-                    <div style={{ fontWeight:600, marginBottom:4 }}>💶 Mindestlohn</div>
-                    <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>
-                      Aktuell 13,90 €/Std (2026)<br />Beim Anlegen von Mitarbeitern wird gewarnt, falls der Stundenlohn darunter liegt
-                    </div>
+                    <div style={{ fontWeight:600, marginBottom:4 }}>{tr("ui.f8b7a5830a9a")}</div>
+                    <div style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.6 }}>{tr("ui.3ec451a59878")}<br />{tr("ui.038e8dc90110")}</div>
                   </div>
                 </div>
               </div>
@@ -235,9 +229,7 @@ export default function Settings() {
         {/* ── Tab: Integrationen ── */}
         {activeTab === 'integrationen' && (
           <Suspense fallback={
-            <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text-muted)', fontSize:14 }}>
-              ⏳ Integration Center wird geladen…
-            </div>
+            <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text-muted)', fontSize:14 }}>{tr("ui.1c51a6353365")}</div>
           }>
             <IntegrationCenter />
           </Suspense>

@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, messageParts } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 /**
  * Lightspeed OAuth Callback-Seite
  *
@@ -17,10 +19,11 @@ import { toPosUserMessage }  from '../integrations/lightspeed/errors/PosIntegrat
 import { logActivity }       from '../lib/activityLog.js'
 
 export default function LightspeedOAuthCallback() {
+  useLocale()
   const [searchParams] = useSearchParams()
   const navigate        = useNavigate()
   const [status,  setStatus]  = useState('processing')  // 'processing' | 'success' | 'error'
-  const [message, setMessage] = useState('Lightspeed-Verbindung wird hergestellt…')
+  const [message, setMessage] = useState(appMessage("ui.14ce29bbe181"))
 
   useEffect(() => {
     const code         = searchParams.get('code')
@@ -31,14 +34,14 @@ export default function LightspeedOAuthCallback() {
     // Lightspeed hat den OAuth-Flow abgebrochen / Fehler gemeldet
     if (errorParam) {
       setStatus('error')
-      setMessage(`Verbindung abgebrochen: ${errorDesc || errorParam}`)
+      setMessage(appMessage("ui.487b68b4a073", { p1: ((errorDesc || errorParam)) }))
       setTimeout(() => navigate('/einstellungen?tab=integrationen'), 4000)
       return
     }
 
     if (!code || !state) {
       setStatus('error')
-      setMessage('Ungültige Callback-Parameter. Bitte Lightspeed-Verbindung erneut starten.')
+      setMessage(appMessage("ui.ae1f23b77f45"))
       setTimeout(() => navigate('/einstellungen?tab=integrationen'), 4000)
       return
     }
@@ -50,7 +53,7 @@ export default function LightspeedOAuthCallback() {
       try {
         await connectionService.handleOAuthCallback(code, state, organizationId)
         setStatus('success')
-        setMessage('✅ Lightspeed erfolgreich verbunden! Du wirst weitergeleitet…')
+        setMessage(appMessage("ui.4b7187b155ac"))
         logActivity({
           action: 'integration.connected', category: 'integration',
           summary: 'hat Lightspeed verbunden.',
@@ -59,7 +62,7 @@ export default function LightspeedOAuthCallback() {
         setTimeout(() => navigate('/einstellungen?tab=integrationen'), 2000)
       } catch (err) {
         setStatus('error')
-        setMessage('❌ ' + toPosUserMessage(err))
+        setMessage(messageParts(['❌ ', toPosUserMessage(err)]))
         setTimeout(() => navigate('/einstellungen?tab=integrationen'), 5000)
       }
     }
@@ -84,10 +87,10 @@ export default function LightspeedOAuthCallback() {
           {isError ? '⚠️' : isSuccess ? '✅' : '🔗'}
         </div>
         <h2 style={{ fontSize:18, fontWeight:700, marginBottom:12, color:'var(--text-primary)' }}>
-          {isError ? 'Verbindung fehlgeschlagen' : isSuccess ? 'Verbindung hergestellt' : 'Lightspeed verbinden'}
+          {isError ? tr("ui.9f5c81a587e0") : isSuccess ? tr("ui.ea9c1b9aa6b8") : tr("ui.5ad863758478")}
         </h2>
         <p style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.7, marginBottom:24 }}>
-          {message}
+          {localizeMessage(message)}
         </p>
         {status === 'processing' && (
           <div style={{
@@ -96,9 +99,7 @@ export default function LightspeedOAuthCallback() {
           }} />
         )}
         {(isError || isSuccess) && (
-          <p style={{ fontSize:12, color:'var(--text-muted)' }}>
-            Du wirst automatisch weitergeleitet…
-          </p>
+          <p style={{ fontSize:12, color:'var(--text-muted)' }}>{tr("ui.b56c92de3de2")}</p>
         )}
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

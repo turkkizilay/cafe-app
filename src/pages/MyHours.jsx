@@ -1,8 +1,11 @@
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useToast }    from '../components/UI/Toast'
 import { useProfile }  from '../context/ProfileContext'
-import { supabase, formatDate, formatTime, formatCurrency } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
+import { formatDate, formatTime, formatCurrency } from '../i18n/format.js'
 import { getVacationBalance }  from '../lib/vacationLogic'
 import {
   MINIJOB_LIMIT, WERKSTUDENT_MONTHLY_LIMIT,
@@ -57,15 +60,16 @@ function parseWeekParam(param) {
   return isNaN(d.getTime()) ? null : getStartOfWeekDE(d)
 }
 function formatWeekRange(monday, sunday) {
-  const m = monday.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})
-  const s = sunday.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})
+  const m = monday.toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit'})
+  const s = sunday.toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})
   return `${m} – ${s}`
 }
 
-const DAY_NAMES = ['Mo','Di','Mi','Do','Fr','Sa','So']
-const DAY_FULL  = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
+const DAY_NAMES = () => [tr("ui.d23e867e38e8"),tr("ui.16ab72874809"),tr("ui.d8f33a13ae6e"),tr("ui.30094e0bec00"),tr("ui.eed8f901692d"),tr("ui.a951efc79deb"),tr("ui.fb1df1a24e3f")]
+const DAY_FULL  = () => [tr("ui.b703fc6aeb9c"),tr("ui.c2e102ca1f11"),tr("ui.76c93ad154a5"),tr("ui.b15c4daa80ba"),tr("ui.5815ddf1ffb1"),tr("ui.7c22aad82322"),tr("ui.a5984592501e")]
 
 export default function MyHours() {
+  useLocale()
   const { profile }  = useProfile()
   const toast        = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -137,7 +141,7 @@ export default function MyHours() {
       }
     } catch (err) {
       console.error('MyHours fetchData:', err)
-      setError('Stunden konnten nicht geladen werden. Bitte erneut versuchen.')
+      setError(appMessage("ui.44e2d03bb7a3"))
     } finally { setLoading(false) }
   }, [profile?.employee_id, weekStart, weekEnd, monthStart, monthEnd])
 
@@ -163,31 +167,31 @@ export default function MyHours() {
       overtimeHours = Math.max(0, monthlyHours - WERKSTUDENT_MONTHLY_LIMIT)
       limitPercent  = Math.min(100, (monthlyHours / WERKSTUDENT_MONTHLY_LIMIT) * 100)
       if (monthlyHours > WERKSTUDENT_MONTHLY_LIMIT) {
-        limitWarning = `⚠️ Werkstudent-Limit überschritten! ${(overtimeHours).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h über ${WERKSTUDENT_MONTHLY_LIMIT}h/Monat`
+        limitWarning = tr("ui.045712f9aaa7", { p1: ((overtimeHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})), p2: (WERKSTUDENT_MONTHLY_LIMIT) })
         limitColor = 'var(--danger)'
       } else if (monthlyHours > WERKSTUDENT_MONTHLY_LIMIT * 0.8) {
-        limitWarning = `⚠️ Bald am Limit: noch ${(WERKSTUDENT_MONTHLY_LIMIT - monthlyHours).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h verfügbar`
+        limitWarning = tr("ui.b70e781ca345", { p1: ((WERKSTUDENT_MONTHLY_LIMIT - monthlyHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})) })
         limitColor = 'var(--warn)'
       }
       if (weeklyHours > WERKSTUDENT_WEEKLY_LIMIT) {
-        limitWarning = `🚨 Wöchentliches Limit (${WERKSTUDENT_WEEKLY_LIMIT.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h) überschritten!`
+        limitWarning = tr("ui.27381da0a27a", { p1: (WERKSTUDENT_WEEKLY_LIMIT.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})) })
         limitColor = 'var(--danger)'
       }
     } else if (employee.employment_type === 'minijob') {
       const earnings = monthlyHours * employee.hourly_rate
       limitPercent   = Math.min(100, (earnings / MINIJOB_LIMIT) * 100)
       if (earnings > MINIJOB_LIMIT) {
-        limitWarning = `🚨 Minijob-Grenze überschritten! ${formatCurrency(earnings - MINIJOB_LIMIT)} zu viel`
+        limitWarning = tr("ui.ce0fe801ec29", { p1: (formatCurrency(earnings - MINIJOB_LIMIT)) })
         limitColor = 'var(--danger)'
       } else if (earnings > MINIJOB_LIMIT * 0.85) {
-        limitWarning = `⚠️ Fast am Minijob-Limit: ${formatCurrency(MINIJOB_LIMIT - earnings)} verbleibend`
+        limitWarning = tr("ui.1c8be3bbaa70", { p1: (formatCurrency(MINIJOB_LIMIT - earnings)) })
         limitColor = 'var(--warn)'
       }
     } else {
       overtimeHours = Math.max(0, monthlyHours - monthTarget)
       limitPercent  = Math.min(110, (monthlyHours / (monthTarget||1)) * 100)
       if (overtimeHours > 5) {
-        limitWarning = `📊 ${(overtimeHours).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h Überstunden diesen Monat`
+        limitWarning = tr("ui.0b6aaadc0bbc", { p1: ((overtimeHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})) })
         limitColor = 'var(--warn)'
       }
     }
@@ -204,11 +208,11 @@ export default function MyHours() {
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">Meine Stunden</div>
+        <div className="topbar-title">{tr("ui.d969afbb67a9")}</div>
         {employee && (
           <div style={{ padding:'0 24px', display:'flex', alignItems:'center', gap:8 }}>
             <span className="badge badge-gray">{employee.first_name} {employee.last_name}</span>
-            <Link to={`/stundennachweis?monat=${year}-${String(month).padStart(2,'0')}`} className="btn btn-sm">🖨️ Stundennachweis</Link>
+            <Link to={`/stundennachweis?monat=${year}-${String(month).padStart(2,'0')}`} className="btn btn-sm">{tr("ui.7e62fb83eeda")}</Link>
           </div>
         )}
       </div>
@@ -225,13 +229,13 @@ export default function MyHours() {
             className="btn btn-sm"
             onClick={goBack}
             style={{ minWidth:44, fontSize:18, padding:'6px 12px' }}
-            title="Vorherige Woche"
+            title={tr("ui.4607d2549b9d")}
           >←</button>
 
           <div style={{ textAlign:'center', flex:1, minWidth:160 }}>
             <div style={{ fontWeight:700, fontSize:15 }}>
               {isCurrentWeek
-                ? '📅 Diese Woche'
+                ? tr("ui.7d9c5f759a7d")
                 : isFutureWeek
                   ? `📆 KW ${weekNum} · ${selectedMonday.getFullYear()}`
                   : `KW ${weekNum} · ${selectedMonday.getFullYear()}`
@@ -246,7 +250,7 @@ export default function MyHours() {
             className="btn btn-sm"
             onClick={goForward}
             style={{ minWidth:44, fontSize:18, padding:'6px 12px' }}
-            title="Nächste Woche"
+            title={tr("ui.a8d906761dfa")}
           >→</button>
 
           {!isCurrentWeek && (
@@ -254,30 +258,26 @@ export default function MyHours() {
               className="btn btn-sm btn-primary"
               onClick={goToday}
               style={{ marginLeft:4, fontSize:12, padding:'6px 12px' }}
-            >Diese Woche</button>
+            >{tr("ui.f9ef5e928e9b")}</button>
           )}
         </div>
 
         {/* ── Fehler ──────────────────────────────────────────────────────── */}
         {error && (
           <div className="alert alert-danger" style={{ marginBottom:16 }}>
-            ❌ {error}
-            <button className="btn btn-sm" style={{ marginLeft:12 }} onClick={fetchData}>
-              🔄 Erneut versuchen
-            </button>
+            ❌ {localizeMessage(error)}
+            <button className="btn btn-sm" style={{ marginLeft:12 }} onClick={fetchData}>{tr("ui.7df1d235ed7f")}</button>
           </div>
         )}
 
         {/* ── Kein Profil ─────────────────────────────────────────────────── */}
         {!loading && !profile?.employee_id && (
-          <div className="alert alert-warn">⚠️ Kein Mitarbeiterprofil verknüpft.</div>
+          <div className="alert alert-warn">{tr("ui.c583d0f28575")}</div>
         )}
 
         {/* ── Loading ─────────────────────────────────────────────────────── */}
         {loading && (
-          <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text-muted)', fontSize:14 }}>
-            ⏳ Stunden werden geladen…
-          </div>
+          <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text-muted)', fontSize:14 }}>{tr("ui.c4a830606564")}</div>
         )}
 
         {!loading && employee && (
@@ -294,39 +294,37 @@ export default function MyHours() {
             <div className="stats-grid mb-5">
               <div className="stat-card">
                 <div className="stat-label">
-                  {isCurrentWeek ? 'Diese Woche' : `KW ${weekNum}`}
+                  {isCurrentWeek ? tr("ui.f9ef5e928e9b") : `KW ${weekNum}`}
                 </div>
-                <div className="stat-value">{weeklyHours.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h</div>
-                <div className="stat-sub">
-                  von {employee.employment_type==='werkstudent'
-                    ? `${WERKSTUDENT_WEEKLY_LIMIT.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h Limit`
-                    : `${weekTarget.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h Soll`}
+                <div className="stat-value">{weeklyHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</div>
+                <div className="stat-sub">{tr("ui.16b4d3e5ce3d")}{employee.employment_type==='werkstudent'
+                    ? tr("ui.be2f4385a7b7", { p1: (WERKSTUDENT_WEEKLY_LIMIT.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})) })
+                    : tr("ui.d06a77fef119", { p1: (weekTarget.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})) })}
                 </div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">
-                  {new Date(year, month-1).toLocaleDateString('de-DE',{month:'long'})} gesamt
-                </div>
-                <div className="stat-value">{monthlyHours.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h</div>
-                <div className="stat-sub">von {monthTarget.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})} h Soll</div>
+                  {new Date(year, month-1).toLocaleDateString(getIntlLocale(),{month:'long'})}{tr("ui.c3f435d37b8f")}</div>
+                <div className="stat-value">{monthlyHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</div>
+                <div className="stat-sub">{tr("ui.16b4d3e5ce3d")}{monthTarget.toLocaleString(getIntlLocale(),{minimumFractionDigits:0,maximumFractionDigits:0})}{tr("ui.9fa01b4ec60c")}</div>
               </div>
               <div className="stat-card">
-                <div className="stat-label">Überstunden (Monat)</div>
+                <div className="stat-label">{tr("ui.99649f2b4fcc")}</div>
                 <div className="stat-value" style={{ color: overtimeHours>0 ? 'var(--warn)' : 'var(--success)' }}>
-                  {overtimeHours>0 ? `+${(overtimeHours).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h` : '0h'}
+                  {overtimeHours>0 ? `+${(overtimeHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})} h` : '0h'}
                 </div>
               </div>
               {employee.employment_type==='minijob' ? (
                 <div className="stat-card">
-                  <div className="stat-label">Verdienst (Monat)</div>
+                  <div className="stat-label">{tr("ui.de08d6ece85c")}</div>
                   <div className="stat-value" style={{ fontSize:20 }}>
                     {formatCurrency(monthlyHours * employee.hourly_rate)}
                   </div>
-                  <div className="stat-sub">Limit: {formatCurrency(MINIJOB_LIMIT)}</div>
+                  <div className="stat-sub">{tr("ui.cded0737a8be")}{formatCurrency(MINIJOB_LIMIT)}</div>
                 </div>
               ) : (
                 <div className="stat-card">
-                  <div className="stat-label">Stundenlohn</div>
+                  <div className="stat-label">{tr("ui.68c8ec0f16c7")}</div>
                   <div className="stat-value" style={{ fontSize:20 }}>{formatCurrency(employee.hourly_rate)}</div>
                 </div>
               )}
@@ -338,10 +336,10 @@ export default function MyHours() {
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:13 }}>
                   <span style={{ fontWeight:500 }}>
                     {employee.employment_type==='werkstudent'
-                      ? `Werkstudent-Limit (${WERKSTUDENT_MONTHLY_LIMIT}h/Monat)`
+                      ? tr("ui.d4ef1c452ff8", { p1: (WERKSTUDENT_MONTHLY_LIMIT) })
                       : employee.employment_type==='minijob'
-                        ? `Minijob-Limit (${formatCurrency(MINIJOB_LIMIT)}/Monat)`
-                        : `Soll-Stunden ${new Date(year,month-1).toLocaleDateString('de-DE',{month:'long'})}`}
+                        ? tr("ui.4576c54217b9", { p1: (formatCurrency(MINIJOB_LIMIT)) })
+                        : tr("ui.2fb506f83a7e", { p1: (new Date(year,month-1).toLocaleDateString(getIntlLocale(),{month:'long'})) })}
                   </span>
                   <span style={{ color:'var(--text-secondary)', fontSize:12 }}>{limitPercent.toFixed(0)}%</span>
                 </div>
@@ -358,7 +356,7 @@ export default function MyHours() {
             <div className="card mb-5">
               <div className="card-header">
                 <div className="card-title">
-                  {isCurrentWeek ? '📅 Diese Woche' : isFutureWeek ? '📆 Geplante Woche' : `📅 KW ${weekNum}`}
+                  {isCurrentWeek ? tr("ui.7d9c5f759a7d") : isFutureWeek ? tr("ui.3cf77aa55e18") : `📅 KW ${weekNum}`}
                   <span style={{ fontSize:12, fontWeight:400, color:'var(--text-muted)', marginLeft:8 }}>
                     {formatWeekRange(selectedMonday, selectedSunday)}
                   </span>
@@ -366,21 +364,19 @@ export default function MyHours() {
               </div>
 
               {isFutureWeek && (
-                <div className="alert alert-info" style={{ margin:'8px 16px', fontSize:12 }}>
-                  ℹ️ Für zukünftige Wochen werden noch keine Ist-Stunden angezeigt.
-                </div>
+                <div className="alert alert-info" style={{ margin:'8px 16px', fontSize:12 }}>{tr("ui.5ca617cbc611")}</div>
               )}
 
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Tag</th>
-                      <th>Datum</th>
-                      <th>Arbeitsbeginn</th>
-                      <th>Arbeitsende</th>
-                      <th>Pause</th>
-                      <th>Stunden</th>
+                      <th>{tr("ui.1503916a2ab2")}</th>
+                      <th>{tr("ui.9135882d323c")}</th>
+                      <th>{tr("ui.7527c410788b")}</th>
+                      <th>{tr("ui.2d604d899b88")}</th>
+                      <th>{tr("ui.858e4ba7a29f")}</th>
+                      <th>{tr("ui.b26b52378d4f")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -396,12 +392,12 @@ export default function MyHours() {
                           opacity: isFuture ? 0.55 : 1,
                         }}>
                           <td style={{ fontWeight: isToday ? 700 : 400 }}>
-                            <span style={{ display:'none' }}>{DAY_FULL[i]}</span>
-                            {DAY_NAMES[i]}
-                            {isToday && <span style={{ fontSize:10, marginLeft:6, color:'var(--accent)' }}>Heute</span>}
+                            <span style={{ display:'none' }}>{DAY_FULL()[i]}</span>
+                            {DAY_NAMES()[i]}
+                            {isToday && <span style={{ fontSize:10, marginLeft:6, color:'var(--accent)' }}>{tr("ui.46ea2fff7a5b")}</span>}
                           </td>
                           <td style={{ color:'var(--text-secondary)', fontSize:13 }}>
-                            {d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}
+                            {d.toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit'})}
                           </td>
                           <td>{entry ? formatTime(entry.clock_in) : <span className="text-muted">–</span>}</td>
                           <td>{entry ? formatTime(entry.clock_out) : <span className="text-muted">–</span>}</td>
@@ -409,12 +405,11 @@ export default function MyHours() {
                           <td>
                             {entry?.hours_worked
                               ? <strong style={{ color: entry.hours_worked > dailyHours*1.25 ? 'var(--warn)' : 'inherit' }}>
-                                  {entry.hours_worked}h
-                                </strong>
+                                  {entry.hours_worked}{tr("ui.aaa9402664f1")}</strong>
                               : isWe
-                                ? <span className="badge badge-gray" style={{ fontSize:11 }}>Wochenende</span>
+                                ? <span className="badge badge-gray" style={{ fontSize:11 }}>{tr("ui.fd7058ac0c38")}</span>
                                 : isFuture
-                                  ? <span className="text-muted" style={{ fontSize:11 }}>geplant</span>
+                                  ? <span className="text-muted" style={{ fontSize:11 }}>{tr("ui.710a4c49f2c1")}</span>
                                   : <span className="text-muted">–</span>
                             }
                           </td>
@@ -424,14 +419,13 @@ export default function MyHours() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'var(--bg)' }}>
-                      <td colSpan="5" style={{ padding:'10px 16px', fontWeight:600, fontSize:13 }}>
-                        Gesamt KW {weekNum}
+                      <td colSpan="5" style={{ padding:'10px 16px', fontWeight:600, fontSize:13 }}>{tr("ui.e27b04009d70")}{weekNum}
                       </td>
                       <td style={{
                         padding:'10px 16px', fontWeight:700,
                         color: weeklyHours > weekTarget ? 'var(--warn)' : weeklyHours > 0 ? 'var(--success)' : 'var(--text-muted)',
                       }}>
-                        {weeklyHours > 0 ? `${(weeklyHours).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h` : '–'}
+                        {weeklyHours > 0 ? `${(weeklyHours).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})} h` : '–'}
                       </td>
                     </tr>
                   </tfoot>
@@ -442,8 +436,8 @@ export default function MyHours() {
                 <div className="empty-state" style={{ padding:'24px 16px' }}>
                   <div className="empty-state-text">
                     {isCurrentWeek
-                      ? 'Diese Woche wurden noch keine Arbeitszeiten erfasst.'
-                      : 'Für diese Woche wurden keine Arbeitszeiten erfasst.'}
+                      ? tr("ui.e8c5b44f36f9")
+                      : tr("ui.1c08a70524fa")}
                   </div>
                 </div>
               )}
@@ -453,19 +447,18 @@ export default function MyHours() {
             <div className="card">
               <div className="card-header">
                 <div className="card-title">
-                  📊 {new Date(year, month-1).toLocaleDateString('de-DE',{month:'long', year:'numeric'})} — Alle Einträge
-                </div>
+                  📊 {new Date(year, month-1).toLocaleDateString(getIntlLocale(),{month:'long', year:'numeric'})}{tr("ui.84607aeb2e2f")}</div>
               </div>
               <div className="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Datum</th><th>Arbeitsbeginn</th><th>Arbeitsende</th><th>Pause</th><th>Stunden</th><th>Kumulativ</th></tr>
+                    <tr><th>{tr("ui.9135882d323c")}</th><th>{tr("ui.7527c410788b")}</th><th>{tr("ui.2d604d899b88")}</th><th>{tr("ui.858e4ba7a29f")}</th><th>{tr("ui.b26b52378d4f")}</th><th>{tr("ui.6922df16c1ab")}</th></tr>
                   </thead>
                   <tbody>
                     {monthEntries.filter(e=>e.clock_out).length === 0 ? (
                       <tr><td colSpan="6">
                         <div className="empty-state">
-                          <div className="empty-state-text">Noch keine Zeiteinträge diesen Monat</div>
+                          <div className="empty-state-text">{tr("ui.dc644bddc577")}</div>
                         </div>
                       </td></tr>
                     ) : monthEntries.filter(e=>e.clock_out).map((e, i, arr) => {
@@ -478,10 +471,9 @@ export default function MyHours() {
                           <td>{e.break_minutes ? `${e.break_minutes}min` : '–'}</td>
                           <td>
                             <strong style={{ color: e.hours_worked>dailyHours+2 ? 'var(--warn)' : 'inherit' }}>
-                              {e.hours_worked}h
-                            </strong>
+                              {e.hours_worked}{tr("ui.aaa9402664f1")}</strong>
                           </td>
-                          <td style={{ color:'var(--text-secondary)', fontSize:12 }}>{cumulative.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h</td>
+                          <td style={{ color:'var(--text-secondary)', fontSize:12 }}>{cumulative.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</td>
                         </tr>
                       )
                     })}

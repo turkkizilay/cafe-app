@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale } from '../../i18n/runtime.js'
+import { useLocale } from '../../context/LocaleContext.jsx'
 import { useState } from 'react'
 
 /**
@@ -5,6 +7,7 @@ import { useState } from 'react'
  * Zeigt Profilbild wenn vorhanden, sonst farbige Initialen
  */
 export default function Avatar({ src, firstName, lastName, color, size = 36, style = {} }) {
+  useLocale()
   const [imgError, setImgError] = useState(false)
   const initials = `${(firstName||'').charAt(0)}${(lastName||'').charAt(0)}`.toUpperCase() || '?'
   const fontSize  = Math.round(size * 0.36)

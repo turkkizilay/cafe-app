@@ -1,6 +1,9 @@
+import { t as tr, getIntlLocale } from '../../i18n/runtime.js'
+import { useLocale } from '../../context/LocaleContext.jsx'
 import { useState, useRef, useEffect, useCallback } from 'react'
 
 export default function ImageCropper({ src, onDone, onCancel }) {
+  useLocale()
   const canvasRef  = useRef()
   const imgRef     = useRef(new Image())
   const [scale,    setScale]    = useState(1)
@@ -88,11 +91,11 @@ export default function ImageCropper({ src, onDone, onCancel }) {
     <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onCancel()}>
       <div className="modal" style={{ maxWidth:340 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">📷 Profilbild zuschneiden</div>
+          <div className="modal-title">{tr("ui.4828cecd3f27")}</div>
           <button className="btn btn-sm" onClick={onCancel}>✕</button>
         </div>
         <div className="modal-body" style={{ textAlign:'center' }}>
-          <p style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:12 }}>Ziehen zum Verschieben · Slider zum Zoomen</p>
+          <p style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:12 }}>{tr("ui.2085f6d8f054")}</p>
           <canvas ref={canvasRef} width={SIZE} height={SIZE}
             style={{ borderRadius:'50%', cursor:dragging?'grabbing':'grab', touchAction:'none', display:'block', margin:'0 auto' }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
@@ -106,14 +109,12 @@ export default function ImageCropper({ src, onDone, onCancel }) {
                 style={{ flex:1, accentColor:'#C2793A' }} />
               <span style={{ fontSize:12 }}>🔍+</span>
             </div>
-            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>Zoom: {Math.round(scale*100)}%</div>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>{tr("ui.faf9c8e181c8")}{Math.round(scale*100)}%</div>
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn" onClick={onCancel}>Abbrechen</button>
-          <button className="btn btn-primary" onClick={handleDone} disabled={!imgLoaded}>
-            ✓ Zuschneiden & Speichern
-          </button>
+          <button className="btn" onClick={onCancel}>{tr("ui.f7ff1178af20")}</button>
+          <button className="btn btn-primary" onClick={handleDone} disabled={!imgLoaded}>{tr("ui.3072a105c8a3")}</button>
         </div>
       </div>
     </div>

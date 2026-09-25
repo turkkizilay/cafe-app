@@ -1,3 +1,4 @@
+import { t as tr, getIntlLocale, message as appMessage } from '../../../i18n/runtime.js'
 /**
  * useIntegrationCenter — Haupt-Hook für das Lightspeed Integration Center
  *
@@ -136,7 +137,7 @@ export function useIntegrationCenter(organizationId, currentUserId) {
     if (!connection || syncing) return
     const primaryMapping = locationMaps.find(m => m.is_active)
     if (!primaryMapping) {
-      setError('Kein aktiver Standort zugeordnet. Bitte erst Standort-Zuordnung konfigurieren.')
+      setError(appMessage("ui.3c8cd23bdf5e"))
       return
     }
     setSyncing(true)

@@ -1,3 +1,5 @@
+import { t as tr, getIntlLocale, localizeMessage } from '../../i18n/runtime.js'
+import { useLocale } from '../../context/LocaleContext.jsx'
 import { useState, useEffect, useRef } from 'react'
 import { subscribeOpenFallback, clearOpenFallback } from '../../lib/openFile'
 
@@ -13,7 +15,7 @@ function _notify() {
 
 export function showToast(message, type = 'info', duration = 4000) {
   for (const t of _map.values()) {
-    if (t.message === message && t.type === type) return
+    if (localizeMessage(t.message) === localizeMessage(message) && t.type === type) return
   }
   const id = ++_id
   _map.set(id, { id, message, type })
@@ -45,6 +47,7 @@ const COLORS = {
 }
 
 export function ToastProvider({ children }) {
+  useLocale()
   const [toasts, setToasts] = useState([])
   const listRef = useRef([])
 
@@ -73,9 +76,10 @@ export function ToastProvider({ children }) {
               animation:'toast-in 0.2s ease',
             }}>
               <span style={{ fontSize:14, color:c.color, flex:1, lineHeight:1.55 }}>
-                {t.message}
+                {localizeMessage(t.message)}
               </span>
               <button
+                aria-label={tr("toast.close")}
                 onClick={() => dismissToast(t.id)}
                 style={{ background:'none', border:'none', cursor:'pointer',
                   color:c.color, fontSize:18, lineHeight:1, padding:0, opacity:0.5 }}
@@ -92,6 +96,7 @@ export function ToastProvider({ children }) {
 // ── Fallback, falls der Browser den neuen Tab trotzdem blockiert ──
 // Ein echter Tipp auf diesen Link ist eine Nutzeraktion und wird nie blockiert.
 function OpenFileFallback() {
+  useLocale()
   const [pending, setPending] = useState(null)
   useEffect(() => subscribeOpenFallback(setPending), [])
   if (!pending) return null
@@ -99,19 +104,15 @@ function OpenFileFallback() {
     <div className="modal-overlay" onClick={clearOpenFallback} style={{ zIndex:10000 }}>
       <div className="modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">Dokument ist bereit</div>
+          <div className="modal-title">{tr("ui.d92b5a7dc109")}</div>
         </div>
-        <div className="modal-body" style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.6 }}>
-          Dein Browser hat das automatische Öffnen verhindert. Tippe auf den Button, um das Dokument zu öffnen.
-          <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:8 }}>
-            Der Link ist aus Sicherheitsgründen nur kurz gültig.
-          </div>
+        <div className="modal-body" style={{ fontSize:14, color:'var(--text-secondary)', lineHeight:1.6 }}>{tr("ui.ee05ff291ee8")}<div style={{ fontSize:12, color:'var(--text-muted)', marginTop:8 }}>{tr("ui.447951124698")}</div>
         </div>
         <div className="modal-footer">
-          <button className="btn" onClick={clearOpenFallback}>Schließen</button>
+          <button className="btn" onClick={clearOpenFallback}>{tr("ui.b808f6e97075")}</button>
           <a className="btn btn-primary" href={pending.url} target="_blank" rel="noopener noreferrer"
              onClick={() => setTimeout(clearOpenFallback, 0)}>
-            📄 {pending.label}
+            📄 {localizeMessage(pending.label)}
           </a>
         </div>
       </div>

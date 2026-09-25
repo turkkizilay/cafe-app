@@ -1,3 +1,4 @@
+import { t as tr, getIntlLocale, message as appMessage, formatParam } from '../i18n/runtime.js'
 /**
  * Café Buur — Krankmeldungslogik (Pilotversion)
  *
@@ -192,43 +193,43 @@ export function getSickCaseWarnings(sickCase) {
   // Duplicate overlap — echtes Problem
   if (sickCase.hasOverlap && sickCase.overlapType === 'duplicate') {
     warnings.push({ level:'warn',
-      text: `${n} Meldungen mit gleichem Startdatum erkannt — möglicherweise versehentlich doppelt angelegt. Bitte prüfen und ggf. löschen.` })
+      text: appMessage("ui.906ad4c85942", { p1: (n) }) })
   }
 
   // Überschneidung (kein Duplikat) — unlogischer Zeitraum
   if (sickCase.hasOverlap && sickCase.overlapType === 'overlap') {
     warnings.push({ level:'warn',
-      text: `${n} Meldungen überschneiden sich zeitlich. Bitte Zeiträume klären oder als Folgebescheinigung dokumentieren.` })
+      text: appMessage("ui.6751f52ec91e", { p1: (n) }) })
   }
 
   // Fortsetzung — neutral informieren, kein Alarm wenn attestiert
   if (sickCase.hasOverlap && sickCase.overlapType === 'continuation') {
     if (allAttested) {
       warnings.push({ level:'info',
-        text: `${n} Meldungen im selben AU-Fall — Atteste vorhanden. Wahrscheinlich Folgebescheinigungen. Kein Handlungsbedarf.` })
+        text: appMessage("ui.5230d8be42ea", { p1: (n) }) })
     } else {
       warnings.push({ level:'warn',
-        text: `${n} Meldungen im selben AU-Fall — nicht alle Atteste vorhanden. Bitte fehlende Atteste nachfordern.` })
+        text: appMessage("ui.36bb374ace39", { p1: (n) }) })
     }
   }
 
   // Folgeerkrankungshinweis
   if (sickCase.followUpHint) {
     warnings.push({ level:'info',
-      text: 'Folgeerkrankung möglich: neue Meldung kurz nach vorheriger — gleiche oder neue Erkrankung? Bitte mit Steuerberaterin klären (Auswirkung auf Lohnfortzahlungsanspruch).' })
+      text: appMessage("ui.9c49163cf769") })
   }
 
   // Lohnfortzahlung endet bald (Tag 35–42)
   if (isOpen && daysInto >= 34 && daysInto <= LOHNFORTZAHLUNG_TAGE) {
     const daysLeft = LOHNFORTZAHLUNG_TAGE - daysInto
     warnings.push({ level:'warn',
-      text: `Lohnfortzahlung endet in ${daysLeft} Tag${daysLeft===1?'':'en'} (${payEnd.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}). Krankengeld-Übergang vorbereiten.` })
+      text: appMessage("sick.payEnding", { count: (daysLeft), date: (formatParam("date", payEnd, {day:'2-digit',month:'2-digit',year:'numeric'})) }) })
   }
 
   // Ab Tag 43
   if (isOpen && daysInto > LOHNFORTZAHLUNG_TAGE) {
     warnings.push({ level:'error',
-      text: `42 Tage Arbeitgeber-Lohnfortzahlung überschritten (seit ${payEnd.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}). Ab hier voraussichtlich Krankengeld — bitte Steuerberaterin und Krankenkasse einschalten.` })
+      text: appMessage("ui.4a4ce5ad3fd8", { p1: (formatParam("date", payEnd, {day:'2-digit',month:'2-digit',year:'numeric'})) }) })
   }
 
   return warnings
@@ -241,14 +242,14 @@ export function getContinuedPayEnd(sickCase) {
 
 // ── Status-Beschriftungen ───────────────────────────────────────────────────
 export const SICK_STATUS_LABELS = {
-  employer_continued_pay:    { text: 'Lohnfortzahlung Arbeitgeber',    color: '#2563EB', bg: '#EFF6FF' },
-  continued_pay_ending_soon: { text: 'Lohnfortzahlung endet bald',     color: '#D97706', bg: '#FFFBEB' },
-  health_insurance_review:   { text: 'Krankenkasse prüfen',            color: '#DC2626', bg: '#FEF2F2' },
-  attest_missing:            { text: 'Attest fehlt',                   color: '#DC2626', bg: '#FEF2F2' },
-  overlap_review:            { text: 'Überschneidung prüfen',          color: '#7C3AED', bg: '#F5F3FF' },
-  followup_review:           { text: 'Folgebescheinigung prüfen',      color: '#D97706', bg: '#FFFBEB' },
-  documented:                { text: 'AU-Fall dokumentiert',           color: '#059669', bg: '#ECFDF5' },
-  closed:                    { text: 'Abgeschlossen',                  color: '#6B7280', bg: '#F9FAFB' },
+  employer_continued_pay:    { get text() { return tr("ui.deb6784a5e15") },    color: '#2563EB', bg: '#EFF6FF' },
+  continued_pay_ending_soon: { get text() { return tr("ui.e44799a673a8") },     color: '#D97706', bg: '#FFFBEB' },
+  health_insurance_review:   { get text() { return tr("ui.0ba815b3593f") },            color: '#DC2626', bg: '#FEF2F2' },
+  attest_missing:            { get text() { return tr("ui.24e80f20f406") },                   color: '#DC2626', bg: '#FEF2F2' },
+  overlap_review:            { get text() { return tr("ui.b163a8841aee") },          color: '#7C3AED', bg: '#F5F3FF' },
+  followup_review:           { get text() { return tr("ui.4b0d1135546d") },      color: '#D97706', bg: '#FFFBEB' },
+  documented:                { get text() { return tr("ui.26e83d19da95") },           color: '#059669', bg: '#ECFDF5' },
+  closed:                    { get text() { return tr("ui.38ee859a969e") },                  color: '#6B7280', bg: '#F9FAFB' },
 }
 
 // ── Handlungsbedarf? (für Dashboard-Zählung) ───────────────────────────────
@@ -275,7 +276,7 @@ export function caseRequiresAction(sickCase) {
 export function validateSickLeaveInput({ startDate, endDate, role, today }) {
   if (!startDate) {
     return { valid: false, severity: 'error', reasonCode: 'no_start',
-      message: 'Bitte ein Startdatum angeben.' }
+      message: appMessage("ui.9369039d0d2f") }
   }
 
   const todayDate = new Date(today + 'T00:00:00')
@@ -289,32 +290,32 @@ export function validateSickLeaveInput({ startDate, endDate, role, today }) {
     if (isAdmin) {
       // Admin darf Zukunft eingeben (geplante OP, Folge-AU)
       return { valid: true, severity: 'info', reasonCode: 'future_admin',
-        message: 'Hinweis: Krankmeldung für einen zukünftigen Zeitraum — nur bei ärztlich bestätigter geplanter Arbeitsunfähigkeit sinnvoll.' }
+        message: appMessage("ui.339302098174") }
     }
     if (daysAhead === 1) {
       // Morgen: erlaubt mit Hinweis
       return { valid: true, severity: 'info', reasonCode: 'future_tomorrow',
-        message: 'Hinweis: Krankmeldung für morgen. Nur bei bereits bekannter Arbeitsunfähigkeit sinnvoll.' }
+        message: appMessage("ui.fb5a413b1fdf") }
     }
     // Übermorgen oder später: für Mitarbeiter blockiert
     return { valid: false, severity: 'error', reasonCode: 'future_too_far',
-      message: 'Krankmeldungen können nur für heute oder morgen eingereicht werden. Bei geplanter Arbeitsunfähigkeit (z. B. OP) bitte das Management kontaktieren.' }
+      message: appMessage("ui.97c73373e89b") }
   }
 
   // ── Vergangenheit ─────────────────────────────────────────────────────────
   if (daysAgo > 90) {
     return { valid: false, severity: 'error', reasonCode: 'past_unrealistic',
-      message: `Dieses Datum liegt ${daysAgo} Tage zurück — bitte prüfe ob das Datum korrekt ist.` }
+      message: appMessage("ui.003fb52c87f0", { p1: (daysAgo) }) }
   }
 
   if (!isAdmin && daysAgo > 3) {
     return { valid: false, severity: 'error', reasonCode: 'past_too_far',
-      message: `Diese Krankmeldung liegt ${daysAgo} Tage zurück. Rückwirkende Meldungen über 3 Tage können nur durch das Management erfasst werden. Bitte Manager oder Admin kontaktieren.` }
+      message: appMessage("ui.800e6189521d", { p1: (daysAgo) }) }
   }
 
   if (!isAdmin && daysAgo > 1) {
     return { valid: true, severity: 'warn', reasonCode: 'past_warn',
-      message: `Krankmeldung wird rückwirkend für ${daysAgo} Tage erfasst — bitte sicherstellen, dass das Datum korrekt ist.` }
+      message: appMessage("ui.fe6c4e6742b2", { p1: (daysAgo) }) }
   }
 
   // ── Enddatum ──────────────────────────────────────────────────────────────
@@ -322,12 +323,12 @@ export function validateSickLeaveInput({ startDate, endDate, role, today }) {
     const end = new Date(endDate + 'T00:00:00')
     if (end < start) {
       return { valid: false, severity: 'error', reasonCode: 'end_before_start',
-        message: 'Das Enddatum darf nicht vor dem Startdatum liegen.' }
+        message: appMessage("ui.810480dc268b") }
     }
     const durationDays = Math.floor((end - start) / 86400000)
     if (!isAdmin && durationDays > 42) {
       return { valid: true, severity: 'warn', reasonCode: 'long_duration',
-        message: `Die Krankmeldung umfasst ${durationDays} Tage (über 42 Tage). Ab Tag 43 ist Krankengeld durch die Krankenkasse relevant. Bitte mit der Steuerberaterin und Krankenkasse abstimmen.` }
+        message: appMessage("ui.f6907f216ac9", { p1: (durationDays) }) }
     }
   }
 

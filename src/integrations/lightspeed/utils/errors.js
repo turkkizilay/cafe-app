@@ -1,3 +1,4 @@
+import { message as appMessage, localizeMessage, errorMessage } from '../../../i18n/runtime.js'
 /**
  * Lightspeed — Fehlerklassen
  *
@@ -14,7 +15,8 @@ export class LightspeedError extends Error {
    * @param {boolean} retryable  - Kann automatisch wiederholt werden?
    */
   constructor(code, message, statusCode = 0, retryable = false) {
-    super(message)
+    super(localizeMessage(message))
+    this.displayMessage = message
     this.name       = 'LightspeedError'
     this.code       = code
     this.statusCode = statusCode
@@ -25,27 +27,27 @@ export class LightspeedError extends Error {
 export class RateLimitError extends LightspeedError {
   /** @param {number} retryAfterSeconds */
   constructor(retryAfterSeconds = 60) {
-    super('RATE_LIMIT', `API-Limit erreicht. Bitte ${retryAfterSeconds}s warten.`, 429, true)
+    super('RATE_LIMIT', appMessage("ui.b47120833029", { p1: (retryAfterSeconds) }), 429, true)
     this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
 export class TokenExpiredError extends LightspeedError {
   constructor() {
-    super('TOKEN_EXPIRED', 'Lightspeed-Session abgelaufen. Bitte neu verbinden.', 401, false)
+    super('TOKEN_EXPIRED', appMessage("ui.0c481a4f4538"), 401, false)
   }
 }
 
 export class ConnectionError extends LightspeedError {
   constructor() {
-    super('CONNECTION', 'Keine Verbindung zu Lightspeed. Netzwerk prüfen.', 0, true)
+    super('CONNECTION', appMessage("ui.c81e0614902e"), 0, true)
   }
 }
 
 export class SyncConflictError extends LightspeedError {
   /** @param {string} resourceId */
   constructor(resourceId) {
-    super('SYNC_CONFLICT', `Synchronisationskonflikt für Datensatz ${resourceId}`, 409, false)
+    super('SYNC_CONFLICT', appMessage("ui.dbf8631425e1", { p1: (resourceId) }), 409, false)
     this.resourceId = resourceId
   }
 }
@@ -57,12 +59,12 @@ export class SyncConflictError extends LightspeedError {
  */
 export function toLightspeedUserMessage(err) {
   if (err instanceof RateLimitError)
-    return `Lightspeed API-Limit erreicht. Bitte ${err.retryAfterSeconds} Sekunden warten.`
+    return appMessage("ui.e211fd758eb5", { p1: (err.retryAfterSeconds) })
   if (err instanceof TokenExpiredError)
-    return 'Lightspeed-Verbindung abgelaufen. Bitte unter Einstellungen neu verbinden.'
+    return appMessage("ui.addc36689a46")
   if (err instanceof ConnectionError)
-    return 'Lightspeed nicht erreichbar. Internetverbindung und Kassensystem prüfen.'
+    return appMessage("ui.76ebc16b73ab")
   if (err instanceof LightspeedError)
-    return err.message
-  return 'Unbekannter Lightspeed-Fehler. Support kontaktieren.'
+    return errorMessage(err)
+  return appMessage("ui.9de80b5858ca")
 }

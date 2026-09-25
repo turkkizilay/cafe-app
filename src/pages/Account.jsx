@@ -1,5 +1,8 @@
+import { t as tr, getIntlLocale, message as appMessage, errorMessage, messageParts } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useRef } from 'react'
-import { supabase, formatDate, formatCurrency } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
+import { formatDate, formatCurrency } from '../i18n/format.js'
 import DeleteAccountCard from '../components/DeleteAccountCard'
 import AppSetupCard from '../components/AppSetupCard'
 import PersonalDataCard, { missingPersonalFields } from '../components/PersonalDataCard'
@@ -24,11 +27,12 @@ function checkPw(pw) {
 function isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) }
 
 const STRENGTH_COLOR = ['','#DC2626','#D97706','#16A34A','#16A34A']
-const STRENGTH_LABEL = ['','Schwach','Mittel','Gut','Stark']
-const EMP_TYPE_LABEL = { vollzeit:'Vollzeit', teilzeit:'Teilzeit', minijob:'Minijob', werkstudent:'Werkstudent' }
+const STRENGTH_LABEL = () => ['',tr("ui.e5ded9770387"),tr("ui.6604277e642c"),tr("ui.7a26d266bf0c"),tr("ui.0857c7a77ba1")]
+const EMP_TYPE_LABEL = { get vollzeit() { return tr("ui.49dbe1b0b4b3") }, get teilzeit() { return tr("ui.df763b1cc689") }, get minijob() { return tr("ui.b3fc8da9deb1") }, get werkstudent() { return tr("ui.fa23b3bc413a") } }
 
 // ── Wiederverwendbare Datenfeldanzeige ───────────────────────
 function DataField({ label, value, icon }) {
+  useLocale()
   return (
     <div style={{ background:'var(--bg)', borderRadius:8, padding:'10px 12px' }}>
       <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>
@@ -42,6 +46,7 @@ function DataField({ label, value, icon }) {
 }
 
 export default function Account() {
+  useLocale()
   const { profile, refetch } = useProfile()
   const toast   = useToast()
   const fileRef = useRef()
@@ -58,12 +63,12 @@ export default function Account() {
   const [docActionId,  setDocActionId]  = useState(null)
 
   const DOC_TYPES_ACC = {
-    employment_contract: 'Arbeitsvertrag',
-    contract_addendum:   'Vertragsnachtrag',
-    certificate:         'Bescheinigung',
-    agreement:           'Vereinbarung',
-    personal_document:   'Personalunterlage',
-    other:               'Sonstiges',
+    employment_contract: tr("ui.7c2a6c84ba98"),
+    contract_addendum:   tr("ui.5d4a21030716"),
+    certificate:         tr("ui.fe1020b37611"),
+    agreement:           tr("ui.139fb05af4f2"),
+    personal_document:   tr("ui.841be075bc36"),
+    other:               tr("ui.9f3d5f8d94cf"),
   }
 
   async function fetchMyDocs() {
@@ -88,7 +93,7 @@ export default function Account() {
         return data.signedUrl
       })
     } catch {
-      toast.error('Das Dokument konnte nicht geöffnet werden. Bitte erneut versuchen.')
+      toast.error(appMessage("ui.0709a3b7a0d0"))
     } finally { setDocActionId(null) }
   }
 
@@ -96,13 +101,13 @@ export default function Account() {
     if (docActionId) return
     setDocActionId(doc.id + ':dl')
     try {
-      const typeName = DOC_TYPES_ACC[doc.document_type] || 'Dokument'
+      const typeName = DOC_TYPES_ACC[doc.document_type] || tr("ui.836ae9356297")
       const d = new Date(doc.uploaded_at); const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-      const lastName = employee?.last_name?.replace(/\s+/g,'_') || 'Mitarbeiter'
+      const lastName = employee?.last_name?.replace(/\s+/g,'_') || tr("ui.f4cb6891b9e5")
       const filename = `${typeName}_${lastName}_${date}.pdf`
       const { data, error } = await supabase.storage
         .from('employee-documents').createSignedUrl(doc.file_path, 60, { download: filename })
-      if (error) { toast.error('Download fehlgeschlagen: ' + error.message); return }
+      if (error) { toast.error(messageParts([appMessage("ui.322e45a8c6c6"), errorMessage(error)])); return }
       const a = document.createElement('a'); a.href = data.signedUrl; a.download = filename
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
     } finally { setDocActionId(null) }
@@ -169,7 +174,7 @@ export default function Account() {
         .order('date').order('start_time')
         .limit(1)
       setNextShift(upcoming?.[0] || null)
-    } catch (err) { toast.error('Fehler beim Laden: ' + err.message) }
+    } catch (err) { toast.error(messageParts([appMessage("ui.f1abd7e4336c"), errorMessage(err)])) }
     setLoading(false)
   }
 
@@ -177,7 +182,7 @@ export default function Account() {
   function handleFileSelected(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 10 * 1024 * 1024) { toast.warn('Max. 10 MB'); return }
+    if (file.size > 10 * 1024 * 1024) { toast.warn(appMessage("ui.ce6e0e48223f")); return }
     setCropSrc(URL.createObjectURL(file))
     e.target.value = ''
   }
@@ -186,7 +191,7 @@ export default function Account() {
     // Sofort anzeigen — kein async, kein Guard, kann nicht hängen
     setCropSrc(null)
     setAvatarUrl(dataUrl)
-    toast.success('✅ Profilbild aktualisiert!')
+    toast.success(appMessage("ui.5888a48ff1c0"))
     // DB-Speicherung im Hintergrund — fire and forget
     supabase.rpc('update_own_avatar', { new_avatar_url: dataUrl }).then(({ error }) => {
       if (error) {
@@ -202,36 +207,36 @@ export default function Account() {
 
   async function removeAvatar() {
     await supabase.rpc('update_own_avatar', { new_avatar_url: null })
-    setAvatarUrl(null); toast.success('Profilbild entfernt')
+    setAvatarUrl(null); toast.success(appMessage("ui.cfb7a46547ba"))
   }
 
   // ── Login E-Mail ändern ─────────────────────────────────────
   async function changeEmail() {
     setEmailError('')
-    if (!isValidEmail(newEmail)) { setEmailError('Bitte gültige E-Mail eingeben'); return }
-    if (newEmail.trim().toLowerCase() === profile?.email) { setEmailError('Das ist deine aktuelle E-Mail'); return }
+    if (!isValidEmail(newEmail)) { setEmailError(appMessage("ui.76b11fef592c")); return }
+    if (newEmail.trim().toLowerCase() === profile?.email) { setEmailError(appMessage("ui.44795eb77b95")); return }
     setEmailSaving(true)
     const { error } = await supabase.auth.updateUser({ email: newEmail.trim().toLowerCase() })
-    if (error) { setEmailError(error.message); setEmailSaving(false); return }
-    toast.success('📧 Bestätigungs-E-Mail gesendet! Prüfe dein Postfach — beide Adressen müssen bestätigen.', 8000)
+    if (error) { setEmailError(errorMessage(error)); setEmailSaving(false); return }
+    toast.success(appMessage("ui.e0e40cbc8558"), 8000)
     setChangingEmail(false); setNewEmail(''); setEmailSaving(false)
   }
 
   // ── Passwort ändern ─────────────────────────────────────────
   async function changePassword(e) {
     e.preventDefault(); setPwError(''); setPwSuccess('')
-    if (!pwCurrent) { setPwError('Aktuelles Passwort eingeben'); return }
+    if (!pwCurrent) { setPwError(appMessage("ui.257b990afc75")); return }
     const { score } = checkPw(pwNew)
-    if (score < 3) { setPwError('Neues Passwort zu schwach'); return }
-    if (pwNew !== pwConfirm) { setPwError('Passwörter stimmen nicht überein'); return }
-    if (pwNew === pwCurrent) { setPwError('Neues Passwort muss anders sein'); return }
+    if (score < 3) { setPwError(appMessage("ui.a2bd3b8ee3e5")); return }
+    if (pwNew !== pwConfirm) { setPwError(appMessage("ui.943de6dfe431")); return }
+    if (pwNew === pwCurrent) { setPwError(appMessage("ui.9a3650e0c75d")); return }
     setPwSaving(true)
     const { error: authErr } = await supabase.auth.signInWithPassword({ email: profile.email, password: pwCurrent })
-    if (authErr) { setPwError('Aktuelles Passwort falsch'); setPwSaving(false); setPwCurrent(''); return }
+    if (authErr) { setPwError(appMessage("ui.b29d97fc32a7")); setPwSaving(false); setPwCurrent(''); return }
     const { error } = await supabase.auth.updateUser({ password: pwNew })
-    if (error) { setPwError(error.message) }
+    if (error) { setPwError(errorMessage(error)) }
     else {
-      setPwSuccess('✅ Passwort geändert!'); setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setPwSuccess(appMessage("ui.67e7b7ff46b2")); setPwCurrent(''); setPwNew(''); setPwConfirm('')
       logActivity({ action: 'auth.password_changed', category: 'auth', summary: 'hat das Passwort geändert.' })
     }
     setPwSaving(false)
@@ -241,13 +246,13 @@ export default function Account() {
     <div className="content" style={{ maxWidth:480, margin:'40px auto' }}>
       <div className="card" style={{ padding:28, textAlign:'center' }}>
         <div style={{ fontSize:40, marginBottom:12 }}>👤</div>
-        <div style={{ fontWeight:600, fontSize:16 }}>Kein Mitarbeiter-Profil verknüpft</div>
-        <div style={{ color:'var(--text-secondary)', fontSize:13, marginTop:8 }}>Bitte den Administrator kontaktieren.</div>
+        <div style={{ fontWeight:600, fontSize:16 }}>{tr("ui.737044ed5877")}</div>
+        <div style={{ color:'var(--text-secondary)', fontSize:13, marginTop:8 }}>{tr("ui.7438bc2432cb")}</div>
       </div>
     </div>
   )
 
-  if (loading) return <div style={{ padding:24 }}>Lädt…</div>
+  if (loading) return <div style={{ padding:24 }}>{tr("ui.ebbb1d1f265f")}</div>
 
   const { score: pwScore } = checkPw(pwNew)
   const pendingVacs = allVacs.filter(v => v.status === 'pending')
@@ -256,15 +261,15 @@ export default function Account() {
     <>
       {/* ── Topbar mit Tabs ── */}
       <div className="topbar">
-        <div className="topbar-title">Mein Konto</div>
+        <div className="topbar-title">{tr("ui.5cf21c63b3d6")}</div>
         <div className="topbar-right" style={{ gap:6 }}>
           {[
-            ['profil',    '👤 Profil'],
-            ['daten',     '✏️ Meine Daten'],
-            ['sicherheit','🔐 Sicherheit'],
-            ['app',       '📱 App & Mitteilungen'],
-            ['verlauf',   '📋 Verlauf'],
-            ['dokumente', '📁 Dokumente'],
+            ['profil',    tr("ui.fc35e15196fc")],
+            ['daten',     tr("ui.076d2cc285e3")],
+            ['sicherheit',tr("ui.879adc878404")],
+            ['app',       tr("ui.9ec7a0de5b6d")],
+            ['verlauf',   tr("ui.6520b672b1fe")],
+            ['dokumente', tr("ui.d03408a81e13")],
           ].map(([key, label]) => (
             <button key={key}
               className={`btn btn-sm${accountTab===key?' btn-primary':''}`}
@@ -284,10 +289,10 @@ export default function Account() {
         {employee && accountTab !== 'daten' && missingPersonalFields(employee).length > 0 && (
           <div style={{ background:'var(--warn-bg)', border:'1px solid #FDE68A', borderRadius:10, padding:'12px 14px', marginBottom:16, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
             <div style={{ flex:1, minWidth:200, fontSize:13.5, lineHeight:1.5 }}>
-              <strong>📝 Profil vervollständigen</strong><br />
-              <span style={{ color:'var(--text-secondary)' }}>Für die Lohnabrechnung fehlen noch Angaben (z. B. Steuer-ID, SV-Nummer, Krankenkasse).</span>
+              <strong>{tr("ui.b3d12074d7be")}</strong><br />
+              <span style={{ color:'var(--text-secondary)' }}>{tr("ui.f6b07c8c34b5")}</span>
             </div>
-            <button className="btn btn-primary btn-sm" onClick={() => setAccountTab('daten')}>Jetzt ergänzen</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setAccountTab('daten')}>{tr("ui.011b5e732b49")}</button>
           </div>
         )}
 
@@ -296,7 +301,7 @@ export default function Account() {
 
             {/* Avatar + Name */}
             <div className="card">
-              <div className="card-header"><div className="card-title">Profilbild</div></div>
+              <div className="card-header"><div className="card-title">{tr("ui.f7e3ae42f24e")}</div></div>
               <div style={{ padding:'20px 16px', display:'flex', alignItems:'center', gap:20 }}>
                 <div style={{ position:'relative', flexShrink:0 }}>
                   <Avatar src={avatarUrl} firstName={employee?.first_name}
@@ -316,7 +321,7 @@ export default function Account() {
                   </div>
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                     <button className="btn btn-sm btn-primary" onClick={() => fileRef.current?.click()} disabled={false}>
-                      📷 {avatarUrl ? 'Ändern' : 'Hochladen'}
+                      📷 {avatarUrl ? tr("ui.ea5e3417aabc") : tr("ui.6638ef84fb9e")}
                     </button>
                     {avatarUrl && <button className="btn btn-sm" onClick={removeAvatar}>✕</button>}
                   </div>
@@ -329,17 +334,17 @@ export default function Account() {
             {/* Arbeitsdaten (read-only) */}
             <div className="card">
               <div className="card-header">
-                <div className="card-title">📋 Arbeitsdaten</div>
-                <div style={{ fontSize:11, color:'var(--text-muted)' }}>Nur vom Management änderbar</div>
+                <div className="card-title">{tr("ui.c3e7bf267c5f")}</div>
+                <div style={{ fontSize:11, color:'var(--text-muted)' }}>{tr("ui.c152e9a003c7")}</div>
               </div>
               <div style={{ padding:'16px' }}>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                  <DataField label="Position"          value={employee?.position} />
-                  <DataField label="Beschäftigungsart" value={EMP_TYPE_LABEL[employee?.employment_type]} />
-                  <DataField label="Stunden / Woche"   value={employee?.hours_per_week ? `${employee.hours_per_week}h` : null} />
-                  <DataField label="Urlaubsanspruch"   value={employee?.vacation_days_per_year ? `${employee.vacation_days_per_year} Tage/Jahr` : null} />
-                  <DataField label="Dabei seit"        value={formatDate(employee?.start_date)} />
-                  <DataField label="Stundenlohn"       value={employee?.hourly_rate ? `${parseFloat(employee.hourly_rate).toFixed(2)} €/Std` : null} />
+                  <DataField label={tr("ui.6d031af10da7")}          value={employee?.position} />
+                  <DataField label={tr("ui.b185de16cc87")} value={EMP_TYPE_LABEL[employee?.employment_type]} />
+                  <DataField label={tr("ui.48905a1115a7")}   value={employee?.hours_per_week ? `${employee.hours_per_week}h` : null} />
+                  <DataField label={tr("ui.1b810a812b2c")}   value={employee?.vacation_days_per_year ? tr("ui.d708fcfe7811", { p1: (employee.vacation_days_per_year) }) : null} />
+                  <DataField label={tr("ui.b3acb8cb53f2")}        value={formatDate(employee?.start_date)} />
+                  <DataField label={tr("ui.68c8ec0f16c7")}       value={employee?.hourly_rate ? tr("ui.623f6d1b7a65", { p1: (parseFloat(employee.hourly_rate).toLocaleString(getIntlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })) }) : null} />
                 </div>
               </div>
             </div>
@@ -347,15 +352,15 @@ export default function Account() {
             {/* Urlaubskonto */}
             {vacBalance && (
               <div className="card" style={{ gridColumn: '1 / -1' }}>
-                <div className="card-header"><div className="card-title">🌴 Urlaubskonto {new Date().getFullYear()}</div></div>
+                <div className="card-header"><div className="card-title">{tr("ui.6160b156e2c5")}{new Date().getFullYear()}</div></div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:0 }}>
                   {[
-                    { label:'Verfügbar',  value:`${vacBalance.remaining} Tage`, color:'var(--accent)', big:true },
-                    { label:'Anspruch',   value:`${vacBalance.entitlement} Tage` },
-                    { label:'Genutzt',    value:`${vacBalance.used} Tage` },
-                    { label:'Ausstehend', value:`${vacBalance.pending} Tage` },
-                  ].map(({ label, value, color, big }) => (
-                    <div key={label} style={{ padding:'14px 16px', borderRight:'1px solid var(--border)', textAlign:'center' }}>
+                    { label:tr("ui.3aa55273aef4"),  value:tr("count.days", { count: vacBalance.remaining }), color:'var(--accent)', big:true },
+                    { label:tr("ui.e37d6b697aa3"),   value:tr("count.days", { count: vacBalance.entitlement }) },
+                    { label:tr("ui.5eb4bee51357"),    value:tr("count.days", { count: vacBalance.used }) },
+                    { label:tr("ui.0b5e85dd2508"), value:tr("count.days", { count: vacBalance.pending }) },
+                  ].map(({ label, value, color, big }, labelIndex) => (
+                    <div key={labelIndex} style={{ padding:'14px 16px', borderRight:'1px solid var(--border)', textAlign:'center' }}>
                       <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>{label}</div>
                       <div style={{ fontSize: big?24:18, fontWeight:700, color: color||'var(--text-primary)' }}>{value}</div>
                     </div>
@@ -363,8 +368,7 @@ export default function Account() {
                 </div>
                 {pendingVacs.length > 0 && (
                   <div style={{ padding:'10px 16px', background:'var(--warn-bg)', borderTop:'1px solid var(--border)', fontSize:12, color:'var(--warn)' }}>
-                    ⚠️ {pendingVacs.length} ausstehende{pendingVacs.length===1?'r':''} Urlaubsantrag — kann unter "Verlauf" zurückgezogen werden
-                  </div>
+                    ⚠️ {tr("account.pendingLeave", { count: pendingVacs.length })}</div>
                 )}
               </div>
             )}
@@ -378,7 +382,7 @@ export default function Account() {
           <div style={{ maxWidth:600 }}>
             {employee
               ? <PersonalDataCard employee={employee} onSaved={fetchData} />
-              : <div className="card"><div className="card-body" style={{ color:'var(--text-muted)', fontSize:13 }}>Kein Mitarbeiter-Profil verknüpft.</div></div>}
+              : <div className="card"><div className="card-body" style={{ color:'var(--text-muted)', fontSize:13 }}>{tr("ui.0ab2ca46e83b")}</div></div>}
           </div>
         )}
 
@@ -396,35 +400,29 @@ export default function Account() {
 
             {/* Login E-Mail ändern */}
             <div className="card">
-              <div className="card-header"><div className="card-title">📧 Login-E-Mail</div></div>
+              <div className="card-header"><div className="card-title">{tr("ui.0e4babb74df6")}</div></div>
               <div style={{ padding:'16px' }}>
                 <div style={{ background:'var(--bg)', borderRadius:8, padding:'12px', marginBottom:14 }}>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>Aktuelle E-Mail</div>
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:3 }}>{tr("ui.fbd82bf41149")}</div>
                   <div style={{ fontWeight:600 }}>{profile?.email}</div>
                 </div>
 
                 {!changingEmail ? (
-                  <button className="btn btn-sm" onClick={() => setChangingEmail(true)}>
-                    ✏️ E-Mail ändern
-                  </button>
+                  <button className="btn btn-sm" onClick={() => setChangingEmail(true)}>{tr("ui.ce91adb7980d")}</button>
                 ) : (
                   <>
-                    {emailError && <div className="alert alert-danger" style={{ marginBottom:10, fontSize:12 }}>{emailError}</div>}
-                    <div className="alert alert-warn" style={{ marginBottom:12, fontSize:12 }}>
-                      📧 Du erhältst Bestätigungsmails an <strong>beide</strong> Adressen. Erst nach Bestätigung wird die E-Mail gewechselt.
-                    </div>
+                    {emailError && <div className="alert alert-danger" style={{ marginBottom:10, fontSize:12 }}>{localizeMessage(emailError)}</div>}
+                    <div className="alert alert-warn" style={{ marginBottom:12, fontSize:12 }}>{tr("ui.ecef9930606e")}<strong>{tr("ui.f634c721db95")}</strong>{tr("ui.9b66f73d75ca")}</div>
                     <div className="form-group">
-                      <label>Neue E-Mail-Adresse</label>
+                      <label>{tr("ui.f77f5364d26c")}</label>
                       <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
-                        placeholder="neue@email.de" autoFocus />
+                        placeholder={tr("ui.f197a950741e")} autoFocus />
                     </div>
                     <div style={{ display:'flex', gap:8 }}>
                       <button className="btn btn-primary" onClick={changeEmail} disabled={emailSaving || !newEmail}>
-                        {emailSaving ? '⏳…' : '📧 Bestätigung senden'}
+                        {emailSaving ? '⏳…' : tr("ui.57f221c91e7e")}
                       </button>
-                      <button className="btn" onClick={() => { setChangingEmail(false); setNewEmail(''); setEmailError('') }}>
-                        Abbrechen
-                      </button>
+                      <button className="btn" onClick={() => { setChangingEmail(false); setNewEmail(''); setEmailError('') }}>{tr("ui.f7ff1178af20")}</button>
                     </div>
                   </>
                 )}
@@ -433,18 +431,18 @@ export default function Account() {
 
             {/* Passwort ändern */}
             <div className="card">
-              <div className="card-header"><div className="card-title">🔐 Passwort ändern</div></div>
+              <div className="card-header"><div className="card-title">{tr("ui.b4bbca68f30c")}</div></div>
               <div style={{ padding:'16px' }}>
-                {pwError   && <div className="alert alert-danger"  style={{ marginBottom:10, fontSize:13 }}>{pwError}</div>}
-                {pwSuccess && <div className="alert alert-success" style={{ marginBottom:10, fontSize:13 }}>{pwSuccess}</div>}
+                {pwError   && <div className="alert alert-danger"  style={{ marginBottom:10, fontSize:13 }}>{localizeMessage(pwError)}</div>}
+                {pwSuccess && <div className="alert alert-success" style={{ marginBottom:10, fontSize:13 }}>{localizeMessage(pwSuccess)}</div>}
                 <form onSubmit={changePassword}>
                   <div className="form-group">
-                    <label>Aktuelles Passwort</label>
+                    <label>{tr("ui.7bdf6e89701c")}</label>
                     <PasswordInput value={pwCurrent} onChange={e => setPwCurrent(e.target.value)}
                       autoComplete="current-password" required disabled={pwSaving} />
                   </div>
                   <div className="form-group">
-                    <label>Neues Passwort</label>
+                    <label>{tr("ui.88bba54d70a5")}</label>
                     <PasswordInput value={pwNew} onChange={e => setPwNew(e.target.value)}
                       autoComplete="new-password" required disabled={pwSaving} />
                     {pwNew && (
@@ -454,20 +452,20 @@ export default function Account() {
                             <div key={i} style={{ flex:1, height:3, borderRadius:2, background: pwScore>=i ? STRENGTH_COLOR[pwScore] : 'var(--border)' }} />
                           ))}
                         </div>
-                        <div style={{ fontSize:11, color: STRENGTH_COLOR[pwScore] }}>{STRENGTH_LABEL[pwScore]}</div>
+                        <div style={{ fontSize:11, color: STRENGTH_COLOR[pwScore] }}>{STRENGTH_LABEL()[pwScore]}</div>
                       </div>
                     )}
                   </div>
                   <div className="form-group">
-                    <label>Neues Passwort bestätigen</label>
+                    <label>{tr("ui.8f99b8341f93")}</label>
                     <PasswordInput value={pwConfirm} onChange={e => setPwConfirm(e.target.value)}
                       autoComplete="new-password" required disabled={pwSaving}
                       style={{ borderColor: pwConfirm && pwNew !== pwConfirm ? 'var(--danger)' : undefined }} />
-                    {pwConfirm && pwNew === pwConfirm && <div style={{ fontSize:11, color:'#16A34A', marginTop:4 }}>✓ Passwörter stimmen überein</div>}
+                    {pwConfirm && pwNew === pwConfirm && <div style={{ fontSize:11, color:'#16A34A', marginTop:4 }}>{tr("ui.71c5b9984138")}</div>}
                   </div>
                   <button type="submit" className="btn btn-primary" style={{ width:'100%', justifyContent:'center' }}
                     disabled={pwSaving || (!!pwConfirm && pwNew !== pwConfirm)}>
-                    {pwSaving ? '⏳…' : '🔐 Passwort ändern'}
+                    {pwSaving ? '⏳…' : tr("ui.b4bbca68f30c")}
                   </button>
                 </form>
               </div>
@@ -486,10 +484,10 @@ export default function Account() {
         {accountTab === 'verlauf' && (
           <div className="card">
             <div className="card-header">
-              <div className="card-title">📋 Mein Verlauf</div>
+              <div className="card-title">{tr("ui.12e0b5644546")}</div>
             </div>
             <div style={{ padding:'12px 16px', display:'flex', gap:8, borderBottom:'1px solid var(--border)' }}>
-              {[['urlaub','🌴 Urlaubsanträge'], ['krank','🤒 Krankmeldungen']].map(([k,l]) => (
+              {[['urlaub',tr("ui.33eb3a95746b")], ['krank',tr("ui.aa681bca6636")]].map(([k,l]) => (
                 <button key={k} className={`btn btn-sm${historyTab===k?' btn-primary':''}`} onClick={() => setHistoryTab(k)}>{l}</button>
               ))}
             </div>
@@ -497,15 +495,15 @@ export default function Account() {
             {historyTab === 'urlaub' && (
               <div className="table-wrap">
                 {allVacs.length === 0
-                  ? <div className="empty-state"><div className="empty-state-icon">🌴</div><div className="empty-state-text">Noch keine Urlaubsanträge</div></div>
+                  ? <div className="empty-state"><div className="empty-state-icon">🌴</div><div className="empty-state-text">{tr("ui.bf20fed25c5b")}</div></div>
                   : <table>
-                      <thead><tr><th>Von</th><th>Bis</th><th>Tage</th><th>Status</th><th>Gestellt am</th><th>Aktion</th></tr></thead>
+                      <thead><tr><th>{tr("ui.640e86cbc244")}</th><th>{tr("ui.078a815372af")}</th><th>{tr("ui.6770c319ff7b")}</th><th>{tr("ui.920e413c7d41")}</th><th>{tr("ui.e01523636474")}</th><th>{tr("ui.a4ad259e71cb")}</th></tr></thead>
                       <tbody>
                         {allVacs.map(v => {
                           const badges = {
-                            pending:  <span className="badge badge-amber">Ausstehend</span>,
-                            approved: <span className="badge badge-green">Genehmigt</span>,
-                            rejected: <span className="badge badge-red">Abgelehnt</span>,
+                            pending:  <span className="badge badge-amber">{tr("ui.0b5e85dd2508")}</span>,
+                            approved: <span className="badge badge-green">{tr("ui.9b3015a9dbf0")}</span>,
+                            rejected: <span className="badge badge-red">{tr("ui.a9148e8654e8")}</span>,
                           }
                           return (
                             <tr key={v.id}>
@@ -521,12 +519,10 @@ export default function Account() {
                                   <button className="btn btn-sm btn-danger" onClick={async () => {
                                     const { error } = await supabase.from('vacation_requests')
                                       .delete().eq('id', v.id).eq('status','pending')
-                                    if (error) { toast.error(error.message); return }
-                                    toast.success('Urlaubsantrag zurückgezogen')
+                                    if (error) { toast.error(errorMessage(error)); return }
+                                    toast.success(appMessage("ui.2bfb2b5588b9"))
                                     fetchData()
-                                  }}>
-                                    ✕ Zurückziehen
-                                  </button>
+                                  }}>{tr("ui.6e104aece86a")}</button>
                                 )}
                               </td>
                             </tr>
@@ -541,18 +537,18 @@ export default function Account() {
             {historyTab === 'krank' && (
               <div className="table-wrap">
                 {allSick.length === 0
-                  ? <div className="empty-state"><div className="empty-state-icon">🤒</div><div className="empty-state-text">Keine Krankmeldungen</div></div>
+                  ? <div className="empty-state"><div className="empty-state-icon">🤒</div><div className="empty-state-text">{tr("ui.7f0c943892ac")}</div></div>
                   : <table>
-                      <thead><tr><th>Ab</th><th>Bis</th><th>Attest</th><th>Eingetragen am</th></tr></thead>
+                      <thead><tr><th>{tr("ui.025b5573cb68")}</th><th>{tr("ui.078a815372af")}</th><th>{tr("ui.c81da7e67a9d")}</th><th>{tr("ui.0860310ca35c")}</th></tr></thead>
                       <tbody>
                         {allSick.map(s => (
                           <tr key={s.id}>
                             <td>{formatDate(s.start_date)}</td>
-                            <td>{s.end_date ? formatDate(s.end_date) : <span className="badge badge-red">Laufend</span>}</td>
+                            <td>{s.end_date ? formatDate(s.end_date) : <span className="badge badge-red">{tr("ui.1fe6a7f6e8a2")}</span>}</td>
                             <td>
                               {s.certificate_received
-                                ? <span className="badge badge-green">✓ Eingereicht</span>
-                                : <span style={{ color:'var(--text-muted)', fontSize:12 }}>Nicht eingereicht</span>
+                                ? <span className="badge badge-green">{tr("ui.b21510f8a1ac")}</span>
+                                : <span style={{ color:'var(--text-muted)', fontSize:12 }}>{tr("ui.f5a3f57e19d8")}</span>
                               }
                             </td>
                             <td style={{ fontSize:12, color:'var(--text-muted)' }}>
@@ -573,22 +569,18 @@ export default function Account() {
         {accountTab === 'dokumente' && (
           <div className="card">
             <div className="card-header">
-              <div className="card-title">📁 Meine Dokumente & Verträge</div>
+              <div className="card-title">{tr("ui.6c5058f47223")}</div>
             </div>
 
             {docsLoading && (
-              <div style={{ textAlign:'center', padding:'32px 0', fontSize:13, color:'var(--text-muted)' }}>
-                ⏳ Dokumente werden geladen…
-              </div>
+              <div style={{ textAlign:'center', padding:'32px 0', fontSize:13, color:'var(--text-muted)' }}>{tr("ui.a28b8a0f4826")}</div>
             )}
 
             {!docsLoading && myDocs.length === 0 && (
               <div className="empty-state" style={{ padding:'40px 0' }}>
                 <div className="empty-state-icon">📁</div>
-                <div className="empty-state-text">Es wurden noch keine Dokumente für dich hinterlegt.</div>
-                <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:6 }}>
-                  Bei Fragen zu deinen Unterlagen bitte an das Management wenden.
-                </div>
+                <div className="empty-state-text">{tr("ui.2bba02d81ef8")}</div>
+                <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:6 }}>{tr("ui.e1f9c6d84a5d")}</div>
               </div>
             )}
 
@@ -606,7 +598,7 @@ export default function Account() {
                         <span style={{ background:'var(--accent-light)', color:'var(--accent)', padding:'1px 6px', borderRadius:4, fontSize:11, marginRight:8 }}>
                           {DOC_TYPES_ACC[doc.document_type] || doc.document_type}
                         </span>
-                        {doc.valid_from && `Gültig ab ${formatDate(doc.valid_from)}`}
+                        {doc.valid_from && tr("ui.560db4347448", { p1: (formatDate(doc.valid_from)) })}
                         {doc.valid_from && doc.valid_until && ' – '}
                         {doc.valid_until && formatDate(doc.valid_until)}
                       </div>
@@ -615,21 +607,21 @@ export default function Account() {
                       )}
                       <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>
                         {doc.file_name}
-                        {doc.file_size && ` · ${(doc.file_size/1024).toFixed(0)} KB`}
-                        {` · Hochgeladen am ${formatDate(doc.uploaded_at?.split('T')[0])}`}
+                        {doc.file_size && ` · ${(doc.file_size/1024).toLocaleString(getIntlLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 0 })} KB`}
+                        {tr("ui.3be6aa8681d4", { p1: (formatDate(doc.uploaded_at?.split('T')[0])) })}
                       </div>
                     </div>
                     <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                       <button className="btn btn-sm btn-primary"
                         disabled={!!docActionId}
                         onClick={() => openMyDoc(doc)}>
-                        {docActionId===doc.id+':open' ? '⏳' : '📄 Öffnen'}
+                        {docActionId===doc.id+':open' ? '⏳' : tr("ui.ced8ed5a3dca")}
                       </button>
                       <button className="btn btn-sm"
                         style={{ background:'var(--info-bg)', color:'var(--info)', border:'1px solid var(--info)' }}
                         disabled={!!docActionId}
                         onClick={() => downloadMyDoc(doc)}>
-                        {docActionId===doc.id+':dl' ? '⏳' : '⬇ Download'}
+                        {docActionId===doc.id+':dl' ? '⏳' : tr("ui.fee265346c65")}
                       </button>
                     </div>
                   </div>

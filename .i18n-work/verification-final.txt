@@ -1,0 +1,62 @@
+$ node --test tests/i18n.test.mjs
+✔ catalog parity, plural forms, nonempty translations and placeholders (2.71375ms)
+✔ every literal translation key used in application code exists (11.0435ms)
+✔ German default, persistence, storage denial and cross-tab/reset events (0.115583ms)
+✔ fallback, literal interpolation and singular/plural rendering (0.308ms)
+✔ existing toast and validation messages follow locale selection (0.116417ms)
+✔ formatting uses the locale while keeping precision, EUR and date construction (8.5095ms)
+✔ privacy notice has both complete language versions and no placeholders (0.183625ms)
+✔ public/auth routes share one provider and switcher without locale remount keys (0.15725ms)
+✔ leave calculations and validation outcomes match the interrupted task baseline in both languages (26.9025ms)
+✔ sickness grouping and personal-data checks retain baseline business behavior (48.265709ms)
+✔ retained nested leave and clock-out messages switch DE → EN → DE (19.853667ms)
+✔ retained payroll months, document names and numeric formats use the new locale (11.8565ms)
+✔ retained joined fragments, field labels and error contexts switch together (1.593292ms)
+✔ more than 2,000 generated messages cannot evict or overwrite provenance (81.848917ms)
+✔ free text is literal even when identical to an app translation or generated message (0.188ms)
+✔ format descriptors snapshot raw dates, values and options; error carriers retain descriptors (0.386208ms)
+✔ stored UI message sites cannot regress to immediate translated strings (56.263542ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 319.682125
+exit=0
+
+$ python3 scripts/check-jsx-syntax.py
+Syntax checks: 78 files, 0 failures (lexical JSX lowering, not a build).
+exit=0
+
+$ python3 scripts/check-i18n-invariants.py
+Baseline invariants: {'audit_calls': 28, 'api_calls': 529, 'option_values': 46, 'unchanged_files': 3, 'datev_functions': 1}
+0 failures
+exit=0
+
+$ npm run build
+
+> cafe-app@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 146 modules transformed.
+rendering chunks...
+[plugin:vite:reporter] [plugin vite:reporter] 
+(!) /Users/can/cafe-app/src/lib/push.js is dynamically imported by /Users/can/cafe-app/src/lib/supabase.js but also statically imported by /Users/can/cafe-app/src/App.jsx, /Users/can/cafe-app/src/components/AppSetupCard.jsx, /Users/can/cafe-app/src/main.jsx, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                                1.02 kB │ gzip:   0.48 kB
+dist/assets/index-By56Zbqg.css                25.34 kB │ gzip:   6.23 kB
+dist/assets/IntegrationCenter-Cx7W4Wot.js     30.09 kB │ gzip:   8.48 kB
+dist/assets/index-GDiImegz.js              1,019.54 kB │ gzip: 308.67 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 671ms
+exit=0
+

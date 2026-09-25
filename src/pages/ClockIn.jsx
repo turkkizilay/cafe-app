@@ -1,10 +1,14 @@
+import { t as tr, getIntlLocale, message as appMessage, formatParam } from '../i18n/runtime.js'
+import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect } from 'react'
-import { supabase, formatTime, getDistanceMeters } from '../lib/supabase'
+import { supabase, getDistanceMeters } from '../lib/supabase'
+import { formatTime } from '../i18n/format.js'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 
 export default function ClockIn({ session }) {
+  useLocale()
   const { profile }           = useProfile()
   const toast                 = useToast()
   const [tick, setTick]       = useState(new Date())
@@ -106,10 +110,10 @@ export default function ClockIn({ session }) {
 
   async function clockIn() {
     if (working) return
-    if (openEntry) { toast.warn('Du bist bereits eingeclockt!'); return }
+    if (openEntry) { toast.warn(appMessage("ui.55993cbfd15e")); return }
     if (!employee) return
     if (!employee.is_active) {
-      toast.error('Dein Account ist deaktiviert. Bitte das Management kontaktieren.')
+      toast.error(appMessage("ui.9470891f33ea"))
       setWorking(false)
       return
     }
@@ -120,15 +124,15 @@ export default function ClockIn({ session }) {
       clock_in: now.toISOString(),
       gps_lat_in: gps.lat ?? null, gps_lng_in: gps.lng ?? null,
     }])
-    if (error) { toast.error(translateSupabaseError(error, 'Zeiterfassung')); setWorking(false); return }
-    toast.success(`✅ Eingeclockt um ${now.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' })} Uhr`)
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); setWorking(false); return }
+    toast.success(appMessage("ui.28f97c874d34", { p1: (formatParam("time", now, { hour:'2-digit', minute:'2-digit' })) }))
     await fetchData()
     setWorking(false)
   }
 
   async function clockOut() {
     if (working) return
-    if (!openEntry) { toast.warn('Du bist nicht eingeclockt.'); return }
+    if (!openEntry) { toast.warn(appMessage("ui.8a3492aa4c28")); return }
     setWorking(true)
     const now = new Date()
     const totalH = (now - new Date(openEntry.clock_in)) / 3600000
@@ -139,30 +143,30 @@ export default function ClockIn({ session }) {
       gps_lat_out: gps.lat ?? null, gps_lng_out: gps.lng ?? null,
       break_minutes: breakMin, hours_worked: parseFloat(netH.toFixed(2)),
     }).eq('id', openEntry.id).select('hours_worked, notes').maybeSingle()
-    if (error) { toast.error(translateSupabaseError(error, 'Zeiterfassung')); setWorking(false); return }
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); setWorking(false); return }
     // Server markiert Schichten > 12 Std. als „Ausstempeln vergessen“ (werden erst nach Korrektur bezahlt)
     if (saved?.notes?.includes('AUSSTEMPELN VERGESSEN')) {
-      toast.warn('Du warst über 12 Stunden eingestempelt — vermutlich vergessen auszustempeln. Bitte sag der Schichtleitung Bescheid, sie trägt die richtige Zeit ein.', 12000)
+      toast.warn(appMessage("ui.ce394dbf8d29"), 12000)
       await fetchData(); setWorking(false); return
     }
-    toast.success(`✅ Ausgeclockt — ${netH.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h gearbeitet${breakMin ? ` (${breakMin}min Pause abgezogen)` : ''}`)
+    toast.success(appMessage("ui.974c5412d6ec", { p1: (formatParam("number", netH, {minimumFractionDigits:2,maximumFractionDigits:2})), p2: (breakMin ? (appMessage("ui.b90bda0a43ef", { p1: (breakMin) })) : ('')) }))
     await fetchData()
     setWorking(false)
   }
 
   // ── Standort-Status: GPS ODER Café-WLAN genügt (Server prüft dasselbe noch einmal) ──
   const GPS_TEXT = {
-    checking:    '📍 GPS wird geprüft…',
-    ok:          `📍 GPS: im Café (${gps.dist} m)`,
-    'too-far':   `📍 GPS: ${gps.dist} m entfernt (max. ${cafe?.gps_radius_m || 50} m)`,
-    denied:      '📍 GPS: Zugriff nicht erlaubt',
-    unavailable: '📍 GPS: nicht verfügbar',
+    checking:    tr("ui.8f885759e8d1"),
+    ok:          tr("ui.fbb8b88b2a33", { p1: (gps.dist) }),
+    'too-far':   tr("clock.distance", { distance: gps.dist, max: cafe?.gps_radius_m || 50 }),
+    denied:      tr("ui.f1767e169c69"),
+    unavailable: tr("ui.604e820cb914"),
   }
   const NET_TEXT = {
-    checking: '📶 WLAN wird geprüft…',
-    ok:       '📶 Café-WLAN verbunden',
-    no:       '📶 Nicht im Café-WLAN',
-    error:    '📶 WLAN-Prüfung fehlgeschlagen',
+    checking: tr("ui.801490cdd516"),
+    ok:       tr("ui.b382e57ffe1e"),
+    no:       tr("ui.bf798ef87ca0"),
+    error:    tr("ui.0bf594519ebf"),
   }
   const netOnly = !!net.netOnly   // Admin hat „nur Café-WLAN“ eingestellt
   const gpsConfigured = gps.status !== 'no-config' && !netOnly
@@ -172,33 +176,33 @@ export default function ClockIn({ session }) {
   const stillChecking = (gpsConfigured && gps.status === 'checking') || (netConfigured && net.status === 'checking')
   // Bei Prüf-Fehler ohne GPS entscheidet der Server (er prüft ohnehin selbst)
   const canClock = located || (!netOnly && !gpsConfigured && (net.status === 'unconfigured' || net.status === 'error'))
-  const blockReason = stillChecking ? 'Standort wird geprüft' : 'Nicht im Café erkannt'
+  const blockReason = stillChecking ? tr("ui.75c87c02a7f2") : tr("ui.f2ecba2c057d")
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
   const elapsedMin = openEntry ? Math.max(0, Math.floor((tick - new Date(openEntry.clock_in)) / 60000)) : 0
   const METHOD_LABEL = { gps: '📍 GPS', wlan: '📶 WLAN', 'gps+wlan': '📍📶', 'ohne Prüfung': '–' }
 
   const today = localDateStr()
-  if (loading) return <div style={{ padding:24, color:'var(--text-secondary)' }}>Lädt…</div>
+  if (loading) return <div style={{ padding:24, color:'var(--text-secondary)' }}>{tr("ui.ebbb1d1f265f")}</div>
 
   return (
     <>
       <div className="topbar">
-        <div className="topbar-title">Zeiterfassung</div>
-        {anyConfigured && <button className="btn btn-sm" onClick={() => { checkNetwork(); if (cafe?.gps_lat && cafe?.gps_lng) doGpsCheck(cafe) }}>🔄 Standort neu prüfen</button>}
+        <div className="topbar-title">{tr("ui.d31430ba7ba3")}</div>
+        {anyConfigured && <button className="btn btn-sm" onClick={() => { checkNetwork(); if (cafe?.gps_lat && cafe?.gps_lng) doGpsCheck(cafe) }}>{tr("ui.d557ceae7443")}</button>}
       </div>
 
       <div className="content">
         {!employee && !profile?.employee_id && (
-          <div className="alert alert-warn">⚠️ Kein Mitarbeiterprofil verknüpft. Bitte die Geschäftsführung kontaktieren.</div>
+          <div className="alert alert-warn">{tr("ui.e8ce490ed1fc")}</div>
         )}
 
         <div className="card mb-5">
           <div className="clock-widget">
             <div className="clock-time" style={{ fontVariantNumeric:'tabular-nums' }}>
-              {tick.toLocaleTimeString('de-DE')}
+              {tick.toLocaleTimeString(getIntlLocale())}
             </div>
             <div className="clock-date">
-              {tick.toLocaleDateString('de-DE', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}
+              {tick.toLocaleDateString(getIntlLocale(), { weekday:'long', day:'numeric', month:'long', year:'numeric' })}
             </div>
 
             {employee && (
@@ -222,14 +226,13 @@ export default function ClockIn({ session }) {
                 )}
               </div>
             ) : (
-              <div style={{ marginBottom:20, fontSize:13, color:'var(--text-secondary)' }}>⚠️ Standortprüfung noch nicht eingerichtet</div>
+              <div style={{ marginBottom:20, fontSize:13, color:'var(--text-secondary)' }}>{tr("ui.3c0cbeade7bc")}</div>
             )}
 
             {!stillChecking && !canClock && employee && (
               <div style={{ fontSize:12.5, color:'var(--text-secondary)', maxWidth:380, margin:'-8px auto 16px', lineHeight:1.55 }}>
-                {netOnly ? 'Verbinde dich mit dem Café-WLAN' : <>Erlaube den Standortzugriff{netConfigured ? ' oder verbinde dich mit dem Café-WLAN' : ''}</>} und tippe dann auf „Standort neu prüfen“.
-                {netConfigured && isIOS && net.status === 'no' && (
-                  <> Im Café-WLAN, aber nicht erkannt? Einstellungen → WLAN → (i) → „iCloud Privat-Relay“ ausschalten.</>
+                {netOnly ? tr("ui.77204e32623a") : <>{tr("ui.b21f0d33bf79")}{netConfigured ? tr("ui.874a844c2e3f") : ''}</>}{tr("ui.7f441ac056bd")}{netConfigured && isIOS && net.status === 'no' && (
+                  <>{tr("ui.a4fbabf31591")}</>
                 )}
               </div>
             )}
@@ -241,17 +244,15 @@ export default function ClockIn({ session }) {
                 disabled={working}
                 style={{ cursor: canClock ? 'pointer' : 'not-allowed' }}
               >
-                {working ? '…' : canClock ? '⏱ Einclocken' : `🔒 ${blockReason}`}
+                {working ? '…' : canClock ? tr("ui.5a69fe8540cc") : `🔒 ${blockReason}`}
               </button>
             )}
 
             {employee && openEntry && (
               <div>
-                <div style={{ marginBottom:12, fontSize:13.5, color:'var(--text-secondary)' }}>
-                  Eingeclockt seit {formatTime(openEntry.clock_in)} Uhr ·{' '}
+                <div style={{ marginBottom:12, fontSize:13.5, color:'var(--text-secondary)' }}>{tr("ui.0f953d7be19e")}{formatTime(openEntry.clock_in)}{tr("ui.82b45aa08404")}{' '}
                   <strong style={{ color:'var(--text-primary)' }}>
-                    {((Date.now() - new Date(openEntry.clock_in)) / 3600000).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h
-                  </strong>
+                    {((Date.now() - new Date(openEntry.clock_in)) / 3600000).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong>
                 </div>
                 <button
                   className={`clock-btn ${canClock ? 'btn-clock-out' : 'btn-clock-blocked'}`}
@@ -259,7 +260,7 @@ export default function ClockIn({ session }) {
                   disabled={working}
                   style={{ cursor: canClock ? 'pointer' : 'not-allowed' }}
                 >
-                  {working ? '…' : canClock ? '⏹ Ausclocken' : `🔒 ${blockReason}`}
+                  {working ? '…' : canClock ? tr("ui.161d46983281") : `🔒 ${blockReason}`}
                 </button>
               </div>
             )}
@@ -267,29 +268,26 @@ export default function ClockIn({ session }) {
         </div>
 
         {openEntry && elapsedMin > 0 && (
-        <div style={{ textAlign:'center', padding:'10px', marginBottom:8, background:'var(--accent-light)', borderRadius:10, fontSize:13, color:'var(--accent)', fontWeight:600 }}>
-          ⏱ Du arbeitest seit {elapsedMin >= 60 ? `${Math.floor(elapsedMin/60)} Std. ${elapsedMin%60} Min.` : `${elapsedMin} Minuten`}
+        <div style={{ textAlign:'center', padding:'10px', marginBottom:8, background:'var(--accent-light)', borderRadius:10, fontSize:13, color:'var(--accent)', fontWeight:600 }}>{tr("ui.5ebc04ce3734")}{elapsedMin >= 60 ? tr("ui.bab653ba27e2", { p1: (Math.floor(elapsedMin/60)), p2: (elapsedMin%60) }) : tr("count.minutes", { count: elapsedMin })}
         </div>
       )}
       {!openEntry && restWarn !== null && (
-        <div className="alert alert-warn" style={{ fontSize:13, marginBottom:12 }}>
-          ⚠️ Dein letztes Ausclocken ist erst {restWarn.toLocaleString('de-DE')} Std. her. Zwischen zwei Schichten sind gesetzlich in der Regel 11 Std. Ruhezeit vorgesehen (§ 5 ArbZG). Bitte kurz mit der Schichtleitung absprechen.
-        </div>
+        <div className="alert alert-warn" style={{ fontSize:13, marginBottom:12 }}>{tr("ui.c2c19df3a031")}{restWarn.toLocaleString(getIntlLocale())}{tr("ui.1c9f634a2384")}</div>
       )}
       <div className="card">
-          <div className="card-header"><div className="card-title">Heutige Einträge — {new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</div></div>
+          <div className="card-header"><div className="card-title">{tr("ui.9a8751dcebaa")}{new Date().toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})}</div></div>
           {entries.length === 0
-            ? <div className="empty-state"><div className="empty-state-icon">⏰</div><div className="empty-state-text">Noch keine Zeiteinträge heute</div></div>
+            ? <div className="empty-state"><div className="empty-state-icon">⏰</div><div className="empty-state-text">{tr("ui.f66a010e6610")}</div></div>
             : <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Arbeitsbeginn</th><th>Arbeitsende</th><th>Pause</th><th>Netto-Stunden</th><th>Ort</th></tr></thead>
+                  <thead><tr><th>{tr("ui.7527c410788b")}</th><th>{tr("ui.2d604d899b88")}</th><th>{tr("ui.858e4ba7a29f")}</th><th>{tr("ui.30cb3e5a9be1")}</th><th>{tr("ui.30fb259129e5")}</th></tr></thead>
                   <tbody>
                     {entries.map(e => (
                       <tr key={e.id}>
-                        <td>{e.date !== today && <span style={{ fontSize:11.5, color:'var(--text-muted)' }}>{new Date(e.date + 'T00:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})} · </span>}{formatTime(e.clock_in)}</td>
-                        <td>{e.clock_out ? formatTime(e.clock_out) : <span className="badge badge-green">Aktiv</span>}</td>
+                        <td>{e.date !== today && <span style={{ fontSize:11.5, color:'var(--text-muted)' }}>{new Date(e.date + 'T00:00:00').toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit'})} · </span>}{formatTime(e.clock_in)}</td>
+                        <td>{e.clock_out ? formatTime(e.clock_out) : <span className="badge badge-green">{tr("ui.8163454f378f")}</span>}</td>
                         <td>{e.break_minutes ? `${e.break_minutes} min` : '–'}</td>
-                        <td>{e.hours_worked ? <strong>{e.hours_worked.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} h</strong> : '–'}</td>
+                        <td>{e.hours_worked ? <strong>{e.hours_worked.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong> : '–'}</td>
                         <td>{e.clock_in_method ? (METHOD_LABEL[e.clock_in_method] || '–') : (e.gps_ok_in ? '📍 GPS' : '–')}</td>
                       </tr>
                     ))}
