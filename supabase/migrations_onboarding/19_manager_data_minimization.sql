@@ -8,7 +8,7 @@
 -- • Admin: unverändert voller Zugriff (emp_admin_write, pay_manage, …).
 -- • Mitarbeiter: unverändert nur eigene Daten (emp_read_self, pay_read, onb_select_own).
 -- • Keine Datenänderung.
--- NOCH NICHT live eingespielt.
+-- Bereits live eingespielt (Migration manager_data_minimization, 2026-09-25) — NICHT erneut ausführen.
 -- ============================================================
 
 DROP POLICY IF EXISTS emp_manager_read   ON public.employees;
