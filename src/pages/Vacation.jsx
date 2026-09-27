@@ -1,6 +1,7 @@
 import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts, formatParam } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useSearchParams } from 'react-router-dom'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase, toLocalDateStr } from '../lib/supabase'
 import { fetchStaffOperational, mergeStaffRows, fillEmbeddedEmployees } from '../lib/staffDirectory'
@@ -59,6 +60,7 @@ export default function Vacation() {
   }, [searchParams])
 
   useEffect(() => { fetchAll() }, [profile?.employee_id])
+  useRefreshHandler(() => fetchAll())   // Pull-to-Refresh / Aktualisieren-Button
 
   async function fetchAll() {
     setLoading(true)

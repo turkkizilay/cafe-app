@@ -9,6 +9,7 @@ import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
 import { timesheetPdf } from '../lib/timesheetPdf'
 import { safeFileName } from '../lib/pdf'
 import { saveFile } from '../lib/download'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 /**
  * Arbeitszeitnachweis pro Mitarbeiter und Monat (§ 17 MiLoG, § 16 Abs. 2 ArbZG).
@@ -53,6 +54,8 @@ export default function Timesheet() {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
   const [showFormer, setShowFormer] = useState(false)
+  const [reloadTick, setReloadTick] = useState(0)
+  useRefreshHandler(() => setReloadTick(t => t + 1))   // Pull-to-Refresh / Aktualisieren-Button lädt den Monat neu
 
   const b = useMemo(() => monthBounds(ym), [ym])
 
@@ -105,7 +108,7 @@ export default function Timesheet() {
     }
     load()
     return () => { cancelled = true }
-  }, [ym, canManage, profile?.employee_id])
+  }, [ym, canManage, profile?.employee_id, reloadTick])
 
   // Welche Mitarbeiter erscheinen? „Alle“ = aktiv im Monat oder mit Einträgen im Monat
   const sheetEmps = useMemo(() => {

@@ -1984,7 +1984,14 @@ export const de = {
   "payModel.partialMonth": "Teilmonat prüfen",
   "payModel.saveAfterApproveFailed": "{p1} wurde freigeschaltet, aber das Fixgehalt konnte nicht gespeichert werden. Bitte unter Mitarbeiter → Bearbeiten nachtragen.",
   "timesheet.downloadPdf": "📄 PDF herunterladen",
-  "timesheet.fileName": "Arbeitszeitnachweis"
+  "timesheet.fileName": "Arbeitszeitnachweis",
+  "refresh.pull": "Zum Aktualisieren ziehen",
+  "refresh.release": "Loslassen zum Aktualisieren",
+  "refresh.refreshing": "Wird aktualisiert…",
+  "refresh.button": "Aktualisieren",
+  "refresh.failed": "Aktualisieren fehlgeschlagen. Bitte erneut versuchen.",
+  "refresh.blocked": "Bitte zuerst den offenen Dialog schließen bzw. die Eingabe beenden – so gehen keine Eingaben verloren.",
+  "refresh.offline": "Keine Internetverbindung – die angezeigten Daten bleiben erhalten. Bitte später erneut aktualisieren."
 }
 
 export const en = {
@@ -3972,5 +3979,12 @@ export const en = {
   "payModel.partialMonth": "Check partial month",
   "payModel.saveAfterApproveFailed": "{p1} was approved, but the fixed salary could not be saved. Please add it under Employees → Edit.",
   "timesheet.downloadPdf": "📄 Download PDF",
-  "timesheet.fileName": "Timesheet"
+  "timesheet.fileName": "Timesheet",
+  "refresh.pull": "Pull to refresh",
+  "refresh.release": "Release to refresh",
+  "refresh.refreshing": "Refreshing…",
+  "refresh.button": "Refresh",
+  "refresh.failed": "Refresh failed. Please try again.",
+  "refresh.blocked": "Please close the open dialog or finish your input first – so nothing you entered is lost.",
+  "refresh.offline": "No internet connection – the data shown is kept. Please refresh again later."
 }

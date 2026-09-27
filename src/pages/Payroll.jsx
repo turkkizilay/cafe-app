@@ -10,6 +10,7 @@ import { useToast } from '../components/UI/Toast'
 import { monthlyModel, monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
 import { payTypeOf, monthlyGross, sickPayAmount, isPartialMonth, datevRateCell, datevHintCell, PAY_FIXED } from '../lib/compensation'
 import { saveFile } from '../lib/download'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const MINIJOB_LIMIT      = 603    // € / Monat 2026 (§ 8 Abs. 1 Nr. 1 SGB IV)
 const WERKSTUDENT_LIMIT  = STUDENT_MONTHLY_LIMIT_H   // Stunden / Monat (betriebliche Regel, zentral in workTimeModels)
@@ -168,6 +169,7 @@ export default function Payroll() {
   }
 
   useEffect(() => { fetchPayroll() }, [year, month])
+  useRefreshHandler(() => fetchPayroll())   // Pull-to-Refresh / Aktualisieren-Button
 
   async function fetchPayroll() {
     setLoading(true)

@@ -8,6 +8,7 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const getMonths = () => Array.from({ length: 12 }, (_, i) => ({
   v: i + 1,
@@ -35,6 +36,7 @@ export default function PayrollDocuments() {
   const now = new Date()
 
   useEffect(() => { fetchAll() }, [])
+  useRefreshHandler(() => fetchAll())   // Pull-to-Refresh / Aktualisieren-Button
 
   async function fetchAll() {
     setLoading(true)

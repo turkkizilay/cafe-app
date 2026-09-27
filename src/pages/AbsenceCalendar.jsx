@@ -7,6 +7,7 @@ import { formatMonthYear } from '../i18n/format.js'
 import Avatar from '../components/UI/Avatar'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 export default function AbsenceCalendar() {
   useLocale()
@@ -21,6 +22,7 @@ export default function AbsenceCalendar() {
   const [loading,   setLoading]   = useState(true)
 
   useEffect(() => { fetchData() }, [year, month])
+  useRefreshHandler(() => fetchData())   // Pull-to-Refresh / Aktualisieren-Button
 
   async function fetchData() {
     setLoading(true)

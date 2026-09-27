@@ -13,6 +13,7 @@ import { useProfile } from '../context/ProfileContext'
 import { openBreak, netWorkedHours } from '../lib/workHours'
 import { fetchBreaksForEntries } from '../lib/breaks'
 import { fetchStaffOperational, mergeStaffRows, fillEmbeddedEmployees } from '../lib/staffDirectory'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 function greeting() {
@@ -247,6 +248,7 @@ export default function Dashboard() {
   }, [profile?.employee_id, canManage])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+  useRefreshHandler(fetchAll)   // Pull-to-Refresh / Aktualisieren-Button
 
   const firstName = myEmployee?.first_name
     || profile?.first_name   // Name aus Registrierung

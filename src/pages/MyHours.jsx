@@ -13,6 +13,7 @@ import {
 } from '../lib/constants'
 import { monthlyModel, monthlyTargetHours } from '../lib/workTimeModels'
 import { payTypeOf, PAY_FIXED } from '../lib/compensation'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 // ── Wochenhelfer (ISO 8601: Montag = Start, Sonntag = Ende) ────────────────
 function getStartOfWeekDE(date) {
@@ -148,6 +149,7 @@ export default function MyHours() {
   }, [profile?.employee_id, weekStart, weekEnd, monthStart, monthEnd])
 
   useEffect(() => { fetchData() }, [fetchData])
+  useRefreshHandler(fetchData)   // Pull-to-Refresh / Aktualisieren-Button
 
   // ── Berechnungen ──────────────────────────────────────────────────────────
   const weeklyHours  = weekEntries.reduce((s,e) => s + (e.hours_worked||0), 0)

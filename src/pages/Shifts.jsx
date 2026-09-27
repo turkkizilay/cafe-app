@@ -9,6 +9,7 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useDarkMode } from '../context/DarkModeContext'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const DAY_NAMES  = () => [tr("ui.d23e867e38e8"), tr("ui.16ab72874809"), tr("ui.d8f33a13ae6e"), tr("ui.30094e0bec00"), tr("ui.eed8f901692d"), tr("ui.a951efc79deb"), tr("ui.fb1df1a24e3f")]
 const DAY_FULL   = () => [tr("ui.b703fc6aeb9c"),tr("ui.c2e102ca1f11"),tr("ui.76c93ad154a5"),tr("ui.b15c4daa80ba"),tr("ui.5815ddf1ffb1"),tr("ui.7c22aad82322"),tr("ui.a5984592501e")]
@@ -88,6 +89,7 @@ export default function Shifts() {
 
   useEffect(() => { fetchData() }, [offset])
   useEffect(() => { fetchSwaps() }, [])
+  useRefreshHandler(() => Promise.all([fetchData(), fetchSwaps()]))   // Pull-to-Refresh / Aktualisieren-Button
 
   async function fetchData() {
     setLoading(true)

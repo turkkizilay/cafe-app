@@ -14,6 +14,7 @@ import { translateSupabaseError } from '../lib/errorHelper'
 import OnboardingReview, { ONB_STATUS } from '../components/OnboardingReview'
 import PayModelFields from '../components/PayModelFields'
 import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const ROLES = [
   { value: 'employee', get label() { return tr("ui.d422e9b832d6") } },
@@ -59,6 +60,7 @@ export default function UserManagement() {
   const [inviteSaving, setInviteSaving] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
+  useRefreshHandler(() => fetchAll())   // Pull-to-Refresh / Aktualisieren-Button
 
   async function fetchAll() {
     setLoading(true)

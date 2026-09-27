@@ -8,6 +8,7 @@ import { calcWorkedHours, openBreak, sumBreakMinutes, isBreakTooLong, netWorkedH
 import { fetchBreaks, startBreak, endBreak, isBreakFeatureMissing } from '../lib/breaks'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 export default function ClockIn({ session }) {
   useLocale()
@@ -33,6 +34,7 @@ export default function ClockIn({ session }) {
   }, [])
 
   useEffect(() => { fetchData() }, [profile?.employee_id])
+  useRefreshHandler(() => fetchData())   // Pull-to-Refresh / Aktualisieren-Button
 
   // Nach WLAN-Wechsel / Rückkehr in die App automatisch neu prüfen
   useEffect(() => {

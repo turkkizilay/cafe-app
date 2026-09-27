@@ -10,6 +10,7 @@ import { logActivity } from '../lib/activityLog'
 import { calcWorkedHours, sumBreakMinutes, validateBreaks, breakElapsedMinutes, BREAK_WARNING_MINUTES } from '../lib/workHours'
 import { fetchBreaksForEntries, syncBreaks, logBreakCorrection, isBreakFeatureMissing } from '../lib/breaks'
 import Avatar from '../components/UI/Avatar'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const EMPTY_FORM = {
   employee_id: '', date: toLocalDateStr(new Date()),
@@ -70,6 +71,7 @@ export default function TimeManagement() {
   }, [])
 
   useEffect(() => { if (filterEmp) fetchEntries() }, [filterEmp, filterMode, filterYear, filterMonth, filterDate])
+  useRefreshHandler(() => (filterEmp ? fetchEntries() : null))   // Pull-to-Refresh / Aktualisieren-Button
 
   function getDateRange() {
     const pad = n => String(n).padStart(2,'0')

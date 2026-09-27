@@ -11,6 +11,7 @@ import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { LOG_CATEGORIES, triggerLogCleanup } from '../lib/activityLog'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const PAGE_SIZE = 50
 
@@ -91,6 +92,7 @@ export default function ActivityLog() {
   }, [category, fromDate, toDate, search, entries.length])
 
   // Erstes Laden + Cleanup-Trigger (12-Monats-Frist, nicht-blockierend)
+  useRefreshHandler(() => loadEntries(true))   // Pull-to-Refresh / Aktualisieren-Button
   useEffect(() => {
     if (!cleanupDone.current) {
       cleanupDone.current = true

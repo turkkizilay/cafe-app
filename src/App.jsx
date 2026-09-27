@@ -33,6 +33,8 @@ import AccessDenied    from './pages/AccessDenied'
 import ActivityLog     from './pages/ActivityLog'
 import Onboarding      from './pages/Onboarding'
 import DeleteAccountCard from './components/DeleteAccountCard'
+import { RefreshProvider } from './context/RefreshContext.jsx'
+import PullToRefresh, { RefreshButton } from './components/PullToRefresh.jsx'
 
 // ── Passwort-Reset-Link erkennen ──────────────────────────────
 const RECOVERY_LINK_DETECTED =
@@ -371,7 +373,10 @@ export default function App() {
       <ProfileContext.Provider value={ctx}>
         <ToastProvider>
           <BrowserRouter>
+            <RefreshProvider>
             <div className="app-shell">
+              <PullToRefresh />
+              <RefreshButton />
               <Sidebar session={session} isAdmin={isAdmin} isManager={isManager} pendingCount={pending} vacPendingCount={vacPending} sickPendingCount={sickPending} />
               <div className="main">
 
@@ -441,6 +446,7 @@ export default function App() {
               </div>
             )}
 
+            </RefreshProvider>
           </BrowserRouter>
         </ToastProvider>
       </ProfileContext.Provider>

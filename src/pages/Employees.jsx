@@ -18,6 +18,7 @@ import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
 
 const PAY_ERROR_KEY = { fixedNotAllowed: "payModel.fixedNotAllowed", salaryMissing: "payModel.salaryMissing" }
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const EMPTY = {
   first_name: '', last_name: '', email: '', phone: '', birth_date: '',
@@ -85,6 +86,7 @@ export default function Employees() {
   const docFileRef = useRef(null)
 
   useEffect(() => { fetchEmployees() }, [showInactive])
+  useRefreshHandler(() => Promise.all([fetchEmployees(), isAdmin ? fetchAccess() : null]))   // Pull-to-Refresh / Aktualisieren-Button
 
   // ── Dokument-Funktionen (Admin only) ─────────────────────────
   async function fetchDocs(employeeId) {

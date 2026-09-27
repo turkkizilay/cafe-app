@@ -15,6 +15,7 @@ import { getVacationBalance } from '../lib/vacationLogic'
 import Avatar from '../components/UI/Avatar'
 import PasswordInput from '../components/UI/PasswordInput'
 import ImageCropper from '../components/UI/ImageCropper'
+import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 function checkPw(pw) {
@@ -145,6 +146,7 @@ export default function Account() {
   const [pwSuccess,    setPwSuccess]    = useState('')
 
   useEffect(() => { if (profile?.employee_id) fetchData() }, [profile?.employee_id])
+  useRefreshHandler(() => Promise.all([profile?.employee_id ? fetchData() : null, accountTab === 'dokumente' ? fetchMyDocs() : null]))   // Pull-to-Refresh / Aktualisieren-Button
 
   async function fetchData() {
     setLoading(true)
