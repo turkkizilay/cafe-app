@@ -762,8 +762,8 @@ export const de = {
   "ui.70f17d06d37c": " gibt es keine Mitarbeiter mit Arbeitszeiten.",
   "ui.ce37b04c32ab": "Für ",
   "ui.fa13cdbb912b": "Dein Zugang ist noch keinem Mitarbeiter zugeordnet.",
-  "ui.73b61df128e0": "Tipp: Im Druckfenster „Als PDF sichern“ (Mac/iPhone: „Sichern als PDF“ bzw. Teilen → „In Dateien sichern“) wählen.",
-  "ui.197d7ae2d1bd": "🖨️ Drucken / als PDF speichern",
+  "ui.73b61df128e0": "„PDF herunterladen“ speichert den Arbeitszeitnachweis direkt als PDF-Datei (iPhone: im Teilen-Menü „In Dateien sichern“). „Drucken“ öffnet den Druckdialog des Browsers.",
+  "ui.197d7ae2d1bd": "🖨️ Drucken",
   "ui.017240ff0119": " ehemalige anzeigen",
   "ui.ea2d394a7ea4": " (ehemalig)",
   "ui.6e45dcdf9899": "Alle (",
@@ -1984,7 +1984,7 @@ export const de = {
   "payModel.partialMonth": "Teilmonat prüfen",
   "payModel.saveAfterApproveFailed": "{p1} wurde freigeschaltet, aber das Fixgehalt konnte nicht gespeichert werden. Bitte unter Mitarbeiter → Bearbeiten nachtragen.",
   "timesheet.downloadPdf": "📄 PDF herunterladen",
-  "timesheet.fileName": "Stundennachweis"
+  "timesheet.fileName": "Arbeitszeitnachweis"
 }
 
 export const en = {
@@ -2750,8 +2750,8 @@ export const en = {
   "ui.70f17d06d37c": " there are no employees with recorded working hours.",
   "ui.ce37b04c32ab": "For ",
   "ui.fa13cdbb912b": "Your account is not yet linked to an employee.",
-  "ui.73b61df128e0": "Tip: choose \"Save as PDF\" in the print dialog (Mac/iPhone: \"Save as PDF\" or Share → \"Save to Files\").",
-  "ui.197d7ae2d1bd": "🖨️ Print / save as PDF",
+  "ui.73b61df128e0": "\"Download PDF\" saves the timesheet directly as a PDF file (iPhone: choose \"Save to Files\" in the share sheet). \"Print\" opens the browser's print dialog.",
+  "ui.197d7ae2d1bd": "🖨️ Print",
   "ui.017240ff0119": " show former employees",
   "ui.ea2d394a7ea4": " (former)",
   "ui.6e45dcdf9899": "All (",

@@ -142,3 +142,64 @@ test('DATEV-Export zur Laufzeit: echte exportDATEV-Funktion erzeugt gültige CSV
   assert.equal(cells[2][9], '""'); assert.equal(cells[2][10], '"2000,00"'); assert.equal(cells[2][11], '"FIXGEHALT / TEILMONAT PRÜFEN / ÜBERSTUNDEN"')
   assert.equal(cells[1][4], '"172,00"'); assert.equal(cells[2][4], '"86,00"')     // Soll nach Arbeitszeitmodell
 })
+
+test('Stundennachweis „PDF herunterladen“ zur Laufzeit: echte PDF-Datei, kein Druckdialog', async () => {
+  const { timesheetPdf } = await import('../src/lib/timesheetPdf.js')
+  const src = read('src/pages/Timesheet.jsx')
+  const start = src.indexOf('function downloadPdf()')
+  let i = src.indexOf('{', start) + 1, depth = 1
+  while (depth) { const c = src[i++]; if (c === '{') depth++; else if (c === '}') depth-- }
+  const TR = { 'timesheet.fileName': 'Arbeitszeitnachweis', 'ui.2ee8d088f45d': 'Arbeitszeitnachweis' }
+  const run = (emps, ym = '2026-09') => {
+    const saved = []; let printed = 0
+    const deps = {
+      data: { te: [] }, sheetEmps: emps, cafe: { cafe_name: 'Test-Café' }, b: {}, monthLabel: 'September 2026', ym,
+      tr: k => TR[k] ?? k, timesheetPdf, safeFileName,
+      sheetPdfData: emp => sheet(`${emp.first_name} ${emp.last_name}`, 3, true),
+      saveFile: (bytes, name, type) => saved.push({ bytes, name, type }),
+      window: { print: () => printed++ },
+    }
+    new Function(...Object.keys(deps), `${src.slice(start, i)}; return downloadPdf()`)(...Object.values(deps))
+    return { saved, printed }
+  }
+  const one = run([{ first_name: 'Jörg', last_name: 'Müller-Lüdenscheidt' }])
+  assert.equal(one.saved.length, 1, 'Download ausgelöst')
+  assert.equal(one.printed, 0, 'kein window.print()')
+  assert.equal(one.saved[0].type, 'application/pdf')
+  assert.equal(one.saved[0].name, 'Arbeitszeitnachweis_Joerg_Mueller-Luedenscheidt_2026-09.pdf')
+  assertValidPdf(one.saved[0].bytes)
+  assert.equal(latin1(one.saved[0].bytes.slice(0, 5)), '%PDF-')
+  const long = run([{ first_name: 'Anna-Maria Sophie', last_name: 'von Überlänge-Nachnamenträgerin' }], '2026-10')
+  assert.match(long.saved[0].name, /^Arbeitszeitnachweis_Anna-Maria_Sophie_von_Ueberlaenge-Nachnamentraegerin_2026-10\.pdf$/)
+  const all = run([{ first_name: 'A', last_name: 'B' }, { first_name: 'C', last_name: 'D' }])
+  assert.equal(all.saved[0].name, 'Arbeitszeitnachweis_2026-09.pdf')
+  assert.match(latin1(all.saved[0].bytes), /\/Count 2 >>/)                    // ein Blatt je Mitarbeiter
+  assert.equal(run([]).saved.length, 0, 'ohne Mitarbeiter kein leerer Download')
+})
+
+test('Stundennachweis: getrennte Aktionen – „PDF herunterladen“ und „Drucken“ (DE/EN)', async () => {
+  const { de, en } = await import('../src/i18n/catalogs.js')
+  const src = read('src/pages/Timesheet.jsx')
+  assert.match(src, /onClick=\{downloadPdf\}[^>]*>\{tr\("timesheet\.downloadPdf"\)\}/)
+  assert.match(src, /onClick=\{\(\) => window\.print\(\)\}[^>]*>\{tr\("ui\.197d7ae2d1bd"\)\}/)   // Drucken bleibt Druckweg
+  const dl = src.slice(src.indexOf('function downloadPdf()'), src.indexOf('const pickerEmps'))
+  assert.doesNotMatch(dl, /print/)
+  assert.equal(de['ui.197d7ae2d1bd'], '🖨️ Drucken'); assert.equal(en['ui.197d7ae2d1bd'], '🖨️ Print')
+  assert.equal(de['timesheet.downloadPdf'], '📄 PDF herunterladen'); assert.equal(en['timesheet.downloadPdf'], '📄 Download PDF')
+  for (const cat of [de, en]) assert.doesNotMatch(cat['ui.197d7ae2d1bd'], /PDF/, 'Drucken-Button verspricht keine PDF mehr')
+  assert.match(de['ui.73b61df128e0'], /PDF herunterladen/); assert.match(en['ui.73b61df128e0'], /Download PDF/)
+})
+
+test('Stundennachweis: Tag/Monat sprachrichtig (DE „01.09.“, EN „01/09“ ohne Schrägstrich am Ende)', async () => {
+  const { t, getIntlLocale, setRuntimeLocale } = await import('../src/i18n/runtime.js')
+  const src = read('src/pages/Timesheet.jsx')
+  const line = src.split('\n').find(l => l.startsWith('const fmtDayMonth'))
+  assert.ok(line, 'fmtDayMonth vorhanden')
+  const fmtDayMonth = new Function('getIntlLocale', `${line}; return fmtDayMonth`)(getIntlLocale)
+  setRuntimeLocale('de'); assert.equal(fmtDayMonth('2026-09-01'), '01.09.')
+  setRuntimeLocale('en'); assert.equal(fmtDayMonth('2026-09-01'), '01/09')
+  setRuntimeLocale('de')
+  assert.doesNotMatch(src, /fmtDate\(r\.d\)\.slice\(0, 6\)/)
+  assert.equal((src.match(/fmtDayMonth\(r\.d\)/g) || []).length, 2)      // Ansicht/Druck + PDF
+  void t
+})

@@ -3,7 +3,7 @@
 import { buildPdf, fitText, A4 } from './pdf.js'
 
 const M = 40                                              // Seitenrand
-const COLS = [52, 30, 48, 48, 50, 56]                     // Datum, Tag, Beginn, Ende, Pause, Stunden; Rest = Bemerkung
+const COLS = [44, 32, 42, 42, 46, 72]                     // Datum, Tag, Beginn, Ende, Pause, Arbeitszeit; Rest = Bemerkung
 const ROW_H = 13, FONT = 8.5
 
 // sheet: { cafeName, cafeAddress, title, subtitle, monthLabel, empLines:[[label, value]],

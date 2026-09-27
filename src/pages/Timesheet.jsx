@@ -22,6 +22,8 @@ const EMPLOYMENT = { get vollzeit() { return tr("ui.49dbe1b0b4b3") }, get teilze
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString(getIntlLocale(), { hour:'2-digit', minute:'2-digit', timeZone: TZ }) : ''
 const fmtH = h => `${Number(h || 0).toLocaleString(getIntlLocale(), { minimumFractionDigits:2, maximumFractionDigits:2 })} h`
 const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString(getIntlLocale(), { day:'2-digit', month:'2-digit', year:'numeric' })
+// Tag/Monat sprachrichtig (DE „01.09.“, EN „01/09“) – vorher slice(0, 6) → im Englischen „01/09/“
+const fmtDayMonth = d => new Date(d + 'T00:00:00').toLocaleDateString(getIntlLocale(), { day:'2-digit', month:'2-digit' })
 
 function monthBounds(ym) {
   const [y, m] = ym.split('-').map(Number)
@@ -120,7 +122,7 @@ export default function Timesheet() {
   function downloadPdf() {
     if (!data || !sheetEmps.length) return
     const bytes = timesheetPdf(sheetEmps.map(emp => sheetPdfData(emp, cafe, data, b, monthLabel)), { title: `${tr("ui.2ee8d088f45d")} ${monthLabel}` })
-    const who = sheetEmps.length === 1 ? `_${sheetEmps[0].last_name || ''}_${sheetEmps[0].first_name || ''}` : ''
+    const who = sheetEmps.length === 1 ? `_${sheetEmps[0].first_name || ''}_${sheetEmps[0].last_name || ''}` : ''
     saveFile(bytes, `${safeFileName(`${tr("timesheet.fileName")}${who}_${ym}`)}.pdf`, 'application/pdf')
   }
   const pickerEmps = emps.filter(e => showFormer || e.is_active || e.id === selected)
@@ -242,7 +244,7 @@ function sheetPdfData(emp, cafe, data, b, monthLabel) {
     ],
     header: [tr("ui.9135882d323c"), tr("ui.1503916a2ab2"), tr("ui.0d95fd6a769f"), tr("ui.2ddcd606c872"), tr("ui.858e4ba7a29f"), tr("ui.b574d367e922"), tr("ui.f97b7aa0e9d3")],
     rows: rows.map(r => ({ weekend: r.weekend, cells: [
-      r.first ? fmtDate(r.d).slice(0, 6) : '', r.first ? WD()[r.wd] : '',
+      r.first ? fmtDayMonth(r.d) : '', r.first ? WD()[r.wd] : '',
       r.t ? fmtTime(r.t.clock_in) : '', r.t ? (r.t.clock_out ? fmtTime(r.t.clock_out) : '—') : '',
       r.t?.clock_out ? tr("ui.f6c1459ae2f9", { p1: (r.t.break_minutes || 0) }) : '',
       r.t?.clock_out ? (r.forgotten ? '—' : fmtH(r.t.hours_worked)) : '', r.note || '',
@@ -291,7 +293,7 @@ function Sheet({ emp, cafe, data, b, monthLabel }) {
         <tbody>
           {rows.map(r => (
             <tr key={r.key} className={r.weekend ? 'ts-we' : ''}>
-              <td>{r.first ? fmtDate(r.d).slice(0, 6) : ''}</td>
+              <td>{r.first ? fmtDayMonth(r.d) : ''}</td>
               <td>{r.first ? WD()[r.wd] : ''}</td>
               <td>{r.t ? fmtTime(r.t.clock_in) : ''}</td>
               <td>{r.t ? (r.t.clock_out ? fmtTime(r.t.clock_out) : '—') : ''}</td>
