@@ -2,6 +2,7 @@ import { t as tr, getIntlLocale, message as appMessage, errorMessage, messagePar
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { translateSupabaseError } from '../lib/errorHelper'
 import { formatDate, formatCurrency } from '../i18n/format.js'
 import DeleteAccountCard from '../components/DeleteAccountCard'
 import AppSetupCard from '../components/AppSetupCard'
@@ -206,7 +207,8 @@ export default function Account() {
   }
 
   async function removeAvatar() {
-    await supabase.rpc('update_own_avatar', { new_avatar_url: null })
+    const { error } = await supabase.rpc('update_own_avatar', { new_avatar_url: null })
+    if (error) { toast.error(translateSupabaseError(error)); return }
     setAvatarUrl(null); toast.success(appMessage("ui.cfb7a46547ba"))
   }
 

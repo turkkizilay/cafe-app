@@ -188,9 +188,12 @@ export default function Shifts() {
   async function deleteShift(id) {
     if (saving) return
     setSaving(true)
-    await supabase.from('shifts').delete().eq('id', id)
-    toast.success(appMessage("ui.aefcd8cefdd7"))
-    setEditModal(null); setDelConfirm(false); fetchData()
+    try {
+      const { error } = await supabase.from('shifts').delete().eq('id', id)
+      if (error) { toast.error(translateSupabaseError(error)); return }
+      toast.success(appMessage("ui.aefcd8cefdd7"))
+      setEditModal(null); setDelConfirm(false); fetchData()
+    } finally { setSaving(false) }   // vorher blieb „Speichern/Hinzufügen“ nach dem Löschen gesperrt
   }
 
   // ── Schichttausch: Anfrage stellen ──────────────────────

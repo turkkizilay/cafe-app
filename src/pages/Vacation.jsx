@@ -382,11 +382,13 @@ export default function Vacation() {
       const path = `${empId}/${sickRecord.id}.${ext}`
       const { error: upErr } = await supabase.storage.from('sick-certs').upload(path, file, { upsert: true })
       if (!upErr) {
-        await supabase.from('sick_leave').update({
+        const { error: linkErr } = await supabase.from('sick_leave').update({
           certificate_received:    true,
           certificate_file_path:   path,
           certificate_file_name:   file.name,
         }).eq('id', sickRecord.id)
+        // Datei hochgeladen, aber nicht verknüpft → sichtbar melden statt stillschweigend „gespeichert“
+        if (linkErr) toast.warn(messageParts([appMessage("ui.c6b3e686f9fd"), errorMessage(linkErr)]))
       } else {
         toast.warn(messageParts([appMessage("ui.c6b3e686f9fd"), errorMessage(upErr)]))
       }

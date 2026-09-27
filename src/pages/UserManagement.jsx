@@ -268,8 +268,9 @@ export default function UserManagement() {
     if (!rejectGuard.begin()) return
     if (!confirmDel) { rejectGuard.end(); return }
     setWorking(confirmDel.id)
-    await supabase.from('profiles').delete().eq('id', confirmDel.id)
-    toast.info(appMessage("ui.57da62558e87"))
+    const { error } = await supabase.from('profiles').delete().eq('id', confirmDel.id)
+    if (error) toast.error(translateSupabaseError(error))
+    else toast.info(appMessage("ui.57da62558e87"))
     rejectGuard.end()
     setConfirmDel(null); fetchAll(); setWorking(null)
   }

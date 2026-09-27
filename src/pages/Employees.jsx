@@ -375,14 +375,17 @@ export default function Employees() {
       const { error } = await supabase.from('employees').update({ is_active: false, end_date: toLocalDateStr(new Date()) }).eq('id', confirmDeact.id)
       if (error) { toast.error(translateSupabaseError(error, appMessage("ui.7a86e994b5dd"))); return }
       // Ehemalige sollen sich nicht mehr anmelden können (eigener Admin-Zugang wird nie gesperrt)
+      let locked = false
       if (lockLogin && access[confirmDeact.id]) {
-        await supabase.from('profiles').update({ status: 'disabled' })
+        const { error: lockErr } = await supabase.from('profiles').update({ status: 'disabled' })
           .eq('employee_id', confirmDeact.id).neq('id', profile?.id || '')
+        // Sperre fehlgeschlagen → nicht „Zugang gesperrt“ melden (Ehemalige könnten sich sonst weiter anmelden)
+        if (lockErr) toast.error(translateSupabaseError(lockErr)); else locked = true
       }
-      toast.success(appMessage("ui.3f5e698f6aca", { p1: (confirmDeact.name), p2: (lockLogin && access[confirmDeact.id] ? (appMessage("ui.4478a1db6960")) : ('')) }))
+      toast.success(appMessage("ui.3f5e698f6aca", { p1: (confirmDeact.name), p2: (locked ? (appMessage("ui.4478a1db6960")) : ('')) }))
       logActivity({
         action: 'employee.deactivated', category: 'employee',
-        summary: `hat ${confirmDeact.name} deaktiviert${lockLogin && access[confirmDeact.id] ? ' und den App-Zugang gesperrt' : ''}.`,
+        summary: `hat ${confirmDeact.name} deaktiviert${locked ? ' und den App-Zugang gesperrt' : ''}.`,
         targetType: 'employee', targetId: confirmDeact.id, targetName: confirmDeact.name,
       })
     } finally {

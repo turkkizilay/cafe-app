@@ -218,7 +218,7 @@ export default function TimeManagement() {
       reason: deleteReason,
     }])
     const { error } = await supabase.from('time_entries').delete().eq('id', entry.id)
-    if (error) { toast.error(errorMessage(error)); return }
+    if (error) { toast.error(errorMessage(error)); deleteGuard.end(); return }   // Sperre freigeben, sonst reagiert „Löschen“ nicht mehr
     setDeleteModal(null); setDeleteReason('')
     toast.success(appMessage("ui.0473ea60b74c"))
 

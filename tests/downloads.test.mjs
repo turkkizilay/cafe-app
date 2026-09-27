@@ -112,3 +112,33 @@ test('Mitarbeiter einladen / freischalten: Vergütung wie im Mitarbeiterformular
   assert.match(fields, /disabled=\{!fixedOk\}/)
   assert.match(read('src/lib/compensationApi.js'), /update\(\{ pay_type: payType, monthly_salary: payType === PAY_FIXED \? monthlySalary : null \}\)/)
 })
+
+test('DATEV-Export zur Laufzeit: echte exportDATEV-Funktion erzeugt gültige CSV (Stundenlohn + Fixgehalt)', async () => {
+  const { datevRateCell, datevHintCell } = await import('../src/lib/compensation.js')
+  const src = read('src/pages/Payroll.jsx')
+  const start = src.indexOf('function exportDATEV(')
+  let i = src.indexOf('{', start) + 1, depth = 1
+  while (depth) { const c = src[i++]; if (c === '{') depth++; else if (c === '}') depth-- }
+  let saved = null
+  const saveFile = (blob, name, type) => { saved = { blob, name, type } }
+  const exportDATEV = new Function('saveFile', 'datevRateCell', 'datevHintCell', `return (${src.slice(start, i)})`)(saveFile, datevRateCell, datevHintCell)
+  const rows = [
+    { last_name: 'Müller', first_name: 'Jörg', employment_type: 'vollzeit', pay_type: 'hourly', hourly_rate: 15.5, monthTarget: 172, actualHours: 180, vacationHours: 0, sickHours: 8, overtime: 8, total: 2914, isAlert: true },
+    { last_name: 'Weiß', first_name: 'Anna', employment_type: 'teilzeit', pay_type: 'fixed', monthly_salary: 2000, hourly_rate: 15, monthTarget: 86, actualHours: 90, vacationHours: 0, sickHours: 0, overtime: 4, total: 2000, isAlert: true, partialMonth: true },
+  ]
+  exportDATEV(rows, 'September 2026')
+  assert.equal(saved.name, 'Cafe-Buur-Lohn-September 2026.csv')
+  assert.match(saved.type, /^text\/csv/)
+  const bytes = new Uint8Array(await saved.blob.arrayBuffer())
+  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf], 'UTF-8 BOM für Excel/DATEV')
+  const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes).slice(1)
+  const lines = text.split('\n')
+  assert.equal(lines.length, 3)
+  const cells = lines.map(l => l.split(';'))
+  assert.ok(cells.every(c => c.length === cells[0].length), 'gleiche Spaltenzahl')
+  assert.ok(cells.flat().every(c => /^".*"$/.test(c)), 'alle Zellen in Anführungszeichen')
+  assert.equal(cells[1][1], '"Müller"'); assert.equal(cells[1][2], '"Jörg"')      // Umlaute unverändert (UTF-8)
+  assert.equal(cells[1][9], '"15,50"'); assert.equal(cells[1][10], '"2914,00"'); assert.equal(cells[1][11], '"ÜBERSTUNDEN"')
+  assert.equal(cells[2][9], '""'); assert.equal(cells[2][10], '"2000,00"'); assert.equal(cells[2][11], '"FIXGEHALT / TEILMONAT PRÜFEN / ÜBERSTUNDEN"')
+  assert.equal(cells[1][4], '"172,00"'); assert.equal(cells[2][4], '"86,00"')     // Soll nach Arbeitszeitmodell
+})
