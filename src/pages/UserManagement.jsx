@@ -12,6 +12,8 @@ import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
 import { translateSupabaseError } from '../lib/errorHelper'
 import OnboardingReview, { ONB_STATUS } from '../components/OnboardingReview'
+import PayModelFields from '../components/PayModelFields'
+import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
 
 const ROLES = [
   { value: 'employee', get label() { return tr("ui.d422e9b832d6") } },
@@ -110,12 +112,17 @@ export default function UserManagement() {
       const hours = parseFloat(String(inviteJob.hours_per_week || '').replace(',', '.'))
       if (inviteJob.hourly_rate && (!rate || rate <= 0)) { toast.warn(appMessage("ui.6aa12287a389")); inviteGuard.end(); return }
       if (inviteJob.hours_per_week && (!hours || hours <= 0 || hours > 60)) { toast.warn(appMessage("ui.d69fa185470a")); inviteGuard.end(); return }
+      // Vergütung (Migration 18): Fixgehalt nur Vollzeit/Teilzeit, dann Brutto-Monatsgehalt Pflicht
+      const payErr = validatePayModel({ employment_type: inviteJob.employment_type, pay_type: payTypeOf(inviteJob), monthly_salary: inviteJob.monthly_salary })
+      if (payErr) { toast.warn(appMessage(payErr === 'fixedNotAllowed' ? "payModel.fixedNotAllowed" : "payModel.salaryMissing")); inviteGuard.end(); return }
       job = {
         role: inviteJob.role || 'employee',
         position: (inviteJob.position || '').trim(),
         employment_type: inviteJob.employment_type || 'minijob',
         hours_per_week: hours || null,
         hourly_rate: rate || null,
+        pay_type: payTypeOf(inviteJob),
+        monthly_salary: payTypeOf(inviteJob) === PAY_FIXED ? parseMonthlySalary(inviteJob.monthly_salary) : null,
         start_date: inviteJob.start_date || null,
         vacation_days: inviteJob.vacation_days === '' || inviteJob.vacation_days == null ? 28 : parseInt(inviteJob.vacation_days, 10),
       }
@@ -401,25 +408,29 @@ export default function UserManagement() {
                     {inviteModal.isNew && (
                       <div style={{ border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px', marginBottom:14 }}>
                         {!inviteJob ? (
-                          <button type="button" className="btn btn-sm" onClick={() => setInviteJob({ role:'employee', position:'', employment_type:'minijob', hours_per_week:10, hourly_rate:'', start_date: toLocalDateStr(), vacation_days:28 })}>{tr("ui.938284ca6f6a")}</button>
+                          <button type="button" className="btn btn-sm" onClick={() => setInviteJob({ role:'employee', position:'', employment_type:'minijob', hours_per_week:10, hourly_rate:'', pay_type: PAY_HOURLY, monthly_salary:'', start_date: toLocalDateStr(), vacation_days:28 })}>{tr("ui.938284ca6f6a")}</button>
                         ) : (
                           <>
                             <div style={{ fontWeight:600, fontSize:13, marginBottom:8 }}>{tr("ui.6f5b9aaab942")}</div>
                             <div className="two-col">
                               <div className="form-group"><label>{tr("ui.50614a65c54c")}</label>
-                                <select value={inviteJob.employment_type} onChange={e => { const t = e.target.value; setInviteJob(j => ({ ...j, employment_type:t, hours_per_week:{ vollzeit:40, teilzeit:20, werkstudent:20, minijob:10 }[t] })) }}>
+                                <select value={inviteJob.employment_type} onChange={e => { const t = e.target.value; setInviteJob(j => ({ ...j, employment_type:t, hours_per_week:{ vollzeit:40, teilzeit:20, werkstudent:20, minijob:10 }[t], pay_type: canHaveFixedPay(t) ? payTypeOf(j) : PAY_HOURLY })) }}>
                                   <option value="vollzeit">{tr("ui.49dbe1b0b4b3")}</option><option value="teilzeit">{tr("ui.df763b1cc689")}</option>
                                   <option value="werkstudent">{tr("ui.fa23b3bc413a")}</option><option value="minijob">{tr("ui.b3fc8da9deb1")}</option>
                                 </select></div>
                               <div className="form-group"><label>{tr("ui.e214a5535edd")}</label>
                                 <input type="number" min="1" max="60" value={inviteJob.hours_per_week} onChange={e => setInviteJob(j => ({ ...j, hours_per_week:e.target.value }))} /></div>
                             </div>
+                            <PayModelFields name="invite_pay_type" employmentType={inviteJob.employment_type} payType={payTypeOf(inviteJob)} monthlySalary={inviteJob.monthly_salary}
+                              onChange={patch => setInviteJob(j => ({ ...j, ...patch }))} />
                             <div className="two-col">
                               <div className="form-group"><label>{tr("ui.015cd60df3a4")}</label>
                                 <input inputMode="decimal" value={inviteJob.hourly_rate} placeholder={MINDESTLOHN.toLocaleString(getIntlLocale())}
                                   onChange={e => setInviteJob(j => ({ ...j, hourly_rate:e.target.value.replace(/[^0-9.,]/g, '') }))} />
                                 {parseFloat(String(inviteJob.hourly_rate).replace(',', '.')) < MINDESTLOHN && (
                                   <div style={{ fontSize:11.5, color:'var(--danger)', marginTop:3 }}>{tr("ui.73d8e2d2f8fd")}</div>)}
+                                {payTypeOf(inviteJob) === PAY_FIXED && (
+                                  <div style={{ fontSize:10.5, color:'var(--text-muted)', marginTop:3 }}>{tr("payModel.hourlyInternal")}</div>)}
                               </div>
                               <div className="form-group"><label>{tr("ui.a64008756943")}</label>
                                 <input type="date" value={inviteJob.start_date} onChange={e => setInviteJob(j => ({ ...j, start_date:e.target.value }))} /></div>

@@ -6,6 +6,9 @@ import { formatDate, formatDateTime } from '../i18n/format.js'
 import { useToast } from './UI/Toast'
 import { formatIBAN, isValidIBAN, taxIdChecksumOk } from '../lib/personalData'
 import { MINDESTLOHN } from '../lib/constants'
+import PayModelFields from './PayModelFields'
+import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
+import { setEmployeePay } from '../lib/compensationApi'
 
 export const ONB_STATUS = {
   draft:             { get label() { return tr("ui.658154755bb4") },   cls:'badge-gray'  },
@@ -53,7 +56,7 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
   const [err,  setErr]      = useState('')
   const [job,  setJob]      = useState({
     role:'employee', position:'', employment_type:'minijob', hours_per_week:10,
-    hourly_rate:'', start_date: toLocalDateStr(), vacation_days:28,
+    hourly_rate:'', pay_type: PAY_HOURLY, monthly_salary:'', start_date: toLocalDateStr(), vacation_days:28,
   })
   const setJ = (k, v) => setJob(j => ({ ...j, [k]: v }))
   const [prefilled, setPrefilled] = useState(false)
@@ -71,6 +74,8 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
         employment_type: j.employment_type || cur.employment_type,
         hours_per_week: j.hours_per_week ?? cur.hours_per_week,
         hourly_rate: j.hourly_rate != null ? String(j.hourly_rate).replace('.', ',') : cur.hourly_rate,
+        pay_type: payTypeOf(j),
+        monthly_salary: j.monthly_salary != null ? String(j.monthly_salary) : cur.monthly_salary,
         start_date: j.start_date || cur.start_date,
         vacation_days: j.vacation_days ?? cur.vacation_days,
       }))
@@ -93,14 +98,21 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
     const vac   = parseInt(job.vacation_days, 10)
     if (!hours || hours <= 0 || hours > 60) { setErr(appMessage("ui.d69fa185470a")); return }
     if (isNaN(vac) || vac < 0 || vac > 60)  { setErr(appMessage("ui.c72b67933b74")); return }
+    const payErr = validatePayModel({ employment_type: job.employment_type, pay_type: payTypeOf(job), monthly_salary: job.monthly_salary })
+    if (payErr) { setErr(appMessage(payErr === 'fixedNotAllowed' ? "payModel.fixedNotAllowed" : "payModel.salaryMissing")); return }
     setBusy(true)
     const { data, error } = await supabase.rpc('approve_onboarding', {
       p_id: row.id, p_role: job.role, p_position: job.position,
       p_employment_type: job.employment_type, p_hours_per_week: hours,
       p_hourly_rate: rate, p_start_date: job.start_date, p_vacation_days: vac,
     })
+    if (error || !data?.success) { setBusy(false); setErr((data?.error || appMessage("ui.3924123f78e8"))); return }
+    // Freischaltung legt immer mit Stundenlohn an → Fixgehalt direkt danach setzen
+    if (payTypeOf(job) === PAY_FIXED) {
+      const { error: payError } = await setEmployeePay(data.employee_id, PAY_FIXED, parseMonthlySalary(job.monthly_salary))
+      if (payError) toast.error(appMessage("payModel.saveAfterApproveFailed", { p1: name }), 12000)
+    }
     setBusy(false)
-    if (error || !data?.success) { setErr((data?.error || appMessage("ui.3924123f78e8"))); return }
     toast.success(appMessage("ui.a0242bf495f6", { p1: (name) }))
     onDone()
   }
@@ -196,7 +208,7 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
               <div className="two-col">
                 <div className="form-group">
                   <label>{tr("ui.50614a65c54c")}</label>
-                  <select value={job.employment_type} onChange={e => { setJ('employment_type', e.target.value); setJ('hours_per_week', HOURS_DEFAULT[e.target.value]) }}>
+                  <select value={job.employment_type} onChange={e => { setJ('employment_type', e.target.value); setJ('hours_per_week', HOURS_DEFAULT[e.target.value]); if (!canHaveFixedPay(e.target.value)) setJ('pay_type', PAY_HOURLY) }}>
                     <option value="vollzeit">{tr("ui.49dbe1b0b4b3")}</option>
                     <option value="teilzeit">{tr("ui.df763b1cc689")}</option>
                     <option value="werkstudent">{tr("ui.fa23b3bc413a")}</option>
@@ -208,10 +220,15 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
                   <input type="number" min="1" max="60" step="0.5" value={job.hours_per_week} onChange={e => setJ('hours_per_week', e.target.value)} />
                 </div>
               </div>
+              <PayModelFields name="onb_pay_type" employmentType={job.employment_type} payType={payTypeOf(job)} monthlySalary={job.monthly_salary}
+                onChange={patch => setJob(j => ({ ...j, ...patch }))} />
               <div className="two-col">
                 <div className="form-group">
                   <label>{tr("ui.04d8b7c7a102")}</label>
                   <input inputMode="decimal" value={job.hourly_rate} onChange={e => setJ('hourly_rate', e.target.value.replace(/[^0-9.,]/g, ''))} placeholder={MINDESTLOHN.toLocaleString(getIntlLocale())} />
+                  {payTypeOf(job) === PAY_FIXED && (
+                    <div style={{ fontSize:10.5, color:'var(--text-muted)', marginTop:3 }}>{tr("payModel.hourlyInternal")}</div>
+                  )}
                   {rate > 0 && rate < MINDESTLOHN && (
                     <div style={{ fontSize:11.5, color:'var(--danger)', marginTop:4 }}>{tr("ui.beb41500da12")}{MINDESTLOHN.toLocaleString(getIntlLocale())} €)</div>
                   )}

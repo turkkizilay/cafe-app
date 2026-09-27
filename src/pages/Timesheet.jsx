@@ -6,6 +6,9 @@ import { supabase, toLocalDateStr } from '../lib/supabase'
 import { useProfile } from '../context/ProfileContext'
 import { BrandBadge } from '../components/UI/Brand'
 import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
+import { timesheetPdf } from '../lib/timesheetPdf'
+import { safeFileName } from '../lib/pdf'
+import { saveFile } from '../lib/download'
 
 /**
  * Arbeitszeitnachweis pro Mitarbeiter und Monat (§ 17 MiLoG, § 16 Abs. 2 ArbZG).
@@ -112,6 +115,14 @@ export default function Timesheet() {
   }, [data, emps, selected, b])
 
   const monthLabel = new Date(b.y, b.m - 1, 1).toLocaleDateString(getIntlLocale(), { month:'long', year:'numeric' })
+
+  // Echte PDF-Datei (statt nur Drucken – window.print() öffnet in installierten iPhone-Apps keinen Dialog)
+  function downloadPdf() {
+    if (!data || !sheetEmps.length) return
+    const bytes = timesheetPdf(sheetEmps.map(emp => sheetPdfData(emp, cafe, data, b, monthLabel)), { title: `${tr("ui.2ee8d088f45d")} ${monthLabel}` })
+    const who = sheetEmps.length === 1 ? `_${sheetEmps[0].last_name || ''}_${sheetEmps[0].first_name || ''}` : ''
+    saveFile(bytes, `${safeFileName(`${tr("timesheet.fileName")}${who}_${ym}`)}.pdf`, 'application/pdf')
+  }
   const pickerEmps = emps.filter(e => showFormer || e.is_active || e.id === selected)
 
   return (
@@ -142,7 +153,8 @@ export default function Timesheet() {
               </div>
             )}
             <div style={{ flex:1 }} />
-            <button className="btn btn-primary" onClick={() => window.print()} disabled={loading || !sheetEmps.length}>{tr("ui.197d7ae2d1bd")}</button>
+            <button className="btn btn-primary" onClick={downloadPdf} disabled={loading || !sheetEmps.length}>{tr("timesheet.downloadPdf")}</button>
+            <button className="btn" onClick={() => window.print()} disabled={loading || !sheetEmps.length}>{tr("ui.197d7ae2d1bd")}</button>
           </div>
           <div style={{ padding:'0 16px 12px', fontSize:12, color:'var(--text-muted)' }}>{tr("ui.73b61df128e0")}</div>
         </div>
@@ -171,8 +183,8 @@ export default function Timesheet() {
   )
 }
 
-function Sheet({ emp, cafe, data, b, monthLabel }) {
-  useLocale()
+// Monatsblatt eines Mitarbeiters – gemeinsame Grundlage für Ansicht/Druck und PDF-Download
+function computeSheet(emp, data, b) {
   const entries = data.te.filter(t => t.employee_id === emp.id)
   const byDay = {}
   entries.forEach(t => { (byDay[t.date] = byDay[t.date] || []).push(t) })
@@ -212,6 +224,40 @@ function Sheet({ emp, cafe, data, b, monthLabel }) {
       })
     }
   }
+
+  return { rows, sumH, workDays, vacDays, sickDays, openCount, forgotCount }
+}
+
+// Formatierte Texte für die PDF-Datei (identisch zur Ansicht)
+function sheetPdfData(emp, cafe, data, b, monthLabel) {
+  const { rows, sumH, workDays, vacDays, sickDays, openCount, forgotCount } = computeSheet(emp, data, b)
+  const created = new Date().toLocaleString(getIntlLocale(), { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone: TZ })
+  return {
+    cafeName: cafe?.cafe_name || 'Café Buur', cafeAddress: cafe?.address || '',
+    title: tr("ui.2ee8d088f45d"), subtitle: tr("ui.059b12e727e2"), monthLabel,
+    empLines: [
+      [tr("ui.13418d2280b5"), `${emp.first_name || ''} ${emp.last_name || ''}`.trim()],
+      [tr("ui.50614a65c54c"), `${EMPLOYMENT[emp.employment_type] || emp.employment_type || '–'}${emp.position ? ` · ${emp.position}` : ''}`],
+      [tr("ui.ab0f2fd5b250"), `${fmtDate(b.first)} – ${fmtDate(b.last)}`],
+    ],
+    header: [tr("ui.9135882d323c"), tr("ui.1503916a2ab2"), tr("ui.0d95fd6a769f"), tr("ui.2ddcd606c872"), tr("ui.858e4ba7a29f"), tr("ui.b574d367e922"), tr("ui.f97b7aa0e9d3")],
+    rows: rows.map(r => ({ weekend: r.weekend, cells: [
+      r.first ? fmtDate(r.d).slice(0, 6) : '', r.first ? WD()[r.wd] : '',
+      r.t ? fmtTime(r.t.clock_in) : '', r.t ? (r.t.clock_out ? fmtTime(r.t.clock_out) : '—') : '',
+      r.t?.clock_out ? tr("ui.f6c1459ae2f9", { p1: (r.t.break_minutes || 0) }) : '',
+      r.t?.clock_out ? (r.forgotten ? '—' : fmtH(r.t.hours_worked)) : '', r.note || '',
+    ] })),
+    sums: [[tr("ui.7daa78462728"), fmtH(sumH)], [tr("ui.8a6685681a4f"), String(workDays)], [tr("ui.be197acfa59b"), String(vacDays)], [tr("ui.4e6abc6e6549"), String(sickDays)]],
+    warn: (openCount > 0 ? tr("timesheet.openEntries", { count: openCount }) : '') + (forgotCount > 0 ? tr("timesheet.forgotten", { count: forgotCount }) : ''),
+    footnote: tr("ui.9f9667bee298"),
+    sign: [tr("ui.79f7d82e6d91"), tr("ui.0b32b6970c58")],
+    created: `${tr("ui.6f11644c3b29")}${created}${tr("ui.4e2866d1f2b9")}`,
+  }
+}
+
+function Sheet({ emp, cafe, data, b, monthLabel }) {
+  useLocale()
+  const { rows, sumH, workDays, vacDays, sickDays, openCount, forgotCount } = computeSheet(emp, data, b)
 
   const created = new Date().toLocaleString(getIntlLocale(), { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone: TZ })
 

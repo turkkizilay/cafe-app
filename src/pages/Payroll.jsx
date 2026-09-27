@@ -9,6 +9,7 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { monthlyModel, monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
 import { payTypeOf, monthlyGross, sickPayAmount, isPartialMonth, datevRateCell, datevHintCell, PAY_FIXED } from '../lib/compensation'
+import { saveFile } from '../lib/download'
 
 const MINIJOB_LIMIT      = 603    // € / Monat 2026 (§ 8 Abs. 1 Nr. 1 SGB IV)
 const WERKSTUDENT_LIMIT  = STUDENT_MONTHLY_LIMIT_H   // Stunden / Monat (betriebliche Regel, zentral in workTimeModels)
@@ -140,10 +141,7 @@ function exportDATEV(rows, monthLabel) {
   const csv = [headers, ...rows_csv].map(row => row.map(v => `"${v}"`).join(';')).join('\n')
   const BOM = '﻿'  // UTF-8 BOM für Excel/DATEV
   const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = `Cafe-Buur-Lohn-${monthLabel}.csv`; a.click()
-  URL.revokeObjectURL(url)
+  saveFile(blob, `Cafe-Buur-Lohn-${monthLabel}.csv`, 'text/csv;charset=utf-8;')   // zentraler Download: URL wird nicht mehr sofort freigegeben (Safari/Firefox), iOS über Teilen
 }
 
 export default function Payroll() {

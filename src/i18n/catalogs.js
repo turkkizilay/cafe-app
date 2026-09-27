@@ -733,7 +733,7 @@ export const de = {
   "ui.6f11644c3b29": "Erstellt am ",
   "ui.0b32b6970c58": "Datum, Unterschrift Arbeitgeber",
   "ui.79f7d82e6d91": "Datum, Unterschrift Mitarbeiter/in",
-  "ui.9f9667bee298": "Pausen nach § 4 ArbZG sind in der Arbeitszeit bereits abgezogen. Erfassung elektronisch über die Café-Buur-App.",
+  "ui.9f9667bee298": "Tatsächlich erfasste Pausen sind in der Arbeitszeit bereits abgezogen. Erfassung elektronisch über die Café-Buur-App.",
   "ui.4325512615d7": "{p1} Eintrag/Einträge „Ausstempeln vergessen“ – nicht in der Summe enthalten, bis sie korrigiert sind.",
   "ui.738d94bc4be9": "{p1} Eintrag/Einträge noch ohne Arbeitsende. ",
   "ui.4e6abc6e6549": "Krankheitstage (Kalendertage)",
@@ -1981,7 +1981,10 @@ export const de = {
   "payModel.hourlyInternal": "Bei Fixgehalt nur interner Satz (z. B. Kostenschätzung) – das Brutto ist das Monatsgehalt.",
   "payModel.fixedNotAllowed": "Fixgehalt ist nur bei Vollzeit oder Teilzeit möglich.",
   "payModel.salaryMissing": "Bitte ein gültiges Brutto-Monatsgehalt eintragen.",
-  "payModel.partialMonth": "Teilmonat prüfen"
+  "payModel.partialMonth": "Teilmonat prüfen",
+  "payModel.saveAfterApproveFailed": "{p1} wurde freigeschaltet, aber das Fixgehalt konnte nicht gespeichert werden. Bitte unter Mitarbeiter → Bearbeiten nachtragen.",
+  "timesheet.downloadPdf": "📄 PDF herunterladen",
+  "timesheet.fileName": "Stundennachweis"
 }
 
 export const en = {
@@ -2718,7 +2721,7 @@ export const en = {
   "ui.6f11644c3b29": "Created on ",
   "ui.0b32b6970c58": "Date, employer signature",
   "ui.79f7d82e6d91": "Date, employee signature",
-  "ui.9f9667bee298": "Breaks under § 4 ArbZG have already been deducted from working time. Recorded electronically using the Café Buur app.",
+  "ui.9f9667bee298": "Actually recorded breaks are already deducted from the working time. Recorded electronically via the Café Buur app.",
   "ui.4325512615d7": "{p1} entry/entries marked \"Forgot to clock out\" — excluded from the total until corrected.",
   "ui.738d94bc4be9": "{p1} entry/entries without an end time. ",
   "ui.4e6abc6e6549": "Sick days (calendar days)",
@@ -3966,5 +3969,8 @@ export const en = {
   "payModel.hourlyInternal": "For fixed salary this is an internal rate only (e.g. cost estimate) – gross pay is the monthly salary.",
   "payModel.fixedNotAllowed": "Fixed salary is only available for full-time or part-time.",
   "payModel.salaryMissing": "Please enter a valid gross monthly salary.",
-  "payModel.partialMonth": "Check partial month"
+  "payModel.partialMonth": "Check partial month",
+  "payModel.saveAfterApproveFailed": "{p1} was approved, but the fixed salary could not be saved. Please add it under Employees → Edit.",
+  "timesheet.downloadPdf": "📄 Download PDF",
+  "timesheet.fileName": "Timesheet"
 }
