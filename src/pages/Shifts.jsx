@@ -238,30 +238,19 @@ export default function Shifts() {
   }
 
   // ── Schichttausch: Admin-Freigabe (führt Schichten tatsächlich zusammen) ──
+  // Eine Transaktion in der DB (approve_swap): prüft Status + Schichtbesitz erneut, alles oder nichts
   async function approveSwap(swap) {
+    if (swapSaving) return
     setSwapSaving(true)
-    try {
-      if (swap.target_shift_id) {
-        // Beide Schichten tauschen die Mitarbeiter
-        const r1 = await supabase.from('shifts').update({ employee_id: swap.target_id }).eq('id', swap.requester_shift_id)
-        if (r1.error) throw r1.error
-        const r2 = await supabase.from('shifts').update({ employee_id: swap.requester_id }).eq('id', swap.target_shift_id)
-        if (r2.error) throw r2.error
-      } else {
-        // Schicht wird nur übernommen
-        const r1 = await supabase.from('shifts').update({ employee_id: swap.target_id }).eq('id', swap.requester_shift_id)
-        if (r1.error) throw r1.error
-      }
-      const r3 = await supabase.from('shift_swap_requests').update({
-        status: 'approved', approved_by: profile.id, approved_at: new Date().toISOString(),
-      }).eq('id', swap.id)
-      if (r3.error) throw r3.error
-      toast.success(appMessage("ui.12bd389abab3"))
-      fetchSwaps(); fetchData()
-    } catch (err) {
-      toast.error(messageParts([appMessage("ui.39f69e181f3d"), (errorMessage(err) || err)]))
-    }
+    const { error } = await supabase.rpc('approve_swap', { p_swap_id: swap.id })
     setSwapSaving(false)
+    if (error) {
+      toast.error(messageParts([appMessage("ui.39f69e181f3d"), (errorMessage(error) || error)]))
+      fetchSwaps(); fetchData()
+      return
+    }
+    toast.success(appMessage("ui.12bd389abab3"))
+    fetchSwaps(); fetchData()
   }
 
   async function rejectSwap(id) {
