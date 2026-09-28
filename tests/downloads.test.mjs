@@ -143,6 +143,35 @@ test('DATEV-Export zur Laufzeit: echte exportDATEV-Funktion erzeugt gültige CSV
   assert.equal(cells[1][4], '"172,00"'); assert.equal(cells[2][4], '"86,00"')     // Soll nach Arbeitszeitmodell
 })
 
+test('DATEV-CSV: Anführungszeichen/Semikolon im Namen (Freitext) bleiben gültiges CSV; normale Zeilen byte-identisch zum bisherigen Export', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const { datevRateCell, datevHintCell } = await import('../src/lib/compensation.js')
+  const load = src => {
+    const start = src.indexOf('function exportDATEV(')
+    let i = src.indexOf('{', start) + 1, depth = 1
+    while (depth) { const c = src[i++]; if (c === '{') depth++; else if (c === '}') depth-- }
+    let saved = null
+    const fn = new Function('saveFile', 'datevRateCell', 'datevHintCell', `return (${src.slice(start, i)})`)(b => { saved = b }, datevRateCell, datevHintCell)
+    return async rows => { fn(rows, 'Test'); return new TextDecoder('utf-8', { ignoreBOM: true }).decode(new Uint8Array(await saved.arrayBuffer())) }
+  }
+  const now = load(read('src/pages/Payroll.jsx'))
+  const before = load(execFileSync('git', ['show', 'f2a2a42:src/pages/Payroll.jsx'], { encoding: 'utf8' }))
+  const base = { employment_type: 'vollzeit', pay_type: 'hourly', hourly_rate: 15.5, monthTarget: 172, actualHours: 180, vacationHours: 0, sickHours: 0, overtime: 8, total: 2790, isAlert: true }
+  const normal = [{ ...base, last_name: 'Müller-Lüdenscheidt', first_name: 'Jörg' }, { ...base, last_name: 'Weiß', first_name: 'Anna', pay_type: 'fixed', monthly_salary: 2000, total: 2000 }]
+  assert.equal(await now(normal), await before(normal), 'Format für normale Daten unverändert')
+  // RFC-4180-Parser: Felder in "…", "" = ein Anführungszeichen
+  const parse = text => text.split('\n').map(line => { const out = []; let i = 0; while (i < line.length) { assert.equal(line[i], '"'); let v = ''; i++; for (;;) { if (line[i] === '"' && line[i + 1] === '"') { v += '"'; i += 2 } else if (line[i] === '"') { i++; break } else v += line[i++] } out.push(v); if (line[i] === ';') i++ } return out })
+  const names = [['O"Brien; Jr.', 'Anna "Anni"'], ["O'Connor", 'Seán'], ['Name, mit Komma', 'Jörg'], ['Mustermann-Smith', 'Äöü ß'], ['Name "mit Anführungszeichen"', '']]
+  const tricky = names.map(([last_name, first_name]) => ({ ...base, last_name, first_name }))
+  tricky.push({ ...base, last_name: 'Fix', first_name: 'Gehalt', pay_type: 'fixed', monthly_salary: 1800, total: 1800 })
+  const rows = parse((await now(tricky)).slice(1))
+  assert.equal(rows.length, tricky.length + 1)
+  assert.ok(rows.every(r => r.length === rows[0].length), 'Spaltenzahl in jeder Zeile gleich')
+  names.forEach(([l, f], i) => { assert.equal(rows[i + 1][1], l); assert.equal(rows[i + 1][2], f) })
+  assert.equal(rows[1][10], '2790,00')
+  assert.equal(rows[6][9], ''); assert.equal(rows[6][10], '1800,00'); assert.match(rows[6][11], /^FIXGEHALT/)
+})
+
 test('Stundennachweis „PDF herunterladen“ zur Laufzeit: echte PDF-Datei, kein Druckdialog', async () => {
   const { timesheetPdf } = await import('../src/lib/timesheetPdf.js')
   const src = read('src/pages/Timesheet.jsx')

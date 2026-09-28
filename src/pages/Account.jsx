@@ -521,9 +521,11 @@ export default function Account() {
                               <td>
                                 {v.status === 'pending' && (
                                   <button className="btn btn-sm btn-danger" onClick={async () => {
-                                    const { error } = await supabase.from('vacation_requests')
-                                      .delete().eq('id', v.id).eq('status','pending')
+                                    const { data: removed, error } = await supabase.from('vacation_requests')
+                                      .delete().eq('id', v.id).eq('status','pending').select('id')
                                     if (error) { toast.error(errorMessage(error)); return }
+                                    // inzwischen entschieden (veraltete Ansicht) → nicht „zurückgezogen“ melden
+                                    if (!removed?.length) { toast.error(appMessage("error.bd03e1e5cae8")); fetchData(); return }
                                     toast.success(appMessage("ui.2bfb2b5588b9"))
                                     fetchData()
                                   }}>{tr("ui.6e104aece86a")}</button>

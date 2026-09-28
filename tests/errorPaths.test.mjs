@@ -60,6 +60,37 @@ test('Tausch ablehnen: bereits freigegebene Anfrage (veraltete Ansicht) → Fehl
   assert.equal(locked.calls.length, 0, 'Doppelklick ignoriert')
 })
 
+test('Ausstempeln aus veralteter Ansicht (anderes Gerät hat schon ausgestempelt): nichts überschreiben, kein Erfolg', async () => {
+  assert.match(extractFn('src/pages/ClockIn.jsx', 'clockOut'), /\.eq\('id', openEntry\.id\)\.is\('clock_out', null\)\.select\(/)
+  for (const [label, res, kind] of [['bereits ausgestempelt', { data: null, error: null }, 'warn'], ['Erfolg', { data: { hours_worked: 7.5, notes: null }, error: null }, 'success'], ['Fehler', ERR, 'error']]) {
+    const toast = spyToast(); const working = []; let fetched = 0
+    const fn = load('src/pages/ClockIn.jsx', 'clockOut', { ...common, working: false, openEntry: { id: 'e1', clock_in: new Date(Date.now() - 8 * 3600e3).toISOString(), break_minutes: 0 }, breaks: [], openBreak: () => null, setWorking: v => working.push(v), sumBreakMinutes: () => 0, calcWorkedHours: () => 8, gps: {}, supabase: fakeSupabase({ time_entries: res }), toast, fetchData: async () => { fetched++ }, breakLoad: 'ok', breaksOn: true, formatParam: () => '', tr: k => k })
+    await fn()
+    assert.deepEqual(toast.calls.map(c => c[0]), [kind], label)
+    assert.equal(working.at(-1), false, `${label}: Sperre frei`)
+  }
+})
+
+test('Urlaub entscheiden aus veralteter Ansicht: fremde Entscheidung wird nicht überschrieben', async () => {
+  const src = extractFn('src/pages/Vacation.jsx', 'vacAction')
+  assert.match(src, /async function vacAction\(id, status, from = 'pending'\)/)
+  assert.match(src, /\.eq\('id', id\)\.eq\('status', from\)\.select\('id'\)/)
+  assert.match(readFileSync('src/pages/Vacation.jsx', 'utf8'), /vacAction\(v\.id, 'rejected', 'approved'\)/)   // bewusstes Ablehnen genehmigter Überschneidung
+  for (const [label, res, kind] of [['schon entschieden', { data: [], error: null }, 'error'], ['entschieden', { data: [{ id: 'v1' }], error: null }, 'success'], ['Fehler', ERR, 'error']]) {
+    const toast = spyToast(); const working = []
+    const fn = load('src/pages/Vacation.jsx', 'vacAction', { ...common, canManage: true, actionWorking: false, setActionWorking: v => working.push(v), vacations: [], supabase: fakeSupabase({ vacation_requests: res }), toast, profile: { first_name: 'T' }, formatParam: () => '', fetchAll: async () => {}, refetch: () => {} })
+    await fn('v1', 'rejected')
+    assert.deepEqual(toast.calls.map(c => c[0]), [kind], label)
+    assert.equal(working.at(-1), false, `${label}: Sperre frei`)
+  }
+})
+
+test('Urlaubsantrag zurückziehen, der inzwischen genehmigt wurde → Fehler statt „zurückgezogen“', () => {
+  const src = readFileSync('src/pages/Account.jsx', 'utf8')
+  assert.match(src, /\.delete\(\)\.eq\('id', v\.id\)\.eq\('status','pending'\)\.select\('id'\)/)
+  assert.match(src, /if \(!removed\?\.length\) \{ toast\.error\(appMessage\("error\.bd03e1e5cae8"\)\); fetchData\(\); return \}/)
+})
+
 test('Zeiteintrag löschen (Admin): Doppelklick-Sperre wird bei Fehler freigegeben', async () => {
   const deleteGuard = guard(); const toast = spyToast()
   const fn = load('src/pages/TimeManagement.jsx', 'confirmDelete', { ...common, deleteGuard, deleteReason: 'Test', deleteModal: { id: 'e1', employee_id: 'x', clock_in: null, clock_out: null }, toTime: () => '', profile: { id: 'p' }, supabase: fakeSupabase({ time_entries: ERR }), toast, setDeleteModal: () => {}, setDeleteReason: () => {}, employees: [], fetchEntries: () => {} })

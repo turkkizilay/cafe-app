@@ -131,7 +131,8 @@ export default function Vacation() {
   }, [form.start_date, form.end_date, form.employee_id])
 
   // ── Aktionen ────────────────────────────────────────────────
-  async function vacAction(id, status) {
+  // from = Status, den die Ansicht zeigt – eine inzwischen anders entschiedene Anfrage wird nicht überschrieben
+  async function vacAction(id, status, from = 'pending') {
     if (!canManage) return  // Defense-in-depth: nur Admin/Manager darf Urlaubsstatus ändern
     if (actionWorking) return
     setActionWorking(true)
@@ -159,14 +160,15 @@ export default function Vacation() {
       }
     }
 
-    const { error } = await supabase.from('vacation_requests')
+    const { data: changed, error } = await supabase.from('vacation_requests')
       .update({
         status,
         approved_at:      new Date().toISOString(),
         approved_by_name: [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email || 'Admin',
       })
-      .eq('id', id)
+      .eq('id', id).eq('status', from).select('id')
     if (error) { toast.error(translateSupabaseError(error)); setActionWorking(false); return }
+    if (!changed?.length) { toast.error(appMessage("error.bd03e1e5cae8")); await fetchAll(); setActionWorking(false); return }
     toast.success(status === 'approved' ? (appMessage("ui.6b8d7a1ddcc8")) : (appMessage("ui.af0f632149dd")))
 
     // Protokoll
@@ -764,7 +766,7 @@ export default function Vacation() {
                                     if (window.confirm(
                                       tr("ui.2b76f8f6b693", { p1: (formatDate(v.start_date)), p2: (formatDate(v.end_date)), p3: (hint) })
                                     )) {
-                                      vacAction(v.id, 'rejected')
+                                      vacAction(v.id, 'rejected', 'approved')
                                     }
                                   }}
                                 >{tr("ui.c904fda89ac4")}{

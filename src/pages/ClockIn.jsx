@@ -198,8 +198,10 @@ export default function ClockIn({ session }) {
       clock_out: now.toISOString(),
       gps_lat_out: gps.lat ?? null, gps_lng_out: gps.lng ?? null,
       break_minutes: breakMin, hours_worked: parseFloat(netH.toFixed(2)),
-    }).eq('id', openEntry.id).select('hours_worked, notes').maybeSingle()
+    }).eq('id', openEntry.id).is('clock_out', null).select('hours_worked, notes').maybeSingle()
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); setWorking(false); return }
+    // Schon ausgestempelt (z. B. auf einem anderen Gerät): nichts überschreiben, keine Erfolgsmeldung
+    if (!saved) { toast.warn(appMessage("ui.8a3492aa4c28")); await fetchData(); setWorking(false); return }
     // Server markiert Schichten > 12 Std. als „Ausstempeln vergessen“ (werden erst nach Korrektur bezahlt)
     if (saved?.notes?.includes('AUSSTEMPELN VERGESSEN')) {
       toast.warn(appMessage("ui.ce394dbf8d29"), 12000)

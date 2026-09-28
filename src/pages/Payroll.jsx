@@ -139,7 +139,8 @@ function exportDATEV(rows, monthLabel) {
     r.total.toFixed(2).replace('.',','),
     datevHintCell(r)    // + FIXGEHALT / TEILMONAT PRÜFEN; Stundenlohn-Zeilen wie bisher
   ])
-  const csv = [headers, ...rows_csv].map(row => row.map(v => `"${v}"`).join(';')).join('\n')
+  // RFC 4180: Anführungszeichen im Wert verdoppeln (Namen sind Freitext) – sonst unverändert
+  const csv = [headers, ...rows_csv].map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n')
   const BOM = '﻿'  // UTF-8 BOM für Excel/DATEV
   const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' })
   saveFile(blob, `Cafe-Buur-Lohn-${monthLabel}.csv`, 'text/csv;charset=utf-8;')   // zentraler Download: URL wird nicht mehr sofort freigegeben (Safari/Firefox), iOS über Teilen
