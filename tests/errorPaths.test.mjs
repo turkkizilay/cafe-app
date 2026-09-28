@@ -41,6 +41,25 @@ test('Schicht löschen: Speichern-Sperre wird immer freigegeben, bei Fehler kein
   }
 })
 
+test('Tausch ablehnen: bereits freigegebene Anfrage (veraltete Ansicht) → Fehler statt „abgelehnt“; nur laufende Anfragen', async () => {
+  const src = extractFn('src/pages/Shifts.jsx', 'rejectSwap')
+  assert.match(src, /\.eq\('id', id\)\.in\('status', \['open', 'accepted'\]\)\.select\('id'\)/)
+  for (const [label, res, kinds] of [
+    ['abgelehnt', { data: [{ id: 's1' }], error: null }, ['success']],
+    ['schon freigegeben', { data: [], error: null }, ['error']],
+    ['Backend-Fehler', { data: null, ...ERR }, ['error']],
+  ]) {
+    const toast = spyToast(); const saving = []
+    const fn = load('src/pages/Shifts.jsx', 'rejectSwap', { ...common, swapSaving: false, setSwapSaving: v => saving.push(v), supabase: fakeSupabase({ shift_swap_requests: res }), toast, fetchSwaps: () => {}, fetchData: () => {} })
+    await fn('s1')
+    assert.deepEqual(toast.calls.map(c => c[0]), kinds, label)
+    assert.deepEqual(saving, [true, false], `${label}: Sperre frei`)
+  }
+  const locked = spyToast()
+  await load('src/pages/Shifts.jsx', 'rejectSwap', { ...common, swapSaving: true, setSwapSaving: () => { throw new Error('darf nicht') }, supabase: fakeSupabase({}), toast: locked, fetchSwaps: () => {}, fetchData: () => {} })('s1')
+  assert.equal(locked.calls.length, 0, 'Doppelklick ignoriert')
+})
+
 test('Zeiteintrag löschen (Admin): Doppelklick-Sperre wird bei Fehler freigegeben', async () => {
   const deleteGuard = guard(); const toast = spyToast()
   const fn = load('src/pages/TimeManagement.jsx', 'confirmDelete', { ...common, deleteGuard, deleteReason: 'Test', deleteModal: { id: 'e1', employee_id: 'x', clock_in: null, clock_out: null }, toTime: () => '', profile: { id: 'p' }, supabase: fakeSupabase({ time_entries: ERR }), toast, setDeleteModal: () => {}, setDeleteReason: () => {}, employees: [], fetchEntries: () => {} })

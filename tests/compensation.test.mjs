@@ -23,6 +23,19 @@ test('Fixgehalt: Brutto = Monatsgehalt, unabhängig von Stunden/Überstunden, ke
   assert.equal(monthlyGross({ ...fixed(3100), employment_type: 'teilzeit', hours_per_week: 20 }, 60), 3100)
 })
 
+test('Go-Live-Audit: Fixgehalt bei 150 / 172 / 184 / 230 h bleibt gleich; Überstunden nur intern, Stunden nie gekappt', async () => {
+  const { monthlyModel } = await import('../src/lib/workTimeModels.js')
+  const emp = fixed(3200, { hours_per_week: 40 })
+  for (const h of [150, 172, 184, 230]) {
+    assert.equal(monthlyGross(emp, h), 3200, `${h} h`)
+    const m = monthlyModel(emp, h)
+    assert.equal(m.overtime, Math.max(0, h - 172), `${h} h: Überstunden intern`)
+  }
+  assert.equal(monthlyModel(emp, 230).status, 'over_cap', '220-h-Warnschwelle')
+  assert.equal(monthlyModel(emp, 230).actual, 230, 'keine Kürzung der Stunden')
+  assert.equal(monthlyGross(hourly(15), 230), 3450, 'Stundenlohn unverändert: alle Stunden bezahlt')
+})
+
 test('Beschäftigungsart und Vergütung sind unabhängig; Werkstudent/Minijob nur Stundenlohn', () => {
   assert.equal(canHaveFixedPay('vollzeit'), true)
   assert.equal(canHaveFixedPay('teilzeit'), true)

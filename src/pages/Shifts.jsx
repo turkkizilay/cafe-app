@@ -254,8 +254,15 @@ export default function Shifts() {
   }
 
   async function rejectSwap(id) {
-    const { error } = await supabase.from('shift_swap_requests').update({ status:'rejected' }).eq('id', id)
+    if (swapSaving) return
+    setSwapSaving(true)
+    // Nur laufende Anfragen ablehnen: eine inzwischen (z. B. von einem anderen Manager) freigegebene
+    // Anfrage darf nicht auf „abgelehnt“ springen, während die Schichten bereits getauscht sind
+    const { data, error } = await supabase.from('shift_swap_requests').update({ status:'rejected' })
+      .eq('id', id).in('status', ['open', 'accepted']).select('id')
+    setSwapSaving(false)
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.7be75ced7162"))); return }
+    if (!data?.length) { toast.error(appMessage("error.bd03e1e5cae8")); fetchSwaps(); fetchData(); return }
     toast.success(appMessage("ui.bc2291382f28"))
     fetchSwaps()
   }
