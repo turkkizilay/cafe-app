@@ -1,0 +1,13 @@
+-- ============================================================
+-- 22 · Atteste (Bucket sick-certs): Manager dürfen NICHT mehr löschen
+-- Die Policy sick_certs_admin (FOR ALL, is_manager_or_admin) gab Managern u. a. DELETE.
+-- Nach dem Entfernen bleiben unverändert bestehen:
+--   • Lesen:      sick_certs_read / sick_certs_download (eigener Ordner oder Manager/Admin),
+--                 sick_cert_read_own, sick_cert_admin_read
+--   • Hochladen:  sick_certs_upload (eigener Ordner oder Manager/Admin), sick_cert_insert, sick_certs_upload_own
+--   • Ersetzen:   sick_certs_update (Manager/Admin; für „Attest nachreichen“ per upsert)
+--   • Löschen:    sick_cert_admin_delete (nur Admin)
+-- Keine Datei- oder Datenänderung.
+-- Bereits live eingespielt (Migration sick_certs_no_manager_delete, 2026-09-28) — NICHT erneut ausführen.
+-- ============================================================
+DROP POLICY IF EXISTS sick_certs_admin ON storage.objects;
