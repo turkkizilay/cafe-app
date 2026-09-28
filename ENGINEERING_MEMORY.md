@@ -85,6 +85,31 @@ jede Datei schlägt ohne ihre Migration fehl. Eigenes Paket, weil die Haupt-`pac
 byte-geschützt ist und Vercel keine Postgres-Binärdateien installieren soll. (VERIFIED)
 Permanent Lesson: Server-Invarianten werden mit versionierten, reproduzierbaren Tests geschützt – nie nur ad hoc.
 
+### Auth-/Einladungs-Zwischenzustände brauchen Recovery-Pfade
+Problem: Eingeladene Person registriert sich, die Bestätigungs-E-Mail kommt nicht an; der Admin sieht nur „Entwurf“,
+kann nichts erneut senden, „Registrierung abbrechen“ sperrt endgültig, neue Einladung scheitert („bereits registriert“).
+Root Cause: Die Einladung wird schon beim signUp eingelöst (02_signup_trigger), der Bestätigungsstatus liegt nur in
+`auth.users` (für den Browser unsichtbar), und für „Konto existiert, aber nicht aktiviert“ gab es keinen Admin-Pfad.
+Fix: Migration 24 – `admin_account_states()`, `admin_prepare_confirmation_resend()` (Versand über Supabase
+`auth.resend`, kein eigener Token/Service-Key), `admin_reopen_registration()`; UI zeigt Zustand + nur passende Aktion;
+Einladen einer registrierten Adresse bietet Recovery statt Duplikat. (VERIFIED, Tests unten)
+Permanent Lesson: „Account existiert“ ≠ „Account aktiviert“. Jeder mehrstufige Auth-/Invite-Flow braucht sichtbare
+Zwischenzustände und einen Admin-Recovery-Pfad ohne Datenverlust.
+Nicht per Code lösbar: Warum Mails nicht ankommen (Supabase meldete keine Versandfehler) – E-Mail-Versand/SMTP im
+Supabase-Dashboard prüfen. (ASSUMPTION bis geprüft)
+Regression Protection: `tests/accountRecovery.test.mjs`, `tests/db/account_recovery.test.mjs`.
+
+### Lange Dialoge auf dem iPhone nicht erreichbar
+Problem: Einladungs-Dialog auf dem iPhone nicht bis zum Bestätigungsbutton scrollbar (auch am Desktop bei sehr langen Dialogen).
+Root Cause: Globale `.modal-overlay`/`.modal` ohne maximale Höhe und ohne Scrollbereich – zentrierter Inhalt lief oben
+und unten aus dem sichtbaren Bereich; betraf alle Dialoge, nicht nur diesen.
+Fix: Einmal global: Overlay mit Safe-Area-Abstand, `.modal` max. 100 % der Overlay-Höhe (keine vh-Probleme),
+Kopf/Fuß fix, `.modal-body` scrollt; Hintergrund per `.content:has(.modal-overlay)` gesperrt; Tabellen der
+Benutzerverwaltung unter 640 px gestapelt (`.table-stack` + `data-label`). (VERIFIED)
+Permanent Lesson: UI-Container global robust machen statt Einzeldialoge flicken; Layout mit echten langen Inhalten
+auf kleinen Viewports prüfen.
+Regression Protection: `tests/modalLayout.test.mjs` (Headless Chrome, iframes 320–1280 px; ohne Chrome sichtbar übersprungen).
+
 ### Nicht-eindeutige CSV aus Freitext
 Problem: Ein `"` im Namen (Freitext aus dem Onboarding) machte den DATEV-Export ungültig.
 Fix: RFC-4180-Escaping (`"` → `""`); Ausgabe für normale Daten byte-identisch belegt. (VERIFIED, 82984cd)
@@ -151,7 +176,7 @@ Risikobasiert – nur was die Änderung berührt:
   (Parallelität nur mit mehreren echten Verbindungen belastbar), Production vorher read-only auf Konflikte geprüft, Deploy-Reihenfolge festgelegt,
   Anwendung erst nach Review/Freigabe, danach read-only verifiziert und Kopf als „eingespielt“ markiert.
 - Deployment: Vercel-Status `success` und Live-Bundle byte-identisch mit lokalem Build.
-- Gerätegesten/Mobile-Verhalten: auf echtem iOS/Android bestätigt.
+- Mobile-Layout (Dialoge, Tabellen): `tests/modalLayout.test.mjs` (braucht lokales Chrome); Gerätegesten auf echtem iOS/Android bestätigen.
 
 ## Continuous Learning Workflow
 

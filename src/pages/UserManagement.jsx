@@ -15,6 +15,7 @@ import OnboardingReview, { ONB_STATUS } from '../components/OnboardingReview'
 import PayModelFields from '../components/PayModelFields'
 import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import { accountStage, requestConfirmationResend, inviteConflict } from '../lib/accountRecovery'
 
 const ROLES = [
   { value: 'employee', get label() { return tr("ui.d422e9b832d6") } },
@@ -31,6 +32,7 @@ export default function UserManagement() {
   const revokeGuard  = useSavingGuard()
   const rejectGuard  = useSavingGuard()
   const deleteGuard  = useSavingGuard()
+  const recoveryGuard = useSavingGuard()
 
   const [pending,      setPending]      = useState([])
   const [approved,     setApproved]     = useState([])
@@ -58,6 +60,11 @@ export default function UserManagement() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [inviteResult, setInviteResult] = useState(null) // generierter Link
   const [inviteSaving, setInviteSaving] = useState(false)
+  // Recovery festhängender Registrierungen (Migration 24): Auth-Status je Profil, Konflikt beim Einladen
+  const [allProfiles,   setAllProfiles]   = useState([])
+  const [accountStates, setAccountStates] = useState({})
+  const [inviteConflictInfo, setInviteConflictInfo] = useState(null)
+  const [recovering,    setRecovering]    = useState(null)
 
   useEffect(() => { fetchAll() }, [])
   useRefreshHandler(() => fetchAll())   // Aktualisieren-Button
@@ -77,6 +84,10 @@ export default function UserManagement() {
     setPending((profiles  || []).filter(p => p.status === 'pending' && !onbIds.has(p.id)))
     setApproved((profiles || []).filter(p => p.status === 'approved'))
     setDisabledUsers((profiles || []).filter(p => p.status === 'disabled'))
+    setAllProfiles(profiles || [])
+    // Bestätigungsstatus der E-Mail (nur serverseitig lesbar). Fehler → keine Recovery-Aktion anzeigen.
+    const { data: st, error: stErr } = await supabase.rpc('admin_account_states')
+    setAccountStates(stErr ? {} : Object.fromEntries((st || []).map(x => [x.profile_id, x])))
     setEmployees(emps || [])
     setInvitations(invs || [])
     // Direktsprünge aus „Mitarbeiter“: ?invite=<employee_id> oder ?new=1
@@ -100,6 +111,7 @@ export default function UserManagement() {
     setInviteForm({ email: emp?.email || '', role: 'employee' })
     setInviteJob(null)
     setInviteResult(null)
+    setInviteConflictInfo(null)
   }
 
   async function createInvitation() {
@@ -136,7 +148,9 @@ export default function UserManagement() {
         // Doppelte Accounts vermeiden: gibt es die Adresse schon als Login oder Mitarbeiter?
         const { data: reg } = await supabase.rpc('check_email_registered', { p_email: email })
         if (reg?.exists) {
-          toast.warn(reg.reason === 'auth' ? (appMessage("ui.588c94127f4c")) : (appMessage("ui.07b54feedb71")))
+          // Konto existiert schon: keine zweite Einladung/kein zweiter Mitarbeiter – passende Recovery anbieten
+          if (reg.reason === 'auth') setInviteConflictInfo({ email, ...inviteConflict(email, allProfiles, accountStates, onboardings) })
+          else toast.warn(appMessage("ui.07b54feedb71"))
           return
         }
       }
@@ -218,6 +232,48 @@ export default function UserManagement() {
       targetType: 'employee', targetId: emp.id, targetName: `${emp.first_name} ${emp.last_name}`,
     })
     fetchAll()
+  }
+
+  // ── Recovery: Bestätigungs-E-Mail erneut anfordern / abgebrochene Registrierung wieder öffnen ──
+  async function resendConfirmation(p) {
+    if (!recoveryGuard.begin()) return
+    setRecovering(p.id)
+    try {
+      const res = await requestConfirmationResend(supabase, p.id, window.location.origin)
+      if (res.ok) toast.success(appMessage('recovery.resendOk', { email: res.email }), 9000)
+      else if (res.reason === 'rate_limit') toast.warn(appMessage('recovery.rateLimit'), 9000)
+      else toast.error(messageParts([appMessage('recovery.sendFailed'), errorMessage(res.error) || '']), 9000)
+    } finally {
+      recoveryGuard.end(); setRecovering(null); fetchAll()
+    }
+  }
+
+  async function reopenRegistration(p) {
+    if (!recoveryGuard.begin()) return
+    setRecovering(p.id)
+    try {
+      const { data, error } = await supabase.rpc('admin_reopen_registration', { p_profile_id: p.id })
+      if (error || !data?.success) toast.error(messageParts([appMessage('recovery.reopenFailed'), errorMessage(error) || '']), 9000)
+      else { toast.success(appMessage('recovery.reopenOk'), 9000); setInviteConflictInfo(null) }
+    } finally {
+      recoveryGuard.end(); setRecovering(null); fetchAll()
+    }
+  }
+
+  // Status-Hinweis + passende Recovery-Aktionen für ein Konto (nur was zum realen Zustand passt)
+  function recoveryActions(p, onboarding) {
+    const acc = accountStage({ profile: p, state: accountStates[p.id], onboarding })
+    if (!acc || (!acc.canResend && !acc.canReopen)) return null
+    const busy = recovering === p.id
+    return (
+      <div className="recovery-actions">
+        {acc.canResend && <span className="badge badge-amber">{tr('recovery.awaitingEmail')}</span>}
+        {acc.canReopen && <span className="badge badge-red">{tr('recovery.cancelled')}</span>}
+        {acc.canResend && acc.lastSent && <span className="recovery-meta">{tr('recovery.lastSent', { date: new Date(acc.lastSent).toLocaleString(getIntlLocale(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) })}</span>}
+        {acc.canReopen && <button className="btn btn-sm" disabled={busy} onClick={() => reopenRegistration(p)}>{tr('recovery.reopen')}</button>}
+        {acc.canResend && <button className="btn btn-sm" disabled={busy} onClick={() => resendConfirmation(p)}>{busy ? tr('recovery.resending') : tr('recovery.resend')}</button>}
+      </div>
+    )
   }
 
   // ── Pending genehmigen ───────────────────────────────────────
@@ -396,7 +452,7 @@ export default function UserManagement() {
 
                     <div className="form-group">
                       <label>{tr("ui.3aa94d6b25ac")}</label>
-                      <input type="email" value={inviteForm.email} onChange={e => setInviteForm(f => ({...f, email: e.target.value}))}
+                      <input type="email" value={inviteForm.email} onChange={e => { setInviteForm(f => ({...f, email: e.target.value})); setInviteConflictInfo(null) }}
                         placeholder={tr("ui.3cb2486e1691")} />
                       <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>{tr("ui.0b4996890ea1")}</div>
                     </div>
@@ -452,6 +508,17 @@ export default function UserManagement() {
                       </div>
                     )}
 
+                    {inviteConflictInfo && (() => {
+                      const c = inviteConflictInfo
+                      const text = c.canReopen ? 'recovery.conflictCancelled' : c.stage === 'awaiting_email' ? 'recovery.conflictAwaiting' : c.profile ? 'recovery.conflictExisting' : 'recovery.conflictUnknown'
+                      return (
+                        <div className="alert alert-warn" role="alert" style={{ fontSize:13, lineHeight:1.55 }}>
+                          <strong>{tr('recovery.conflictTitle')}</strong>
+                          <div style={{ marginTop:4 }}>{tr(text)}</div>
+                          {c.profile && <div style={{ marginTop:10 }}>{recoveryActions(c.profile, onboardings.find(o => o.profile_id === c.profile.id))}</div>}
+                        </div>
+                      )
+                    })()}
                     <div className="alert alert-info" style={{ fontSize:12 }}>{tr("ui.10d3b51f09e6")}<strong>{tr("ui.b6d3b7a7cdb2")}</strong>{tr("ui.404bc11dd4d6")}{inviteModal.isNew
                         ? tr("ui.b676e8f23b4c")
                         : tr("ui.1e7378b4ebbd")}
@@ -595,6 +662,7 @@ export default function UserManagement() {
                       <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{nm ? o.email : tr("ui.060012a79ae3")}</div>
                     </div>
                     <span className={`badge ${st.cls}`}>{st.label}</span>
+                    {allProfiles.find(x => x.id === o.profile_id) && recoveryActions(allProfiles.find(x => x.id === o.profile_id), o)}
                     {o.status === 'submitted'
                       ? <button className="btn btn-primary btn-sm" onClick={() => setReviewRow(o)}>{tr("ui.a1ca13575987")}</button>
                       : <button className="btn btn-sm" onClick={() => setReviewRow(o)}>{tr("ui.8e31363947a6")}</button>}
@@ -668,22 +736,22 @@ export default function UserManagement() {
               <div className="card-title">{tr("ui.1e0b736fcd7e")}{invitations.length})</div>
             </div>
             <div className="table-wrap">
-              <table>
+              <table className="table-stack">
                 <thead><tr><th>{tr("ui.f4cb6891b9e5")}</th><th>{tr("ui.9b27905f51b6")}</th><th>{tr("ui.0ac11a209702")}</th><th>{tr("ui.5656f92db78d")}</th></tr></thead>
                 <tbody>
                   {invitations.map(inv => (
                     <tr key={inv.id}>
-                      <td>{inv.employee_id
+                      <td data-label={tr("ui.f4cb6891b9e5")}>{inv.employee_id
                         ? <strong>{inv.employees?.first_name} {inv.employees?.last_name}</strong>
                         : <span className="badge badge-accent">{tr("ui.b287790d200e")}</span>}</td>
-                      <td>{inv.email}</td>
-                      <td style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                      <td data-label={tr("ui.9b27905f51b6")}>{inv.email}</td>
+                      <td data-label={tr("ui.0ac11a209702")} style={{ fontSize:12, color:'var(--text-secondary)' }}>
                         {new Date(inv.expires_at).toLocaleDateString(getIntlLocale(), { day:'2-digit', month:'2-digit', year:'numeric' })}
                         {(new Date(inv.expires_at).getTime() - Date.now()) < 86400000 * 2 && (
                           <span style={{ color:'#DC2626', marginLeft:6, fontSize:11 }}>{tr("ui.8d7e42e354a5")}</span>
                         )}
                       </td>
-                      <td>
+                      <td data-label={tr("ui.5656f92db78d")}>
                         <div className="flex gap-2">
                           <button className="btn btn-sm" onClick={() => {
                             const link = `${window.location.origin}/?invite=${inv.token}`
@@ -712,30 +780,31 @@ export default function UserManagement() {
             <div className="empty-state"><div className="empty-state-icon">✅</div><div className="empty-state-text">{tr("ui.71fa660a69f7")}</div></div>
           ) : (
             <div className="table-wrap">
-              <table>
+              <table className="table-stack">
                 <thead><tr><th>{tr("ui.2fae6fb30b0d")}</th><th>{tr("ui.35c88d0cd1a7")}</th><th>{tr("ui.99b0d54d304a")}</th><th>{tr("ui.0038a9cf8661")}</th><th>{tr("ui.a4ad259e71cb")}</th></tr></thead>
                 <tbody>
                   {pending.map(p => {
                     const form = pendingForms[p.id] || { role: 'employee', employee_id: '' }
                     return (
                       <tr key={p.id}>
-                        <td>
+                        <td data-label={tr("ui.2fae6fb30b0d")}>
                           <strong>{p.first_name} {p.last_name}</strong>
                           <div style={{ fontSize:11, color:'var(--text-muted)' }}>{p.email}</div>
+                          {recoveryActions(p)}
                         </td>
-                        <td style={{ fontSize:12, color:'var(--text-secondary)' }}>{formatDate(p.created_at.split('T')[0])}</td>
-                        <td>
+                        <td data-label={tr("ui.35c88d0cd1a7")} style={{ fontSize:12, color:'var(--text-secondary)' }}>{formatDate(p.created_at.split('T')[0])}</td>
+                        <td data-label={tr("ui.99b0d54d304a")}>
                           <select value={form.employee_id||''} onChange={e => setPendingForm(p.id,'employee_id',e.target.value)} style={{ fontSize:13 }}>
                             <option value="">{tr("ui.ad8b6612ef74")}</option>
                             {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
                           </select>
                         </td>
-                        <td>
+                        <td data-label={tr("ui.0038a9cf8661")}>
                           <select value={form.role||'employee'} onChange={e => setPendingForm(p.id,'role',e.target.value)} style={{ fontSize:13, width:'auto' }}>
                             {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                           </select>
                         </td>
-                        <td>
+                        <td data-label={tr("ui.a4ad259e71cb")}>
                           <div className="flex gap-2">
                             <button className="btn btn-sm btn-success" disabled={working===p.id||!form.employee_id} onClick={() => approvePending(p)}>
                               {working===p.id?'...':tr("ui.d8ee0df1b99c")}
@@ -759,7 +828,7 @@ export default function UserManagement() {
             {approved.length === 0 ? (
               <div className="empty-state"><div className="empty-state-text">{tr("ui.28693e7cfb0b")}</div></div>
             ) : (
-              <table>
+              <table className="table-stack">
                 <thead><tr><th>{tr("ui.2fae6fb30b0d")}</th><th>{tr("ui.f4cb6891b9e5")}</th><th>{tr("ui.0038a9cf8661")}</th><th>{tr("ui.0c40b32205a7")}</th><th></th></tr></thead>
                 <tbody>
                   {approved.map(p => {
@@ -769,12 +838,12 @@ export default function UserManagement() {
                     const selEmpId = isEdit ? editState[p.id] : (p.employee_id || '')
                     return (
                       <tr key={p.id} style={{ background: isMe ? 'var(--accent-light)' : undefined }}>
-                        <td>
+                        <td data-label={tr("ui.2fae6fb30b0d")}>
                           <div style={{ fontWeight:500, fontSize:13 }}>{p.first_name} {p.last_name}</div>
                           <div style={{ fontSize:11, color:'var(--text-muted)' }}>{p.email}</div>
                           {isMe && <span style={{ marginLeft:6, fontSize:10, color:'var(--accent)', fontWeight:600 }}>{tr("ui.26c2dd4bb013")}</span>}
                         </td>
-                        <td>
+                        <td data-label={tr("ui.f4cb6891b9e5")}>
                           {isEdit ? (
                             <div className="flex gap-2">
                               <select value={selEmpId} onChange={e => setEditState(prev => ({...prev, [p.id]: e.target.value}))} style={{ fontSize:12 }}>
@@ -801,7 +870,7 @@ export default function UserManagement() {
                             </div>
                           )}
                         </td>
-                        <td>
+                        <td data-label={tr("ui.0038a9cf8661")}>
                           {isMe ? (
                             <span className="badge badge-red">👑 {p.is_owner ? tr("ui.32902b2c2759") : tr("ui.c1c224b03cd9")}{tr("ui.610d8f14304d")}</span>
                           ) : p.is_owner ? (
@@ -812,7 +881,7 @@ export default function UserManagement() {
                             </select>
                           )}
                         </td>
-                        <td style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                        <td data-label={tr("ui.0c40b32205a7")} style={{ fontSize:12, color:'var(--text-secondary)' }}>
                           {p.approved_at ? new Date(p.approved_at).toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'}) : '–'}
                         </td>
                         <td>
@@ -854,6 +923,7 @@ export default function UserManagement() {
                 {p.employee_id && (
                   <button className="btn btn-sm" disabled={working === p.id} onClick={() => setUserLocked(p, false)}>{tr("ui.63cc8acdcb73")}</button>
                 )}
+                {!p.employee_id && recoveryActions(p, onboardings.find(o => o.profile_id === p.id))}
               </div>
             )
           })}

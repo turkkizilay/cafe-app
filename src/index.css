@@ -1200,3 +1200,44 @@ html.dark .language-segment-indicator { background:var(--bg-hover); }
 .privacy-ack-continue { width: 100%; justify-content: center; margin-top: 16px; padding: 12px 0; font-weight: 600; }
 .privacy-ack-signout { margin-top: 12px; background: none; border: none; color: var(--text-muted); font-size: 12.5px; cursor: pointer; }
 .privacy-ack-signout:hover { color: var(--text-primary); }
+
+/* ── Dialoge: immer vollständig erreichbar (iPhone/iOS Safari, PWA, kleine Displays, Querformat) ──
+   Der Dialog passt immer in den sichtbaren Bereich (Overlay = fest positioniert, inset 0, mit Safe-Area-Abstand);
+   Kopf- und Fußzeile bleiben sichtbar, der Inhalt scrollt vertikal. Dialoge ohne .modal-body scrollen als Ganzes. */
+.modal-overlay {
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+           max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overscroll-behavior: contain;
+}
+.modal {
+  display: flex; flex-direction: column;
+  max-height: 100%;                      /* = sichtbare Höhe des Overlays abzüglich Safe-Area/Abstand, ohne vh-Probleme */
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  min-width: 0; overflow-wrap: anywhere;
+}
+.modal-header, .modal-footer { flex-shrink: 0; }
+.modal-footer { flex-wrap: wrap; }
+.modal-body {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+}
+/* Hintergrund (Haupt-Scroller) scrollt nicht mit, solange ein Dialog offen ist */
+.content:has(.modal-overlay) { overflow: hidden; }
+
+/* ── Tabellen mit data-label: auf schmalen Displays als gestapelte Zeilen, alle Aktionen erreichbar ── */
+@media (max-width: 640px) {
+  .table-stack thead { display: none; }
+  .table-stack, .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: 100%; }
+  .table-stack tr { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .table-stack td { border: none; padding: 4px 0; overflow-wrap: anywhere; }
+  .table-stack td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
+  }
+  .table-stack select { max-width: 100%; }
+  .table-stack .flex { flex-wrap: wrap; }
+}
+
+/* ── Recovery-Hinweise in der Benutzerverwaltung ── */
+.recovery-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.recovery-meta { font-size: 11px; color: var(--text-muted); }

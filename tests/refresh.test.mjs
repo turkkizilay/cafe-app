@@ -139,7 +139,8 @@ test('Haupt-Scroller: .content scrollt, Dokument nicht; overscroll nur dort (kei
   const css = read('src/index.css')
   assert.match(css, /\.app-shell \{\s*display: flex;\s*height: 100vh;\s*overflow: hidden;/)
   assert.match(css, /\.content \{\s*flex: 1;\s*overflow-y: auto;[^}]*overscroll-behavior-y: contain;/)
-  assert.doesNotMatch(css, /(html|body)[^{]*\{[^}]*overscroll-behavior/, 'nicht global')
+  assert.doesNotMatch(css, /(^|[\s,}])(html|body)\s*[,{][^}]*overscroll-behavior/m, 'nicht global (html/body-Selektoren; .modal-body ist kein body)')
+  assert.match('html, body { overscroll-behavior: none }', /(^|[\s,}])(html|body)\s*[,{][^}]*overscroll-behavior/m, 'Muster erkennt globale Regel weiterhin')
   assert.doesNotMatch(css, /touch-action/, 'Browser-Gesten unverändert')
 })
 
