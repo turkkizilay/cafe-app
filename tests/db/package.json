@@ -1,0 +1,13 @@
+{
+  "name": "cafe-app-db-tests",
+  "private": true,
+  "type": "module",
+  "description": "DB/RLS/Concurrency-Regressionstests gegen ein lokales, temporäres PostgreSQL 17 (nie Production).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 ./*.test.mjs"
+  },
+  "devDependencies": {
+    "embedded-postgres": "17.10.0-beta.17",
+    "pg": "8.23.0"
+  }
+}
