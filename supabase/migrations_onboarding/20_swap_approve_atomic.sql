@@ -11,7 +11,7 @@
 --   'approved' kann nur noch über approve_swap gesetzt werden (kein Status ohne Umbuchung).
 -- • RLS-Policies unverändert. Neue Funktion: EXECUTE nur für authenticated (Rollenprüfung in der Funktion).
 -- • Keine Datenänderung. Bestehende Daten erfüllen den neuen Index (bisher strenger eindeutig).
--- NOCH NICHT eingespielt.
+-- Bereits live eingespielt (Migration swap_approve_atomic, 2026-09-28) — NICHT erneut ausführen.
 -- ============================================================
 
 -- B1: Eindeutigkeit nur für laufende Anfragen
