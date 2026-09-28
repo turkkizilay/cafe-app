@@ -35,6 +35,8 @@ import Onboarding      from './pages/Onboarding'
 import DeleteAccountCard from './components/DeleteAccountCard'
 import { RefreshProvider } from './context/RefreshContext.jsx'
 import RefreshButton from './components/RefreshButton.jsx'
+import LegalPage from './pages/Legal.jsx'
+import { legalKindForPath } from './legal/legalContent.js'
 
 // ── Passwort-Reset-Link erkennen ──────────────────────────────
 const RECOVERY_LINK_DETECTED =
@@ -281,6 +283,14 @@ export default function App() {
     })
     return () => subscription.unsubscribe()
   }, [fetchProfile])
+
+  // Impressum / Datenschutz: öffentlich, vor jeder Anmelde- oder Rollenprüfung
+  const legalKind = legalKindForPath(window.location.pathname)
+  if (legalKind) return (
+    <DarkModeProvider>
+      <LegalPage kind={legalKind} />
+    </DarkModeProvider>
+  )
 
   if (window.location.hash.includes('error=')) {
     return <AuthErrorScreen />

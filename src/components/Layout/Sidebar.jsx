@@ -6,6 +6,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useDarkMode } from '../../context/DarkModeContext'
 import { logActivity } from '../../lib/activityLog'
+import LegalLinks from '../UI/LegalLinks.jsx'
 
 const SECTIONS = [
   { get label() { return tr("ui.824543888534") }, items: [
@@ -153,6 +154,7 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
             onClick={logout} title={collapsed ? tr("ui.545f8be33bf0") : undefined}>
             <span className="nav-icon">🚪</span><span className="nav-label">{tr("ui.545f8be33bf0")}</span>
           </button>
+          <LegalLinks className="legal-links sidebar-legal nav-label" />
 
           <button className="sidebar-collapse-btn" onClick={toggleCollapsed}
             aria-label={collapsed ? tr("ui.fe503b8e2f0d") : tr("ui.c141cc21abae")}

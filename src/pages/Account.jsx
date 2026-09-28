@@ -10,6 +10,7 @@ import PersonalDataCard, { missingPersonalFields } from '../components/PersonalD
 import { openSignedFile } from '../lib/openFile'
 import { logActivity } from '../lib/activityLog'
 import { useProfile } from '../context/ProfileContext'
+import LegalLinks from '../components/UI/LegalLinks.jsx'
 import { useToast } from '../components/UI/Toast'
 import { getVacationBalance } from '../lib/vacationLogic'
 import Avatar from '../components/UI/Avatar'
@@ -637,6 +638,8 @@ export default function Account() {
           </div>
         )}
       </div>
+
+      <LegalLinks className="legal-links account-legal" />
 
       {/* ── Bild-Cropper Modal ── */}
       {cropSrc && (

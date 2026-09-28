@@ -5,6 +5,7 @@ import { BrandBadge, BrandWordmark } from '../UI/Brand'
 import { supabase } from '../../lib/supabase'
 import PasswordInput from '../UI/PasswordInput'
 import { logActivity } from '../../lib/activityLog'
+import LegalLinks from '../UI/LegalLinks.jsx'
 
 // ── Passwort-Stärke ───────────────────────────────────────────────────────
 function checkPasswordStrength(pw) {
@@ -463,6 +464,7 @@ export default function Login() {
             <button onClick={() => switchMode('login')} style={{ background:'none', border:'none', color:'var(--accent)', cursor:'pointer', fontSize:13 }}>{tr("ui.afce3f3cb9de")}</button>
           )}
         </div>
+        <LegalLinks />
       </div>
     </div>
   )

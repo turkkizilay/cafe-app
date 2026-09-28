@@ -9,8 +9,8 @@ import {
   validatePersonal, toPayload, formatIBAN, taxIdChecksumOk, cleanTaxId,
   FIELD_LABELS, FIELD_MESSAGES, PERSONAL_FIELDS,
 } from '../lib/personalData'
-import PrivacyNotice from '../components/UI/PrivacyNotice.jsx'
 import DeleteAccountCard from '../components/DeleteAccountCard'
+import { LEGAL_PATHS } from '../legal/legalContent.js'
 
 // ── Schritte des Formulars ──────────────────────────────────
 const STEPS = [
@@ -89,7 +89,6 @@ export default function Onboarding({ session, fallback }) {
   const [errors,  setErrors]  = useState({})
   const [saving,  setSaving]  = useState(false)
   const [privacy, setPrivacy] = useState(false)
-  const [showPrivacy, setShowPrivacy] = useState(false)
   const topRef = useRef(null)
 
   async function load() {
@@ -383,18 +382,12 @@ export default function Onboarding({ session, fallback }) {
             <Row label={tr("ui.b285b3cd6355")} value={`${form.emergency_contact_name}, ${form.emergency_contact_phone}`} />
 
             <div style={{ marginTop:18, background:'var(--bg)', borderRadius:10, padding:'12px 14px' }}>
-              <button type="button" onClick={() => setShowPrivacy(v => !v)} aria-expanded={showPrivacy}
-                style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontWeight:600, fontSize:13.5, color:'var(--accent-text, var(--accent))' }}>{tr("ui.845d5ad63023")}{showPrivacy ? 'ausblenden ▲' : 'lesen ▼'}
-              </button>
-              {showPrivacy && (
-                <div style={{ marginTop:10, fontSize:12.5, lineHeight:1.6, color:'var(--text-secondary)' }}>
-                  <PrivacyNotice />
-                </div>
-              )}
-              <label style={{ display:'flex', gap:10, alignItems:'flex-start', marginTop:12, cursor:'pointer', fontSize:13, color:'var(--text-primary)' }}>
+              {/* Kenntnisnahme der Datenschutzhinweise (keine Einwilligung); Link öffnet neuen Tab, Formular bleibt erhalten */}
+              <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:13, color:'var(--text-primary)' }}>
                 <input type="checkbox" checked={privacy} style={{ width:18, height:18, marginTop:1, flexShrink:0 }}
                   onChange={ev => { setPrivacy(ev.target.checked); setErrors(x => { const n = { ...x }; delete n.privacy_accepted; return n }) }} />
-                <span>{tr("ui.4839bfa3b16c")}</span>
+                <span>{tr('legal.ackBefore')}<a href={LEGAL_PATHS.privacy} target="_blank" rel="noopener noreferrer"
+                  style={{ color:'var(--accent-text, var(--accent))', fontWeight:600 }}>{tr('legal.ackLink')}</a>{tr('legal.ackAfter')}</span>
               </label>
               {e.privacy_accepted && <div role="alert" style={{ fontSize:12, color:'var(--danger)', marginTop:6 }}>{e.privacy_accepted}</div>}
             </div>

@@ -8,7 +8,7 @@ import { setRuntimeLocale, t, localizeMessage, sourceLabel, message, messagePart
 import { parse } from '@babel/parser'
 import { translateSupabaseError } from '../src/lib/errorHelper.js'
 import { RateLimitError, SyncConflictError, toLightspeedUserMessage } from '../src/integrations/lightspeed/utils/errors.js'
-import { privacySections } from '../src/i18n/privacy.js'
+import { legalContent } from '../src/legal/legalContent.js'
 import * as format from '../src/i18n/format.js'
 import * as vacation from '../src/lib/vacationLogic.js'
 import * as sick from '../src/lib/sickLeaveLogic.js'
@@ -79,9 +79,18 @@ test('formatting uses the locale while keeping precision, EUR and date construct
   setRuntimeLocale('de')
 })
 test('privacy notice has both complete language versions and no placeholders', () => {
-  const a=privacySections('de'),b=privacySections('en')
-  assert.equal(a.length,8);assert.equal(a.length,b.length)
-  for(let i=0;i<a.length;i++) {assert.notEqual(a[i].title,b[i].title);assert.notEqual(a[i].text,b[i].text);assert.doesNotMatch(b[i].text,/\{p\d+\}/)}
+  // Ersetzt den früheren Inline-Hinweis (src/lib/privacyNotice.js) durch die vollständigen Datenschutzhinweise
+  for (const kind of ['privacy','imprint']) {
+    const a=legalContent(kind,'de'),b=legalContent(kind,'en')
+    assert.ok(a.sections.length>=7);assert.equal(a.sections.length,b.sections.length)
+    assert.notEqual(a.title,b.title)
+    for(let i=0;i<a.sections.length;i++) {
+      if (!/^\d+\. (Supabase|Vercel)$/.test(a.sections[i].title)) assert.notEqual(a.sections[i].title,b.sections[i].title)   // Anbieternamen bleiben gleich
+      assert.equal(a.sections[i].blocks.length,b.sections[i].blocks.length)
+      assert.doesNotMatch(JSON.stringify(b.sections[i]),/\{p\d+\}|\$\{/)
+    }
+  }
+  assert.ok(legalContent('privacy','de').sections.length>=20)
 })
 test('public/auth routes share one provider and switcher without locale remount keys', () => {
   const main=readFileSync('src/main.jsx','utf8'), context=readFileSync('src/context/LocaleContext.jsx','utf8'), switcher=readFileSync('src/components/UI/LanguageSwitcher.jsx','utf8')
