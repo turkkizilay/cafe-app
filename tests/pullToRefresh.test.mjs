@@ -19,7 +19,7 @@ test('Pull ganz oben über Schwelle + Loslassen → genau ein Refresh', () => {
   assert.equal(r.last.capture, true)
   assert.equal(r.last.state, 'ready')
   assert.equal(r.fire, true)
-  const t = createPullTracker(); t.start(0, 0); t.move(0, 300); assert.equal(t.end().fire, true); assert.equal(t.end().fire, false)   // zweites end() feuert nicht
+  const t = createPullTracker(); t.start(0, 0, { scrollTop: 0 }); t.move(0, 300, { scrollTop: 0 }); assert.equal(t.end().fire, true); assert.equal(t.end().fire, false)   // zweites end() feuert nicht
 })
 
 test('Kein Pull, wenn die Seite nicht ganz oben ist', () => {
@@ -143,7 +143,7 @@ test('Laufzeit: Formularfelder, Dialoge, Selects, eigener Scrollbereich → kein
   const own = setup({ ownScroller: true }); own.pull(300); assert.equal(own.fired, 0, 'scrollbare Tabelle/Liste')
 })
 
-test('Laufzeit: Zwei-Finger-Geste bricht ab; nicht abbrechbare Events werden nicht blockiert', () => {
+test('Laufzeit: Zwei-Finger-Geste bricht ab; nicht abbrechbare Events werden nie zur Geste', () => {
   const s = setup(); const { leaf } = tree()
   s.doc.fire('touchstart', ev(leaf, 100, 100))
   s.doc.fire('touchmove', { target: leaf, touches: [{ clientX: 100, clientY: 300 }, { clientX: 200, clientY: 300 }], cancelable: true, preventDefault() { throw new Error('darf nicht') } })
@@ -152,7 +152,119 @@ test('Laufzeit: Zwei-Finger-Geste bricht ab; nicht abbrechbare Events werden nic
   const t = setup(); t.doc.fire('touchstart', ev(leaf, 100, 100))
   const e = ev(leaf, 100, 300, { cancelable: false, preventDefault() { throw new Error('nicht abbrechbar') } })
   t.doc.fire('touchmove', e); t.doc.fire('touchend', { target: leaf, touches: [] })
-  assert.equal(t.fired, 1, 'Refresh trotzdem, ohne preventDefault auf nicht abbrechbarem Event')
+  assert.equal(t.fired, 0, 'nicht abbrechbar = Browser scrollt/pullt selbst → keine eigene Geste, kein Doppel-Refresh')
+})
+
+// ── Regression: Refresh beim Hochscrollen (Gesten-Berechtigung nur bei touchstart) ──
+// Simuliert Finger + natives Scrollen: jede Bewegung setzt optional den scrollTop, den der Browser gerade hat.
+function setupShared() {
+  const doc = fakeDoc(); let fired = 0; const states = []
+  attachPullToRefresh(doc, { onChange: x => states.push(x.state), onFire: () => fired++, getStyle: n => n._style })
+  const { leaf, content } = tree()
+  let y = 300, prevented = 0
+  const d = {
+    content, states, get fired() { return fired }, get prevented() { return prevented },
+    down(top) { content.scrollTop = top; y = 300; doc.fire('touchstart', ev(leaf, 100, y)) },
+    move(dy, top, extra) { y += dy; if (top !== undefined) content.scrollTop = top; const e = ev(leaf, 100, y, extra); doc.fire('touchmove', e); if (e.prevented) prevented++ },
+    up() { doc.fire('touchend', { target: leaf, touches: [] }) },
+    cancel() { doc.fire('touchcancel', { target: leaf, touches: [] }) },
+    coast(tops) { for (const t of tops) content.scrollTop = t },
+    pullFromTop() { d.down(0); for (let i = 0; i < 6; i++) d.move(50, 0); d.up() },
+  }
+  return d
+}
+
+test('Regression 1: touchstart bei scrollTop > 0, während der Geste 0 erreicht, weiter ziehen → KEIN Refresh', () => {
+  const d = setupShared()
+  d.down(240)
+  for (const top of [180, 120, 60, 0]) d.move(60, top)        // Finger nach unten = Inhalt scrollt nach oben bis 0
+  for (let i = 0; i < 6; i++) d.move(60, 0)                    // weiter nach unten ziehen, bereits ganz oben
+  d.up()
+  assert.equal(d.fired, 0)
+  assert.equal(d.prevented, 0, 'natives Scrollen nie blockiert')
+  assert.ok(!d.states.includes('pulling') && !d.states.includes('ready'), 'keine Anzeige')
+})
+
+test('Regression 2: Geste bei scrollTop > 0 → loslassen → neue Geste bei 0 → Pull über Schwelle = genau EIN Refresh', () => {
+  const d = setupShared()
+  d.down(240); for (const top of [160, 80, 0]) d.move(80, top); d.up()
+  assert.equal(d.fired, 0)
+  d.pullFromTop()
+  assert.equal(d.fired, 1)
+  d.up(); d.up()                                               // weitere touchend ohne neue Geste
+  assert.equal(d.fired, 1, 'kein mehrfaches Refresh bei einer Geste')
+})
+
+test('Regression 3: normales Scrollen runter → wieder hoch → KEIN Refresh', () => {
+  const d = setupShared()
+  d.down(0); for (const top of [60, 160, 300, 500]) d.move(-80, top); d.up()   // runter (Finger nach oben)
+  d.down(500); for (const top of [400, 250, 100, 0]) d.move(80, top); d.up()   // hoch bis ganz oben
+  d.down(0); d.move(-40, 40); d.move(60, 0); d.move(80, 0); d.up()             // oben erst runter-, dann hochgescrollt
+  assert.equal(d.fired, 0)
+})
+
+test('Regression 4: Momentum/Inertial-Scroll bis oben → KEIN Refresh', () => {
+  const d = setupShared()
+  d.down(900); d.move(90, 850); d.move(90, 780); d.up()        // Wischer nach oben, Finger weg
+  d.coast([600, 300, 90, 0, -24, -38])                         // Schwung läuft ohne Finger bis oben, iOS federt über
+  assert.equal(d.fired, 0)
+  d.down(-38); for (let i = 0; i < 6; i++) d.move(50, -20); d.up()   // nächster Wischer, während der Inhalt noch federt
+  assert.equal(d.fired, 0, 'iOS-Bounce (negativer scrollTop) ist nicht „ganz oben“')
+  d.down(0); for (let i = 0; i < 6; i++) d.move(50, 0, { cancelable: false }); d.up()   // Android-Fling: Browser besitzt die Geste
+  assert.equal(d.fired, 0, 'nicht abbrechbare touchmove → Browser scrollt selbst, kein (Doppel-)Refresh')
+  assert.equal(d.prevented, 0)
+})
+
+test('Regression 5: echter Pull, der bereits oben (in Ruhe) beginnt → Refresh funktioniert', () => {
+  const d = setupShared()
+  d.pullFromTop()
+  assert.equal(d.fired, 1)
+  assert.ok(d.prevented > 0, 'eigene Geste verhindert Browser-Pull')
+  assert.ok(d.states.includes('ready') && d.states.at(-1) === 'idle')
+  d.coast([0.5]); d.down(0.5); for (let i = 0; i < 6; i++) d.move(50, 0.5); d.up()   // Subpixel-Rundung zählt als oben
+  assert.equal(d.fired, 2)
+})
+
+test('Regression 6: viele normale Scrollbewegungen → nie ein unbeabsichtigter Refresh', () => {
+  const d = setupShared()
+  let top = 0
+  for (let round = 0; round < 25; round++) {
+    const goDown = round % 3 !== 2
+    d.down(top)
+    for (let i = 0; i < 4; i++) { top = Math.max(0, top + (goDown ? 70 : -140)); d.move(goDown ? -60 : 60, top) }
+    for (let i = 0; i < 3; i++) d.move(goDown ? -40 : 60, top)  // am Rand weiterwischen
+    d.up()
+    if (!goDown) { d.coast([Math.max(0, top - 80), 0, -30]); top = -30 }   // Momentum + Bounce bis oben
+    else top += 100
+  }
+  assert.equal(d.fired, 0)
+  assert.equal(d.prevented, 0)
+  // Handy-Szenario: oben angekommen und weiter nach oben wischen – jeder Wischer beginnt, während der
+  // Inhalt vom vorherigen noch überfedert (iOS: negativer scrollTop), und zieht ihn erneut über den Rand
+  d.down(400); for (const t of [300, 150, 40]) d.move(90, t); d.up(); d.coast([0, -35])
+  for (let i = 0; i < 8; i++) { d.down(-35 + i); for (const t of [-50, -70, -85, -95]) d.move(60, t); d.up(); d.coast([-40, -35 + i + 1]) }
+  assert.equal(d.fired, 0, 'weiter nach oben wischen löst nie aus')
+  assert.equal(d.prevented, 0)
+})
+
+test('Gesten-State: touchmove ohne touchstart, touchcancel, Abbruch mitten im Pull, Bewegung vor Aktivierung', () => {
+  const d = setupShared()
+  for (let i = 0; i < 6; i++) d.move(60, 0); d.up()           // touchmove allein initialisiert nie
+  assert.equal(d.fired, 0)
+  d.down(0); for (let i = 0; i < 6; i++) d.move(50, 0); d.cancel()
+  assert.equal(d.fired, 0); assert.equal(d.states.at(-1), 'idle')
+  for (let i = 0; i < 3; i++) d.move(50, 0); d.up()           // nach touchcancel: Reste der Geste zählen nicht
+  assert.equal(d.fired, 0)
+  d.down(0); d.move(50, 0); d.move(50, 0); d.move(60, 30); d.move(60, 0); d.up()   // Inhalt bewegt sich im Pull → Abbruch
+  assert.equal(d.fired, 0); assert.equal(d.states.at(-1), 'idle', 'Anzeige zurückgesetzt')
+  d.down(0); d.move(3, 4); d.move(60, 0); d.move(60, 0); d.up()                   // vor Aktivierung gescrollt → nie mehr berechtigt
+  assert.equal(d.fired, 0)
+  d.pullFromTop(); assert.equal(d.fired, 1, 'danach normale neue Geste funktioniert')
+  const t = createPullTracker()
+  assert.equal(t.start(0, 0, { scrollTop: -5 }), false, 'negativ (Bounce) nicht berechtigt')
+  assert.equal(t.start(0, 0, { scrollTop: 2 }), false)
+  assert.equal(t.start(0, 0), false, 'ohne scrollTop nie berechtigt')
+  assert.equal(t.start(0, 0, { scrollTop: 0 }), true)
 })
 
 test('Laufzeit: Listener nur Touch (keine Maus/Wheel/Pointer), Mount/Unmount ohne Duplikate', () => {

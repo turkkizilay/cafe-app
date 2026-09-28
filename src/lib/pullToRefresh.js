@@ -4,6 +4,7 @@
 export const PULL_THRESHOLD = 70    // gedämpfter Weg in px, ab dem Loslassen aktualisiert
 export const PULL_MAX = 110         // maximaler sichtbarer Zugweg
 const START_SLOP = 8                // Mindestbewegung, bevor die Richtung entschieden wird
+export const TOP_EPSILON = 1        // Toleranz für „ganz oben“ (Subpixel-Rundung)
 
 // Widerstand: anfangs fast 1:1, danach zunehmend zäh, nie über PULL_MAX
 export function dampen(dy) {
@@ -11,35 +12,45 @@ export function dampen(dy) {
   return PULL_MAX * (1 - Math.exp(-dy / (PULL_MAX * 1.2)))
 }
 
+// Scrollbereich ruht ganz oben. Negativ = iOS-Überscroll/Bounce (Inhalt federt noch) → NICHT oben.
+export function atRestTop(scrollTop) {
+  return Number.isFinite(scrollTop) && scrollTop >= 0 && scrollTop <= TOP_EPSILON
+}
+
 // Zustandsautomat einer Zieh-Geste. Liefert bei move(): { state: 'idle'|'pulling'|'ready', distance, capture }
 // capture = true → Geste gehört uns (preventDefault, damit weder Scrollen noch Browser-Pull greifen).
+// Berechtigung wird GENAU EINMAL pro Geste bei touchstart festgelegt (eligibleAtTouchStart) und kann
+// während der Geste nur verloren, nie nachträglich gewonnen werden. Nur ein neuer touchstart beginnt neu.
 export function createPullTracker({ threshold = PULL_THRESHOLD } = {}) {
-  let start = null, active = false, distance = 0
+  let g = null   // aktuelle Geste: { x, y, top, eligible, active, distance }
   const idle = { state: 'idle', distance: 0, capture: false }
+  const drop = () => { g.eligible = false; g.active = false; g.distance = 0; return idle }
   return {
-    start(x, y, { scrollTop = 0, blocked = false } = {}) {
-      active = false; distance = 0
-      start = !blocked && scrollTop <= 0 ? { x, y } : null
-      return !!start
+    start(x, y, { scrollTop = NaN, blocked = false } = {}) {
+      g = { x, y, top: scrollTop, eligible: !blocked && atRestTop(scrollTop), active: false, distance: 0 }
+      return g.eligible
     },
-    move(x, y, { scrollTop = 0 } = {}) {
-      if (!start) return idle
-      const dx = x - start.x, dy = y - start.y
-      if (!active) {
+    move(x, y, { scrollTop = NaN, cancelable = true } = {}) {
+      if (!g || !g.eligible) return idle                     // kein touchstart / Geste nicht oben begonnen
+      if (!atRestTop(scrollTop)) return drop()               // Inhalt hat sich bewegt → Geste gehört dem Scrollen
+      const dx = x - g.x, dy = y - g.y
+      if (!g.active) {
+        if (Math.abs(scrollTop - g.top) > TOP_EPSILON) return drop()
         if (Math.abs(dx) < START_SLOP && Math.abs(dy) < START_SLOP) return idle
-        // nur eindeutig vertikal nach unten, ganz oben – sonst gehört die Geste dem normalen Scrollen
-        if (dy <= 0 || Math.abs(dx) >= Math.abs(dy) || scrollTop > 0) { start = null; return idle }
-        active = true
-      }
-      distance = dampen(dy)
-      return { state: distance >= threshold ? 'ready' : 'pulling', distance, capture: true }
+        // nur eindeutig vertikal nach unten – sonst gehört die Geste dem normalen Scrollen.
+        // Nicht abbrechbares Event = Browser scrollt bereits selbst (z. B. Fling/Momentum) → nie unsere Geste.
+        if (dy <= 0 || Math.abs(dx) >= Math.abs(dy) || !cancelable) return drop()
+        g.active = true
+      } else if (!cancelable) return drop()                  // Browser hat übernommen → kein Doppel-Refresh
+      g.distance = dampen(dy)
+      return { state: g.distance >= threshold ? 'ready' : 'pulling', distance: g.distance, capture: true }
     },
     end() {
-      const fire = active && distance >= threshold
-      start = null; active = false; distance = 0
+      const fire = !!g && g.eligible && g.active && g.distance >= threshold
+      g = null
       return { fire }
     },
-    cancel() { start = null; active = false; distance = 0 },
+    cancel() { g = null },
   }
 }
 
@@ -79,24 +90,27 @@ const IDLE = Object.freeze({ state: 'idle', distance: 0 })
 // Gibt eine Abmeldefunktion zurück, die exakt die angemeldeten Listener wieder entfernt.
 export function attachPullToRefresh(doc, { onChange, onFire, getStyle, threshold } = {}) {
   const t = createPullTracker({ threshold })
-  let content = null
+  let content = null, shown = false
+  const hide = () => { shown = false; onChange(IDLE) }
   const onStart = e => {
+    if (shown) hide()
     if (!e.touches || e.touches.length !== 1) { t.cancel(); return }
     const el = e.target && typeof e.target.closest === 'function' ? e.target : null
     const c = el ? el.closest('.content') : null
     content = c
     const blocked = isIgnoredTarget(el) || !c || insideOwnScroller(el, c, getStyle)
-    t.start(e.touches[0].clientX, e.touches[0].clientY, { scrollTop: c ? c.scrollTop : 1, blocked })
+    t.start(e.touches[0].clientX, e.touches[0].clientY, { scrollTop: c ? c.scrollTop : NaN, blocked })
   }
   const onMove = e => {
-    if (!e.touches || e.touches.length !== 1) { t.cancel(); onChange(IDLE); return }   // Zwei-Finger-Zoom
-    const r = t.move(e.touches[0].clientX, e.touches[0].clientY, { scrollTop: content ? content.scrollTop : 1 })
-    if (!r.capture) return                                   // normales Scrollen bleibt unangetastet
-    if (e.cancelable) e.preventDefault()                     // nur unsere Geste: kein Scroll-/Browser-Pull parallel
+    if (!e.touches || e.touches.length !== 1) { t.cancel(); hide(); return }   // Zwei-Finger-Zoom
+    const r = t.move(e.touches[0].clientX, e.touches[0].clientY, { scrollTop: content ? content.scrollTop : NaN, cancelable: e.cancelable !== false })
+    if (!r.capture) { if (shown) hide(); return }            // normales Scrollen bleibt unangetastet
+    e.preventDefault()                                       // nur unsere Geste: kein Scroll-/Browser-Pull parallel
+    shown = true
     onChange({ state: r.state, distance: r.distance })
   }
-  const onEnd = () => { const { fire } = t.end(); onChange(IDLE); if (fire) onFire() }
-  const onCancel = () => { t.cancel(); onChange(IDLE) }
+  const onEnd = () => { const { fire } = t.end(); content = null; hide(); if (fire) onFire() }
+  const onCancel = () => { t.cancel(); content = null; hide() }
   const listeners = [['touchstart', onStart, { passive: true }], ['touchmove', onMove, { passive: false }], ['touchend', onEnd, undefined], ['touchcancel', onCancel, undefined]]
   for (const [type, fn, opts] of listeners) doc.addEventListener(type, fn, opts)
   return () => { for (const [type, fn] of listeners) doc.removeEventListener(type, fn); t.cancel() }
