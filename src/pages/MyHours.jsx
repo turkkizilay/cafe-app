@@ -149,7 +149,7 @@ export default function MyHours() {
   }, [profile?.employee_id, weekStart, weekEnd, monthStart, monthEnd])
 
   useEffect(() => { fetchData() }, [fetchData])
-  useRefreshHandler(fetchData)   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(fetchData)   // Aktualisieren-Button
 
   // ── Berechnungen ──────────────────────────────────────────────────────────
   const weeklyHours  = weekEntries.reduce((s,e) => s + (e.hours_worked||0), 0)

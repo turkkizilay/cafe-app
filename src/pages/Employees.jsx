@@ -86,7 +86,7 @@ export default function Employees() {
   const docFileRef = useRef(null)
 
   useEffect(() => { fetchEmployees() }, [showInactive])
-  useRefreshHandler(() => Promise.all([fetchEmployees(), isAdmin ? fetchAccess() : null]))   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => Promise.all([fetchEmployees(), isAdmin ? fetchAccess() : null]))   // Aktualisieren-Button
 
   // ── Dokument-Funktionen (Admin only) ─────────────────────────
   async function fetchDocs(employeeId) {

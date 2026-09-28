@@ -248,7 +248,7 @@ export default function Dashboard() {
   }, [profile?.employee_id, canManage])
 
   useEffect(() => { fetchAll() }, [fetchAll])
-  useRefreshHandler(fetchAll)   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(fetchAll)   // Aktualisieren-Button
 
   const firstName = myEmployee?.first_name
     || profile?.first_name   // Name aus Registrierung

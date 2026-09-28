@@ -36,7 +36,7 @@ export default function PayrollDocuments() {
   const now = new Date()
 
   useEffect(() => { fetchAll() }, [])
-  useRefreshHandler(() => fetchAll())   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => fetchAll())   // Aktualisieren-Button
 
   async function fetchAll() {
     setLoading(true)

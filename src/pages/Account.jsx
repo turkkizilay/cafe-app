@@ -146,7 +146,7 @@ export default function Account() {
   const [pwSuccess,    setPwSuccess]    = useState('')
 
   useEffect(() => { if (profile?.employee_id) fetchData() }, [profile?.employee_id])
-  useRefreshHandler(() => Promise.all([profile?.employee_id ? fetchData() : null, accountTab === 'dokumente' ? fetchMyDocs() : null]))   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => Promise.all([profile?.employee_id ? fetchData() : null, accountTab === 'dokumente' ? fetchMyDocs() : null]))   // Aktualisieren-Button
 
   async function fetchData() {
     setLoading(true)

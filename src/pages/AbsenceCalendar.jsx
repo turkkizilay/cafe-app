@@ -22,7 +22,7 @@ export default function AbsenceCalendar() {
   const [loading,   setLoading]   = useState(true)
 
   useEffect(() => { fetchData() }, [year, month])
-  useRefreshHandler(() => fetchData())   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => fetchData())   // Aktualisieren-Button
 
   async function fetchData() {
     setLoading(true)

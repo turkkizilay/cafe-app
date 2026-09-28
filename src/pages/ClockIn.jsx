@@ -34,7 +34,7 @@ export default function ClockIn({ session }) {
   }, [])
 
   useEffect(() => { fetchData() }, [profile?.employee_id])
-  useRefreshHandler(() => fetchData())   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => fetchData())   // Aktualisieren-Button
 
   // Nach WLAN-Wechsel / Rückkehr in die App automatisch neu prüfen
   useEffect(() => {

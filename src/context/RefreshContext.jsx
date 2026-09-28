@@ -1,10 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { message as appMessage } from '../i18n/runtime.js'
 import { showToast } from '../components/UI/Toast'
-import { createRefreshController } from '../lib/pullToRefresh'
+import { createRefreshController } from '../lib/refreshController'
 
 // Zentraler Daten-Refresh (kein Seiten-Reload): Jede Seite meldet ihre bestehende Ladefunktion an,
-// Pull-Geste UND Aktualisieren-Button rufen dieselbe refreshData() auf.
+// der Aktualisieren-Button ruft refreshData() auf (keine eigene Pull-Geste).
 const RefreshContext = createContext(null)
 
 // Rückmeldungen der Refresh-Steuerung (feste Schlüssel → i18n-Prüfung findet sie)

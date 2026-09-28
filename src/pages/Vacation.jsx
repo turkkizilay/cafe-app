@@ -60,7 +60,7 @@ export default function Vacation() {
   }, [searchParams])
 
   useEffect(() => { fetchAll() }, [profile?.employee_id])
-  useRefreshHandler(() => fetchAll())   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => fetchAll())   // Aktualisieren-Button
 
   async function fetchAll() {
     setLoading(true)

@@ -89,7 +89,7 @@ export default function Shifts() {
 
   useEffect(() => { fetchData() }, [offset])
   useEffect(() => { fetchSwaps() }, [])
-  useRefreshHandler(() => Promise.all([fetchData(), fetchSwaps()]))   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => Promise.all([fetchData(), fetchSwaps()]))   // Aktualisieren-Button
 
   async function fetchData() {
     setLoading(true)

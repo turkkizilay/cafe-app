@@ -60,7 +60,7 @@ export default function UserManagement() {
   const [inviteSaving, setInviteSaving] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
-  useRefreshHandler(() => fetchAll())   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => fetchAll())   // Aktualisieren-Button
 
   async function fetchAll() {
     setLoading(true)

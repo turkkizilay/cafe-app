@@ -169,7 +169,7 @@ export default function Payroll() {
   }
 
   useEffect(() => { fetchPayroll() }, [year, month])
-  useRefreshHandler(() => fetchPayroll())   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => fetchPayroll())   // Aktualisieren-Button
 
   async function fetchPayroll() {
     setLoading(true)

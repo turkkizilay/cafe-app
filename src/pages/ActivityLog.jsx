@@ -92,7 +92,7 @@ export default function ActivityLog() {
   }, [category, fromDate, toDate, search, entries.length])
 
   // Erstes Laden + Cleanup-Trigger (12-Monats-Frist, nicht-blockierend)
-  useRefreshHandler(() => loadEntries(true))   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => loadEntries(true))   // Aktualisieren-Button
   useEffect(() => {
     if (!cleanupDone.current) {
       cleanupDone.current = true

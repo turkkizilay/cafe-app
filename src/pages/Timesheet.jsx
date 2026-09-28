@@ -55,7 +55,7 @@ export default function Timesheet() {
   const [error, setError]     = useState('')
   const [showFormer, setShowFormer] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
-  useRefreshHandler(() => setReloadTick(t => t + 1))   // Pull-to-Refresh / Aktualisieren-Button lädt den Monat neu
+  useRefreshHandler(() => setReloadTick(t => t + 1))   // Aktualisieren-Button lädt den Monat neu
 
   const b = useMemo(() => monthBounds(ym), [ym])
 

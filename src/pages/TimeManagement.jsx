@@ -71,7 +71,7 @@ export default function TimeManagement() {
   }, [])
 
   useEffect(() => { if (filterEmp) fetchEntries() }, [filterEmp, filterMode, filterYear, filterMonth, filterDate])
-  useRefreshHandler(() => (filterEmp ? fetchEntries() : null))   // Pull-to-Refresh / Aktualisieren-Button
+  useRefreshHandler(() => (filterEmp ? fetchEntries() : null))   // Aktualisieren-Button
 
   function getDateRange() {
     const pad = n => String(n).padStart(2,'0')
