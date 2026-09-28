@@ -1188,3 +1188,15 @@ html.dark .language-segment-indicator { background:var(--bg-hover); }
 .sidebar-legal a:hover, .sidebar-legal a:focus-visible { color: #FAFAF9; }
 .account-legal { margin: 20px 0 8px; }
 @media print { .legal-nav, .legal-back, .language-dock { display: none !important; } .legal-page { padding: 0; } .legal-card { border: none; box-shadow: none; } }
+
+/* ── Kenntnisnahme aktualisierter Datenschutzhinweise (nach der Anmeldung, einmalig je Version) ── */
+.privacy-ack { max-width: 420px; text-align: center; margin: 16px; }
+.privacy-ack h2 { font-size: 19px; font-weight: 700; margin: 0 0 10px; color: var(--text-primary); }
+.privacy-ack-text { font-size: 14px; line-height: 1.65; color: var(--text-secondary); margin: 0 0 18px; }
+.privacy-ack-check { display: flex; gap: 10px; align-items: flex-start; text-align: left; font-size: 13.5px; line-height: 1.5; color: var(--text-primary); background: var(--bg); border-radius: var(--radius); padding: 12px 14px; cursor: pointer; }
+.privacy-ack-check input { width: 18px; height: 18px; margin-top: 1px; flex-shrink: 0; accent-color: var(--accent); }
+.privacy-ack-check a { color: var(--accent-text); font-weight: 600; }
+.privacy-ack-error { margin-top: 10px; font-size: 13px; color: var(--danger); background: var(--danger-bg); border-radius: var(--radius-sm); padding: 8px 10px; text-align: left; }
+.privacy-ack-continue { width: 100%; justify-content: center; margin-top: 16px; padding: 12px 0; font-weight: 600; }
+.privacy-ack-signout { margin-top: 12px; background: none; border: none; color: var(--text-muted); font-size: 12.5px; cursor: pointer; }
+.privacy-ack-signout:hover { color: var(--text-primary); }

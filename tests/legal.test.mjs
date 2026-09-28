@@ -123,7 +123,7 @@ test('11–14: Onboarding: Kenntnisnahme (keine Einwilligung), nicht vorausgewä
   assert.match(onb, /p_data: \{ \.\.\.toPayload\(form\), privacy_accepted: true \}, p_submit: true/)
   assert.match(onb, /disabled=\{saving \|\| !privacy\}/)
   assert.match(onb, /<a href=\{LEGAL_PATHS\.privacy\} target="_blank" rel="noopener noreferrer"/)   // 14: direkt erreichbar, Formular bleibt
-  assert.doesNotMatch(onb, /PrivacyNotice|showPrivacy/)
+  assert.doesNotMatch(onb, /<PrivacyNotice|import PrivacyNotice|showPrivacy/)   // alter Inline-Hinweis entfernt
   const ack = l => l.ackBefore + l.ackLink + l.ackAfter
   const d = ack({ ackBefore: de['legal.ackBefore'], ackLink: de['legal.ackLink'], ackAfter: de['legal.ackAfter'] })
   const e = ack({ ackBefore: en['legal.ackBefore'], ackLink: en['legal.ackLink'], ackAfter: en['legal.ackAfter'] })

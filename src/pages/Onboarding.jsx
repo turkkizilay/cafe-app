@@ -11,6 +11,7 @@ import {
 } from '../lib/personalData'
 import DeleteAccountCard from '../components/DeleteAccountCard'
 import { LEGAL_PATHS } from '../legal/legalContent.js'
+import { acknowledgePrivacyNotice } from '../lib/privacyAck.js'
 
 // ── Schritte des Formulars ──────────────────────────────────
 const STEPS = [
@@ -154,6 +155,9 @@ export default function Onboarding({ session, fallback }) {
     }
     if (!privacy) { setErrors({ privacy_accepted: (appMessage("ui.47deeac03c22")) }); return }
     setSaving(true)
+    // Versionierte Kenntnisnahme (gleiches System wie für bestehende Konten) – ohne Serverbestätigung kein Absenden
+    const ack = await acknowledgePrivacyNotice(supabase)
+    if (!ack.ok) { setSaving(false); toast.error(appMessage('privacyAck.error')); return }
     const { data, error } = await supabase.rpc('save_onboarding', {
       p_data: { ...toPayload(form), privacy_accepted: true }, p_submit: true,
     })

@@ -37,6 +37,8 @@ import { RefreshProvider } from './context/RefreshContext.jsx'
 import RefreshButton from './components/RefreshButton.jsx'
 import LegalPage from './pages/Legal.jsx'
 import { legalKindForPath } from './legal/legalContent.js'
+import PrivacyAckGate, { PrivacyAckChecking } from './components/PrivacyAckGate.jsx'
+import { loadPrivacyAck, nextAckState } from './lib/privacyAck.js'
 
 // ── Passwort-Reset-Link erkennen ──────────────────────────────
 const RECOVERY_LINK_DETECTED =
@@ -150,6 +152,7 @@ export default function App() {
   const [fetchErr,    setFetchErr]    = useState(null)
   const [recoveryDone,setRecoveryDone]= useState(false)
   const [recoveryEvent,setRecoveryEvent] = useState(false)
+  const [privacyAck,  setPrivacyAck]  = useState({ uid: null, state: 'checking' })
 
   const handleAutoLogout = useCallback(async (reason) => {
     try {
@@ -200,6 +203,11 @@ export default function App() {
         return
       }
 
+      // Kenntnisnahme der aktuellen Datenschutzhinweise: Serverstatus vor Freigabe der App laden
+      if (data?.status === 'approved') {
+        const ack = await loadPrivacyAck(supabase, uid)
+        setPrivacyAck(prev => nextAckState(prev, uid, ack))
+      }
       setProfile(data || null)
       loadedUidRef.current = data ? uid : null
       if (data?.status === 'approved' && !pushRefreshedRef.current) { pushRefreshedRef.current = true; refreshPushSubscription() }
@@ -276,6 +284,7 @@ export default function App() {
         loadedUidRef.current = null
         lastFetchRef.current = { uid: null, at: 0 }
         pushRefreshedRef.current = false
+        setPrivacyAck({ uid: null, state: 'checking' })
         setProfile(null)
         setPending(0)
         setLoading(false)
@@ -362,6 +371,18 @@ export default function App() {
         <p style={{ fontSize:14, color:'var(--text-secondary)', maxWidth:360, margin:0, lineHeight:1.6 }}>{tr("ui.34705562381e")}</p>
         <button className="btn btn-primary" onClick={async () => { await supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember'); window.location.href = '/' }}>{tr("ui.7977d98eb111")}</button>
       </div>
+    </DarkModeProvider>
+  )
+
+  // Aktuelle Datenschutzhinweise noch nicht zur Kenntnis genommen → einmalig bestätigen (Serverstatus maßgeblich)
+  const ackForProfile = privacyAck.uid === profile.id ? privacyAck.state : 'checking'
+  if (profile.status === 'approved' && ackForProfile !== 'ok') return (
+    <DarkModeProvider>
+      {ackForProfile === 'required'
+        ? <PrivacyAckGate supabase={supabase}
+            onAcknowledged={() => setPrivacyAck({ uid: profile.id, state: 'ok' })}
+            onSignOut={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }} />
+        : <PrivacyAckChecking />}
     </DarkModeProvider>
   )
 

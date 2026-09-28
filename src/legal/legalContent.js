@@ -4,6 +4,8 @@
 // Unternehmensangaben ausschließlich aus den verifizierten Daten – keine Steuernummer, keine Bankdaten.
 
 export const LEGAL_VERSION = '2026-09-28'
+// Version der Datenschutzhinweise, deren Kenntnisnahme verlangt wird. Neue Version → alle Konten sehen sie einmal.
+export const PRIVACY_NOTICE_VERSION = LEGAL_VERSION
 
 export const COMPANY = {
   name: 'BP Food Revolution GmbH',
