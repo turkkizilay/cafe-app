@@ -62,14 +62,14 @@ test('6: Einladen einer bereits registrierten Adresse → vorhandenes Konto + pa
   assert.equal(c.profile.id, 'p9'); assert.equal(c.stage, 'awaiting_email'); assert.equal(c.canResend, true)
   assert.equal(inviteConflict('fremd@example.test', profiles).profile, null)
   const um = read('src/pages/UserManagement.jsx')
-  const block = um.slice(um.indexOf('if (reg?.exists) {'), um.indexOf("const { data: inv, error } = await supabase.from('invitations').insert("))
-  assert.match(block, /if \(reg\.reason === 'auth'\) setInviteConflictInfo\(\{ email, \.\.\.inviteConflict\(email, allProfiles, accountStates, onboardings\) \}\)/)
+  const block = um.slice(um.indexOf("if (reg?.exists && (reg.reason === 'auth' || isNew)) {"), um.indexOf("const { data: inv, error } = await supabase.from('invitations').insert("))
+  assert.match(block, /if \(reg\.reason === 'auth'\) setInviteConflictInfo\(\{ email, \.\.\.inviteConflict\(email, allProfiles, accountStates, onboardings\), orphan: /)
   assert.match(block, /\n\s*return\n/, 'kein Einfügen einer zweiten Einladung')
 })
 
 test('UI: Aktionen nur passend zum Zustand, Doppelklick gesperrt, Erfolg nur nach Serverbestätigung', () => {
   const um = read('src/pages/UserManagement.jsx')
-  assert.match(um, /if \(!acc \|\| \(!acc\.canResend && !acc\.canReopen\)\) return null/)
+  assert.match(um, /if \(!acc \|\| \(!acc\.canResend && !acc\.canReopen && !resetMode\)\) return null/)
   assert.match(um, /\{acc\.canResend && <button className="btn btn-sm" disabled=\{busy\} onClick=\{\(\) => resendConfirmation\(p\)\}>/)
   assert.match(um, /\{acc\.canReopen && <button className="btn btn-sm" disabled=\{busy\} onClick=\{\(\) => reopenRegistration\(p\)\}>/)
   assert.match(um, /if \(res\.ok\) toast\.success\(appMessage\('recovery\.resendOk'/)

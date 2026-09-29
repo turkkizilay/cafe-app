@@ -15,7 +15,7 @@ import OnboardingReview, { ONB_STATUS } from '../components/OnboardingReview'
 import PayModelFields from '../components/PayModelFields'
 import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
-import { accountStage, requestConfirmationResend, inviteConflict } from '../lib/accountRecovery'
+import { accountStage, requestConfirmationResend, inviteConflict, resetCandidate, resetBlockers, performRegistrationReset } from '../lib/accountRecovery'
 
 const ROLES = [
   { value: 'employee', get label() { return tr("ui.d422e9b832d6") } },
@@ -33,6 +33,7 @@ export default function UserManagement() {
   const rejectGuard  = useSavingGuard()
   const deleteGuard  = useSavingGuard()
   const recoveryGuard = useSavingGuard()
+  const resetGuard = useSavingGuard()
 
   const [pending,      setPending]      = useState([])
   const [approved,     setApproved]     = useState([])
@@ -65,6 +66,10 @@ export default function UserManagement() {
   const [accountStates, setAccountStates] = useState({})
   const [inviteConflictInfo, setInviteConflictInfo] = useState(null)
   const [recovering,    setRecovering]    = useState(null)
+  const [orphans,       setOrphans]       = useState([])     // Auth-Konten ohne Profil (Migration 25)
+  const [confirmOrphan, setConfirmOrphan] = useState(null)
+  const [resetDialog,   setResetDialog]   = useState(null)   // { profile, check, loading, busy } – Registrierung zurücksetzen (Migration 26)
+  const [expiredInvites, setExpiredInvites] = useState([])
 
   useEffect(() => { fetchAll() }, [])
   useRefreshHandler(() => fetchAll())   // Aktualisieren-Button
@@ -78,6 +83,13 @@ export default function UserManagement() {
       supabase.from('invitations').select('*, employees!employee_id(first_name, last_name)').is('used_at', null).is('revoked_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('employee_onboarding').select('*').order('created_at', { ascending: false }),
     ])
+    // Abgelaufene, nie genutzte Einladungen der letzten 30 Tage (Diagnose + „neu einladen“)
+    const { data: exp } = await supabase.from('invitations').select('*, employees!employee_id(first_name, last_name)')
+      .is('used_at', null).is('revoked_at', null).lte('expires_at', new Date().toISOString())
+      .gt('expires_at', new Date(Date.now() - 30 * 86400000).toISOString()).order('expires_at', { ascending: false })
+    setExpiredInvites(exp || [])
+    const { data: orph, error: orphErr } = await supabase.rpc('admin_login_orphans')
+    setOrphans(orphErr ? [] : (orph || []))
     const onbIds = new Set((onbs || []).map(o => o.profile_id))
     setOnboardings(onbs || [])
     // Accounts mit Onboarding erscheinen im Bereich "Neue Mitarbeiter", nicht hier
@@ -106,9 +118,9 @@ export default function UserManagement() {
 
   // ── Einladung erstellen ─────────────────────────────────────
   // emp = bestehender Mitarbeiter-Datensatz (alter Weg) oder null = neuer Mitarbeiter (Onboarding)
-  function openInvite(emp) {
+  function openInvite(emp, email) {
     setInviteModal(emp || { isNew: true })
-    setInviteForm({ email: emp?.email || '', role: 'employee' })
+    setInviteForm({ email: emp?.email || email || '', role: 'employee' })
     setInviteJob(null)
     setInviteResult(null)
     setInviteConflictInfo(null)
@@ -144,15 +156,14 @@ export default function UserManagement() {
     setInviteSaving(true)
 
     try {
-      if (isNew) {
-        // Doppelte Accounts vermeiden: gibt es die Adresse schon als Login oder Mitarbeiter?
-        const { data: reg } = await supabase.rpc('check_email_registered', { p_email: email })
-        if (reg?.exists) {
-          // Konto existiert schon: keine zweite Einladung/kein zweiter Mitarbeiter – passende Recovery anbieten
-          if (reg.reason === 'auth') setInviteConflictInfo({ email, ...inviteConflict(email, allProfiles, accountStates, onboardings) })
-          else toast.warn(appMessage("ui.07b54feedb71"))
-          return
-        }
+      // Doppelte Accounts vermeiden: gibt es die Adresse schon als Login (oder bei neuen Personen als Mitarbeiter)?
+      // Auch bei bestehenden Mitarbeitern: ein vorhandenes Auth-Konto würde die Registrierung sonst blockieren.
+      const { data: reg } = await supabase.rpc('check_email_registered', { p_email: email })
+      if (reg?.exists && (reg.reason === 'auth' || isNew)) {
+        // Konto existiert schon: keine zweite Einladung/kein zweiter Mitarbeiter – passende Recovery anbieten
+        if (reg.reason === 'auth') setInviteConflictInfo({ email, ...inviteConflict(email, allProfiles, accountStates, onboardings), orphan: orphans.find(o => (o.email || '').toLowerCase() === email) || null })
+        else toast.warn(appMessage("ui.07b54feedb71"))
+        return
       }
       // Nur EIN gültiger Link pro Person: ältere offene Einladungen zurückziehen
       // (danach zeigt der alte Link „Einladung wurde zurückgezogen“)
@@ -260,10 +271,45 @@ export default function UserManagement() {
     }
   }
 
+  async function removeOrphanLogin(o) {
+    if (!recoveryGuard.begin()) return
+    setRecovering(o.user_id)
+    try {
+      const { data, error } = await supabase.rpc('admin_remove_orphan_login', { p_user_id: o.user_id })
+      if (error || !data?.success) toast.error(messageParts([appMessage('lifecycle.removeOrphanFailed'), errorMessage(error) || '']), 9000)
+      else { toast.success(appMessage('lifecycle.removeOrphanOk', { email: data.email }), 9000); setInviteConflictInfo(null) }
+    } finally {
+      recoveryGuard.end(); setRecovering(null); setConfirmOrphan(null); fetchAll()
+    }
+  }
+
+  // ── Registrierung zurücksetzen: Server prüft zuerst (nichts wird geändert) und nennt Umfang bzw. Gründe ──
+  async function openRegistrationReset(p) {
+    setResetDialog({ profile: p, check: null, loading: true })
+    const { data, error } = await supabase.rpc('admin_registration_reset_check', { p_user_id: p.id })
+    setResetDialog(d => d && d.profile.id === p.id ? { ...d, loading: false, check: error ? null : data, error: error || null } : d)
+  }
+
+  async function runRegistrationReset() {
+    const d = resetDialog
+    if (!d?.check || !resetGuard.begin()) return
+    setResetDialog({ ...d, busy: true })
+    try {
+      const res = await performRegistrationReset(supabase, d.check, d.profile.id)
+      if (!res.ok) toast.error(messageParts([appMessage('reset.failed'), errorMessage(res.error) || '']), 9000)
+      else if (res.already) toast.info(appMessage(res.emailRegisteredAgain ? 'reset.alreadyRegisteredAgain' : 'reset.already', { email: d.check.email }), 9000)
+      else { toast.success(appMessage(res.mode === 'login_only' ? 'reset.okLogin' : 'reset.okFull', { email: res.email }), 9000); setInviteConflictInfo(null) }
+    } finally {
+      resetGuard.end(); setResetDialog(null); fetchAll()
+    }
+  }
+
   // Status-Hinweis + passende Recovery-Aktionen für ein Konto (nur was zum realen Zustand passt)
   function recoveryActions(p, onboarding) {
-    const acc = accountStage({ profile: p, state: accountStates[p.id], onboarding })
-    if (!acc || (!acc.canResend && !acc.canReopen)) return null
+    const onb = onboarding || onboardings.find(o => o.profile_id === p.id)
+    const acc = accountStage({ profile: p, state: accountStates[p.id], onboarding: onb })
+    const resetMode = resetCandidate({ profile: p, state: accountStates[p.id], onboarding: onb, meId: profile?.id })
+    if (!acc || (!acc.canResend && !acc.canReopen && !resetMode)) return null
     const busy = recovering === p.id
     return (
       <div className="recovery-actions">
@@ -272,6 +318,7 @@ export default function UserManagement() {
         {acc.canResend && acc.lastSent && <span className="recovery-meta">{tr('recovery.lastSent', { date: new Date(acc.lastSent).toLocaleString(getIntlLocale(), { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) })}</span>}
         {acc.canReopen && <button className="btn btn-sm" disabled={busy} onClick={() => reopenRegistration(p)}>{tr('recovery.reopen')}</button>}
         {acc.canResend && <button className="btn btn-sm" disabled={busy} onClick={() => resendConfirmation(p)}>{busy ? tr('recovery.resending') : tr('recovery.resend')}</button>}
+        {resetMode && <button className="btn btn-sm btn-danger" disabled={busy || !!resetDialog} onClick={() => openRegistrationReset(p)}>{tr(resetMode === 'login_only' ? 'reset.buttonLogin' : 'reset.buttonFull')}</button>}
       </div>
     )
   }
@@ -326,8 +373,9 @@ export default function UserManagement() {
     if (!rejectGuard.begin()) return
     if (!confirmDel) { rejectGuard.end(); return }
     setWorking(confirmDel.id)
-    const { error } = await supabase.from('profiles').delete().eq('id', confirmDel.id)
-    if (error) toast.error(translateSupabaseError(error))
+    // Auth-Konto + Profil gemeinsam entfernen (Migration 25) – sonst bliebe eine verwaiste Anmeldung zurück
+    const { data, error } = await supabase.rpc('admin_reject_pending_login', { p_profile_id: confirmDel.id })
+    if (error || !data?.success) toast.error(messageParts([appMessage('lifecycle.rejectFailed'), errorMessage(error) || '']))
     else toast.info(appMessage("ui.57da62558e87"))
     rejectGuard.end()
     setConfirmDel(null); fetchAll(); setWorking(null)
@@ -430,6 +478,71 @@ export default function UserManagement() {
           </div>
         )}
 
+        {confirmOrphan && (
+          <div className="modal-overlay" onClick={() => setConfirmOrphan(null)}>
+            <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header"><div className="modal-title">{tr('lifecycle.removeOrphanTitle')}</div><button className="btn btn-sm" onClick={() => setConfirmOrphan(null)}>✕</button></div>
+              <div className="modal-body"><div className="alert alert-warn">{tr('lifecycle.removeOrphanConfirm', { email: confirmOrphan.email })}</div></div>
+              <div className="modal-footer">
+                <button className="btn" onClick={() => setConfirmOrphan(null)}>{tr("ui.f7ff1178af20")}</button>
+                <button className="btn btn-danger" disabled={recovering === confirmOrphan.user_id} onClick={() => removeOrphanLogin(confirmOrphan)}>{tr('lifecycle.removeOrphan')}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {resetDialog && (() => {
+          const { profile: rp, check: c, loading: ld, busy } = resetDialog
+          const allowed = c && (c.mode === 'full' || c.mode === 'login_only')
+          const close = () => { if (!busy) setResetDialog(null) }
+          return (
+            <div className="modal-overlay" onClick={close}>
+              <div className="modal" style={{ maxWidth:480 }} role="alertdialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+                <div className="modal-header"><div className="modal-title">{tr(c?.mode === 'login_only' ? 'reset.titleLogin' : 'reset.titleFull')}</div><button className="btn btn-sm" disabled={busy} onClick={close}>✕</button></div>
+                <div className="modal-body" style={{ fontSize:13, lineHeight:1.55 }}>
+                  <div style={{ marginBottom:10 }}>{tr('reset.affected')} <strong>{c?.email || rp.email}</strong></div>
+                  {ld && <div>{tr('reset.checking')}</div>}
+                  {!ld && !c && <div className="alert alert-danger">{messageParts([appMessage('reset.checkFailed'), errorMessage(resetDialog.error) || ''])}</div>}
+                  {c?.mode === 'gone' && <div className="alert alert-info">{tr('reset.gone')}</div>}
+                  {c?.mode === 'blocked' && (
+                    <div className="alert alert-warn" role="alert">
+                      <strong>{tr('reset.blockedTitle')}</strong>
+                      <ul style={{ margin:'6px 0 0', paddingLeft:18 }}>
+                        {resetBlockers(c).map(b => <li key={b.code}>{tr(b.key, { code: b.code })}{b.detail ? ` (${b.detail})` : ''}</li>)}
+                      </ul>
+                      <div style={{ marginTop:6 }}>{tr('reset.blockedNothing')}</div>
+                    </div>
+                  )}
+                  {allowed && (
+                    <>
+                      <div className="alert alert-danger" role="alert"><strong>{tr('reset.danger')}</strong></div>
+                      <div style={{ fontWeight:600, marginTop:10 }}>{tr('reset.deletesTitle')}</div>
+                      <ul style={{ margin:'4px 0 0', paddingLeft:18 }}>
+                        <li>{tr('reset.deletesLogin', { confirmed: tr(c.email_confirmed ? 'reset.confirmedYes' : 'reset.confirmedNo') })}</li>
+                        <li>{tr('reset.deletesProfile')}</li>
+                        {c.deletes?.onboarding > 0 && <li>{tr('reset.deletesOnboarding')}</li>}
+                        {c.deletes?.push_subscriptions > 0 && <li>{tr('reset.deletesPush')}</li>}
+                      </ul>
+                      <div style={{ fontWeight:600, marginTop:10 }}>{tr('reset.keepsTitle')}</div>
+                      <ul style={{ margin:'4px 0 0', paddingLeft:18 }}>
+                        {c.mode === 'login_only' && <li>{tr('reset.keepsEmployee', { n: Object.values(c.keeps || {}).reduce((x, y) => x + Number(y || 0), 0) })}</li>}
+                        <li>{tr('reset.keepsHistory')}</li>
+                        <li>{tr('reset.keepsInvites')}</li>
+                        <li>{tr('reset.keepsLog')}</li>
+                      </ul>
+                      <div className="alert alert-info" style={{ marginTop:10 }}>{tr(c.mode === 'login_only' ? 'reset.afterLogin' : 'reset.afterFull')}{c.open_invitations > 0 ? ' ' + tr('reset.openInvite') : ''}</div>
+                    </>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button className="btn" disabled={busy} onClick={close}>{tr("ui.f7ff1178af20")}</button>
+                  {allowed && <button className="btn btn-danger" disabled={busy} onClick={runRegistrationReset}>{busy ? tr('reset.running') : tr(c.mode === 'login_only' ? 'reset.confirmLogin' : 'reset.confirmFull')}</button>}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* ── Einladungs-Modal ── */}
         {inviteModal && (
           <div className="modal-overlay" onClick={() => { setInviteModal(null); setInviteResult(null) }}>
@@ -510,12 +623,13 @@ export default function UserManagement() {
 
                     {inviteConflictInfo && (() => {
                       const c = inviteConflictInfo
-                      const text = c.canReopen ? 'recovery.conflictCancelled' : c.stage === 'awaiting_email' ? 'recovery.conflictAwaiting' : c.profile ? 'recovery.conflictExisting' : 'recovery.conflictUnknown'
+                      const text = c.canReopen ? 'recovery.conflictCancelled' : c.stage === 'awaiting_email' ? 'recovery.conflictAwaiting' : c.profile ? 'recovery.conflictExisting' : c.orphan ? 'lifecycle.conflictOrphan' : 'recovery.conflictUnknown'
                       return (
                         <div className="alert alert-warn" role="alert" style={{ fontSize:13, lineHeight:1.55 }}>
                           <strong>{tr('recovery.conflictTitle')}</strong>
                           <div style={{ marginTop:4 }}>{tr(text)}</div>
                           {c.profile && <div style={{ marginTop:10 }}>{recoveryActions(c.profile, onboardings.find(o => o.profile_id === c.profile.id))}</div>}
+                          {!c.profile && c.orphan && <div style={{ marginTop:10 }}><button className="btn btn-sm" onClick={() => setConfirmOrphan(c.orphan)}>{tr('lifecycle.removeOrphan')}</button></div>}
                         </div>
                       )
                     })()}
@@ -768,6 +882,53 @@ export default function UserManagement() {
           </div>
         )}
 
+        {/* ── Abgelaufene Einladungen (Diagnose, letzte 30 Tage) ── */}
+        {expiredInvites.length > 0 && (
+          <div className="card" style={{ marginBottom:20 }}>
+            <div className="card-header"><div className="card-title">{tr('lifecycle.expiredTitle', { n: expiredInvites.length })}</div></div>
+            <div style={{ padding:'8px 16px 0', fontSize:12, color:'var(--text-secondary)' }}>{tr('lifecycle.expiredHint')}</div>
+            {expiredInvites.map(inv => {
+              const emp = inv.employee_id ? employees.find(e => e.id === inv.employee_id) : null
+              return (
+                <div key={inv.id} className="lifecycle-row">
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:500, fontSize:13, overflowWrap:'anywhere' }}>
+                      {inv.employee_id ? `${inv.employees?.first_name || ''} ${inv.employees?.last_name || ''}`.trim() : inv.email}
+                      <span className="badge badge-amber" style={{ marginLeft:6 }}>{tr('lifecycle.expiredBadge')}</span>
+                    </div>
+                    <div style={{ fontSize:12, color:'var(--text-muted)', overflowWrap:'anywhere' }}>{inv.email} · {tr('lifecycle.expiredOn', { date: new Date(inv.expires_at).toLocaleDateString(getIntlLocale(), { day:'2-digit', month:'2-digit', year:'numeric' }) })}</div>
+                  </div>
+                  <div className="flex gap-2" style={{ flexWrap:'wrap' }}>
+                    {(!inv.employee_id || (emp && emp.is_active !== false)) && <button className="btn btn-sm btn-primary" onClick={() => openInvite(emp || null, inv.email)}>{tr('lifecycle.reinvite')}</button>}
+                    <button className="btn btn-sm" onClick={() => setConfirmRevoke({ ...inv, _name: inv.employee_id ? `${inv.employees?.first_name || ''} ${inv.employees?.last_name || ''}`.trim() : '' })}>{tr('lifecycle.expiredRemove')}</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── Verwaiste Anmeldungen: Auth-Konto ohne Benutzerkonto (blockiert Einladung + Registrierung) ── */}
+        {orphans.length > 0 && (
+          <div className="card" style={{ marginBottom:20 }}>
+            <div className="card-header"><div className="card-title">{tr('lifecycle.orphanTitle', { n: orphans.length })}</div></div>
+            <div style={{ padding:'8px 16px 0', fontSize:12, color:'var(--text-secondary)' }}>{tr('lifecycle.orphanHint')}</div>
+            {orphans.map(o => (
+              <div key={o.user_id} className="lifecycle-row">
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:500, fontSize:13, overflowWrap:'anywhere' }}>
+                    {o.email}
+                    <span className={`badge ${o.email_confirmed ? 'badge-gray' : 'badge-amber'}`} style={{ marginLeft:6 }}>{o.email_confirmed ? tr('lifecycle.orphanConfirmed') : tr('lifecycle.orphanUnconfirmed')}</span>
+                    {o.employee_match && <span className="badge badge-accent" style={{ marginLeft:6 }}>{tr('lifecycle.orphanEmployee')}</span>}
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--text-muted)' }}>{tr('lifecycle.orphanCreated', { date: new Date(o.created_at).toLocaleDateString(getIntlLocale(), { day:'2-digit', month:'2-digit', year:'numeric' }) })}</div>
+                </div>
+                <button className="btn btn-sm btn-danger" disabled={recovering === o.user_id} onClick={() => setConfirmOrphan(o)}>{tr('lifecycle.removeOrphan')}</button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ── 3. Ausstehende Genehmigungen (nur alte Registrierungen ohne Einladung) ── */}
         {pending.length > 0 && <div className="card" style={{ marginBottom:20 }}>
           <div className="card-header">
@@ -842,6 +1003,7 @@ export default function UserManagement() {
                           <div style={{ fontWeight:500, fontSize:13 }}>{p.first_name} {p.last_name}</div>
                           <div style={{ fontSize:11, color:'var(--text-muted)' }}>{p.email}</div>
                           {isMe && <span style={{ marginLeft:6, fontSize:10, color:'var(--accent)', fontWeight:600 }}>{tr("ui.26c2dd4bb013")}</span>}
+                          {!isMe && recoveryActions(p)}
                         </td>
                         <td data-label={tr("ui.f4cb6891b9e5")}>
                           {isEdit ? (

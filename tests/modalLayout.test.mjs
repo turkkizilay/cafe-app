@@ -25,6 +25,8 @@ const PAGE = (withBody = true) => `<!doctype html><html lang="de"><head><meta na
   <div class="card"><div class="table-wrap"><table class="table-stack" id="tbl"><thead><tr><th>Benutzer</th><th>E-Mail</th><th>Gültig bis</th><th>Aktionen</th></tr></thead>
     <tbody><tr><td data-label="Benutzer"><strong>Anna Beispiel</strong></td><td data-label="E-Mail" id="mail">${longMail}</td><td data-label="Gültig bis">05.10.2026</td>
     <td data-label="Aktionen"><div class="flex gap-2"><button class="btn btn-sm">🔗 Link kopieren</button><button class="btn btn-sm btn-danger" id="rowAction">Zurückziehen</button></div></td></tr></tbody></table></div></div>
+  <div class="card"><div class="lifecycle-row" id="lrow"><div style="flex:1;min-width:0"><div style="font-weight:500;font-size:13px;overflow-wrap:anywhere" id="lmail">${longMail}<span class="badge badge-amber" style="margin-left:6px">E-Mail nicht bestätigt</span><span class="badge badge-accent" style="margin-left:6px">Adresse gehört zu einem Mitarbeiter</span></div></div>
+    <button class="btn btn-sm btn-danger" id="lbtn">🧹 Anmeldung entfernen</button></div></div>
   <div class="modal-overlay" id="overlay"><div class="modal" id="modal" style="max-width:460px">
     <div class="modal-header"><div class="modal-title">Neuen Mitarbeiter einladen</div><button class="btn btn-sm">✕</button></div>
     ${withBody ? `<div class="modal-body" id="body">${Array.from({ length: 22 }, (_, i) => field(i)).join('')}<div id="last">Letztes Feld</div></div>
@@ -40,14 +42,16 @@ function metrics(win) {
     modalOverflowY: cs('modal', 'overflowY'), docScrollW: d.documentElement.scrollWidth, modalScrollW: d.getElementById('modal').scrollWidth,
     modalClientW: d.getElementById('modal').clientWidth, trDisplay: win.getComputedStyle(d.querySelector('#tbl tr')).display,
     theadDisplay: win.getComputedStyle(d.querySelector('#tbl thead')).display, rowAction: r('rowAction'),
-    mailOverflow: d.getElementById('mail').scrollWidth - d.getElementById('mail').clientWidth }
+    mailOverflow: d.getElementById('mail').scrollWidth - d.getElementById('mail').clientWidth,
+    lifecycleBtn: r('lbtn'), lifecycleOverflow: d.getElementById('lrow').scrollWidth - d.getElementById('lrow').clientWidth }
   const body = d.getElementById('body')
   if (body) { out.bodyOverflowY = cs('body', 'overflowY'); out.bodyScrollable = body.scrollHeight > body.clientHeight; body.scrollTop = body.scrollHeight; out.lastAfterScroll = r('last'); out.bodyAfter = r('body') }
   else { const m = d.getElementById('modal'); out.modalScrollable = m.scrollHeight > m.clientHeight; m.scrollTop = m.scrollHeight; out.confirmAfterScroll = r('confirm') }
   return out
 }
 
-const SCENARIOS = { phone: [375, 667, true], landscape: [667, 375, true], mini: [320, 568, true], nobody: [375, 667, false], desktop: [1280, 800, true] }
+const SCENARIOS = { phone: [375, 667, true], landscape: [667, 375, true], mini: [320, 568, true], nobody: [375, 667, false], desktop: [1280, 800, true],
+  iphone15: [390, 844, true], promax: [430, 932, true], landscape15: [844, 390, true] }
 let M = null, SKIP = CHROME ? null : 'kein Chrome/Chromium gefunden (CHROME_BIN setzen)'
 async function measureAll() {
   const dir = mkdtempSync(join(tmpdir(), 'cafe-modal-'))
@@ -123,4 +127,23 @@ test('14: Desktop (1280×800) unverändert – Tabelle als Tabelle, Dialog in ge
   assert.ok(m.modal.width <= 460.5 && m.modal.width >= 459.5, `Breite ${m.modal.width}`)
   assert.ok(Math.abs((m.modal.left + m.modal.right) / 2 - m.vw / 2) < 2, 'horizontal zentriert')
   assert.ok(inside(m.modal, m) && inside(m.confirm, m))
+})
+
+test('Aktuelle iPhones (390×844, 430×932) und Querformat 844×390: Dialog passt, Button erreichbar, kein Querscrollen', t => {
+  if (SKIP) return t.skip(SKIP)
+  for (const [w, h] of [[390, 844], [430, 932], [844, 390]]) {
+    const m = measure(w, h)
+    assert.ok(inside(m.modal, m) && inside(m.confirm, m), `${w}×${h}: ${JSON.stringify({ modal: m.modal, confirm: m.confirm })}`)
+    assert.equal(m.bodyScrollable, true, `${w}×${h}: Inhalt scrollt`)
+    assert.ok(m.docScrollW <= m.vw && m.modalScrollW <= m.modalClientW, `${w}×${h}: kein horizontaler Überlauf`)
+  }
+})
+
+test('Lifecycle-Zeilen (verwaiste Anmeldung/abgelaufene Einladung): lange Adresse bricht um, Aktion bleibt im Viewport', t => {
+  if (SKIP) return t.skip(SKIP)
+  for (const [w, h] of Object.values(SCENARIOS).filter(v => v[2])) {
+    const m = measure(w, h)
+    assert.ok(m.lifecycleOverflow <= 0, `${w}×${h}: Zeile läuft nicht über (${m.lifecycleOverflow})`)
+    assert.ok(m.lifecycleBtn.left >= -0.5 && m.lifecycleBtn.right <= m.vw + 0.5, `${w}×${h}: ${JSON.stringify(m.lifecycleBtn)}`)
+  }
 })

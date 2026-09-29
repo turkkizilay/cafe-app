@@ -43,3 +43,39 @@ export function inviteConflict(email, profiles = [], states = {}, onboardings = 
   const onboarding = onboardings.find(o => o.profile_id === profile.id)
   return { profile, ...accountStage({ profile, state: states[profile.id], onboarding }) }
 }
+
+// ── Registrierung zurücksetzen (Migration 26) ──
+// Nur ein Vorfilter, damit keine irreführende Aktion erscheint. Maßgeblich ist immer die serverseitige Prüfung
+// admin_registration_reset_check – sie klassifiziert neu und nennt die Gründe, falls blockiert.
+// 'full' = Registrierung ohne Personalakte · 'login_only' = nie benutzte Anmeldung eines bestehenden Mitarbeiters
+export function resetCandidate({ profile, state, onboarding, meId }) {
+  if (!profile || !state || profile.id === meId || profile.is_owner || profile.role === 'admin') return null
+  if (profile.employee_id) return state.ever_signed_in === false && !onboarding ? 'login_only' : null
+  if (!['pending', 'disabled'].includes(profile.status)) return null
+  if (onboarding && (!['draft', 'rejected'].includes(onboarding.status) || onboarding.privacy_accepted_at || onboarding.employee_id)) return null
+  return 'full'
+}
+
+// Gründe der Server-Prüfung → Übersetzungsschlüssel (unbekannte Codes bleiben sichtbar, nie verschluckt)
+const BLOCKER_KEYS = ['self', 'owner', 'privileged_role', 'active_account', 'onboarding_submitted', 'onboarding_changes_requested',
+  'onboarding_approved', 'onboarding_employee_linked', 'privacy_proof', 'login_used', 'onboarding_history', 'references',
+  'storage_objects', 'orphan_login']
+export function resetBlockers(check) {
+  return (check?.blockers || []).map(b => ({
+    key: BLOCKER_KEYS.includes(b.code) ? `reset.blocker.${b.code}` : 'reset.blocker.unknown',
+    code: b.code,
+    detail: b.refs ? Object.entries(b.refs).map(([k, n]) => `${k}: ${n}`).join(', ') : (b.count != null ? String(b.count) : ''),
+  }))
+}
+
+// Ausführen: Erfolg nur bei bestätigter Serverwirkung. already = war schon entfernt (Doppelklick/zweiter Admin).
+export async function performRegistrationReset(supabase, check, userId) {
+  if (!check || !['full', 'login_only'].includes(check.mode) || !check.email) return { ok: false, reason: 'not_allowed' }
+  try {
+    const { data, error } = await supabase.rpc('admin_reset_registration', { p_user_id: userId, p_expected_email: check.email, p_expected_mode: check.mode })
+    if (error || !data?.success) return { ok: false, reason: 'server', error: error || null }
+    return { ok: true, already: !!data.already, emailRegisteredAgain: !!data.email_registered_again, email: data.email || check.email, mode: data.mode || check.mode }
+  } catch (error) {
+    return { ok: false, reason: 'network', error }
+  }
+}

@@ -106,7 +106,9 @@ test('Mitarbeiter einladen / freischalten: Vergütung wie im Mitarbeiterformular
   const onb = read('src/components/OnboardingReview.jsx')
   assert.match(onb, /pay_type: payTypeOf\(j\),/)                                            // Vorbelegung aus Einladung
   assert.match(onb, /validatePayModel\(\{ employment_type: job\.employment_type, pay_type: payTypeOf\(job\), monthly_salary: job\.monthly_salary \}\)/)
-  assert.match(onb, /if \(payTypeOf\(job\) === PAY_FIXED\) \{\s*\n\s*const \{ error: payError \} = await setEmployeePay\(data\.employee_id, PAY_FIXED, parseMonthlySalary\(job\.monthly_salary\)\)/)
+  // Freischaltung + Fixgehalt atomar in einer RPC (Migration 25) – kein zweiter, separat scheiternder Schritt mehr
+  assert.match(onb, /supabase\.rpc\('approve_onboarding_with_pay', \{[\s\S]*?p_pay_type: payTypeOf\(job\), p_monthly_salary: payTypeOf\(job\) === PAY_FIXED \? parseMonthlySalary\(job\.monthly_salary\) : null,/)
+  assert.doesNotMatch(onb, /setEmployeePay\(|rpc\('approve_onboarding',/)
   assert.match(onb, /if \(!canHaveFixedPay\(e\.target\.value\)\) setJ\('pay_type', PAY_HOURLY\)/)
   const fields = read('src/components/PayModelFields.jsx')
   assert.match(fields, /disabled=\{!fixedOk\}/)

@@ -1,4 +1,4 @@
-import { t as tr, getIntlLocale, localizeMessage, message as appMessage } from '../i18n/runtime.js'
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect } from 'react'
 import { supabase, toLocalDateStr } from '../lib/supabase'
@@ -8,7 +8,6 @@ import { formatIBAN, isValidIBAN, taxIdChecksumOk } from '../lib/personalData'
 import { MINDESTLOHN } from '../lib/constants'
 import PayModelFields from './PayModelFields'
 import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
-import { setEmployeePay } from '../lib/compensationApi'
 
 export const ONB_STATUS = {
   draft:             { get label() { return tr("ui.658154755bb4") },   cls:'badge-gray'  },
@@ -101,17 +100,14 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
     const payErr = validatePayModel({ employment_type: job.employment_type, pay_type: payTypeOf(job), monthly_salary: job.monthly_salary })
     if (payErr) { setErr(appMessage(payErr === 'fixedNotAllowed' ? "payModel.fixedNotAllowed" : "payModel.salaryMissing")); return }
     setBusy(true)
-    const { data, error } = await supabase.rpc('approve_onboarding', {
+    // Freischaltung + Vergütungsmodell in EINER Transaktion (Migration 25): Fixgehalt oder gar nichts
+    const { data, error } = await supabase.rpc('approve_onboarding_with_pay', {
       p_id: row.id, p_role: job.role, p_position: job.position,
       p_employment_type: job.employment_type, p_hours_per_week: hours,
       p_hourly_rate: rate, p_start_date: job.start_date, p_vacation_days: vac,
+      p_pay_type: payTypeOf(job), p_monthly_salary: payTypeOf(job) === PAY_FIXED ? parseMonthlySalary(job.monthly_salary) : null,
     })
-    if (error || !data?.success) { setBusy(false); setErr((data?.error || appMessage("ui.3924123f78e8"))); return }
-    // Freischaltung legt immer mit Stundenlohn an → Fixgehalt direkt danach setzen
-    if (payTypeOf(job) === PAY_FIXED) {
-      const { error: payError } = await setEmployeePay(data.employee_id, PAY_FIXED, parseMonthlySalary(job.monthly_salary))
-      if (payError) toast.error(appMessage("payModel.saveAfterApproveFailed", { p1: name }), 12000)
-    }
+    if (error || !data?.success) { setBusy(false); setErr((data?.error || errorMessage(error) || appMessage("ui.3924123f78e8"))); return }
     setBusy(false)
     toast.success(appMessage("ui.a0242bf495f6", { p1: (name) }))
     onDone()

@@ -10,7 +10,8 @@ npm --prefix tests/db test    # ca. 10–20 s
 ```
 
 Aufbau: `fixtures/schema_before_17.sql` (Production-Struktur vor Migration 17, nur Schema, keine Daten/Secrets)
-+ die Repository-Migrationen 17–24 in Reihenfolge (`harness.mjs`). Nur synthetische Personen.
++ die Repository-Migrationen 17–26 in Reihenfolge (`harness.mjs`); `fixtures/lifecycle_functions.sql` enthält die
+Invite-/Auth-/Onboarding-Funktionen wie in Production (für `lifecycle.test.mjs`). Nur synthetische Personen.
 
 | Datei | Schützt |
 | --- | --- |
@@ -20,6 +21,8 @@ Aufbau: `fixtures/schema_before_17.sql` (Production-Struktur vor Migration 17, n
 | `storage_sick_certs.test.mjs` | Atteste: nur Admin löscht, Upload/Lesen/Ersetzen wie vorgesehen (Migration 22) |
 | `privacy_ack.test.mjs` | Versionierte Kenntnisnahme, nur eigene, kein Backfill, idempotent (Migration 23) |
 | `account_recovery.test.mjs` | Auth-Status/Bestätigung erneut anfordern/Registrierung wieder öffnen nur Admin, keine Duplikate, Vergütung bleibt (Migration 24) |
+| `lifecycle.test.mjs` | Invite→Signup→Onboarding→Freischaltung mit Production-Funktionen; atomare Freischaltung mit Vergütung, verwaiste Anmeldungen, Ablehnen ohne Waise, Parallelität (Migration 25) |
+| `registration_reset.test.mjs` | Registrierung zurücksetzen: Klassifizierung, nur Admin, Personalakte/Historie/Vergütung/Kenntnisnahmen bleiben, Doppelklick/parallel/veraltete Ansicht, Pflichtprotokoll ohne False Success (Migration 26) |
 
 Neue Migration `NN_*.sql`: in `harness.mjs` → `MIGRATIONS` ergänzen und hier einen Test dafür anlegen.
 Ändert sich die Production-Struktur außerhalb der Migrationen (z. B. Dashboard), die Vorlage per schema-only

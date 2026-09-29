@@ -3,7 +3,7 @@
 Kompaktes, wiederverwendbares Wissen für Arbeiten an diesem Repository (Café-Buur-Mitarbeiterportal:
 React/Vite-PWA auf Vercel, Supabase mit Postgres/RLS/Storage/RPC). Kein Verlauf, kein Tagebuch.
 Vertrauensstufen: **VERIFIED** (Test/Code/DB belegt) · **OBSERVED** (im Betrieb beobachtet) · **ASSUMPTION** (unbestätigt).
-Pflege: siehe „Memory Hygiene“ am Ende. Stand: 2026-09-28.
+Pflege: siehe „Memory Hygiene“ am Ende. Stand: 2026-09-29.
 
 Tests: App/Logik `node --test tests/*.test.mjs` · Server-Invarianten `npm --prefix tests/db test` (lokales Postgres 17, nie Production).
 
@@ -99,6 +99,43 @@ Nicht per Code lösbar: Warum Mails nicht ankommen (Supabase meldete keine Versa
 Supabase-Dashboard prüfen. (ASSUMPTION bis geprüft)
 Regression Protection: `tests/accountRecovery.test.mjs`, `tests/db/account_recovery.test.mjs`.
 
+### Profil löschen ≠ Konto löschen (verwaiste Anmeldungen)
+Problem: Nach „Registrierung ablehnen“ (alte Registrierungen ohne Einladung) konnte die Adresse weder eingeladen werden
+noch sich registrieren – auch nicht, wenn sie zu einem aktiven Mitarbeiter gehört. Über die UI nicht reparierbar.
+Root Cause: Der Client löschte nur `profiles`; das Auth-Konto blieb (eindeutige E-Mail in `auth.users`), ohne Profil
+war es in der Benutzerverwaltung unsichtbar. Zusätzlich prüfte „Einladen“ nur bei neuen Personen auf ein bestehendes Konto.
+Fix: Migration 25 – `admin_reject_pending_login` (Auth + Profil in einer Funktion, nur wartend/ohne Mitarbeiter/ohne
+Onboarding), `admin_login_orphans` + `admin_remove_orphan_login` (nur Auth-Konten ohne Profil, nie das eigene);
+Adressprüfung bei jeder Einladung; Konfliktpanel bietet die passende Aktion. Kein Zusammenführen nach E-Mail, keine
+Umgehung der Bestätigung – nach dem Entfernen wird normal eingeladen und neu bestätigt. (VERIFIED, live 2026-09-28)
+Permanent Lesson: Lebenszyklus-Aktionen (ablehnen, entfernen) wirken auf das ganze Konto in einer Server-Funktion.
+Jeder DB-Zustand, den ein Flow erzeugen kann, muss in der Admin-UI sichtbar und reparierbar sein
+(Prevent > Recover > manuelle DB-Eingriffe).
+Regression Protection: `tests/db/lifecycle.test.mjs`, `tests/accountLifecycle.test.mjs`, `tests/errorPaths.test.mjs`.
+
+### Auth-Konto löschen löscht mehr als den Login
+Problem: Eingeladene Registrierungen mit Onboarding-Entwurf (z. B. Bestätigungs-E-Mail nie angekommen) waren nicht
+entfernbar; ein naives `DELETE auth.users` hätte zugleich Datenschutz-Kenntnisnahmen gelöscht.
+Root Cause (Production-Katalog, read-only 2026-09-29): `auth.users ─CASCADE→ profiles ─CASCADE→ employee_onboarding,
+push_*, privacy_notice_acknowledgements`; alle `*_by`/`actor_id` → SET NULL. `employees` hat KEINEN FK auf
+Auth/Profil – Personalakte und Historie (Zeiten, Pausen, Schichten, Urlaub, Krankheit, Lohn, Dokumente) hängen nur an `employees.id`.
+Fix: Migration 26 – `admin_registration_reset_check` (klassifiziert: `full` / `login_only` = nie benutzte Anmeldung
+eines Mitarbeiters / `blocked` mit Gründen) + `admin_reset_registration` (Zeilensperren auth→profil→onboarding,
+Neu-Klassifizierung gegen erwartete Adresse + Modus, Pflichtprotokoll, bereits entfernt → `already`). Jede FK-Referenz
+außer Registrierungs-/Gerätedaten blockiert (dynamisch aus `pg_constraint`, erfasst auch künftige Tabellen); Storage über `owner` UND `owner_id`. (VERIFIED, live 2026-09-29)
+Permanent Lesson: Vor jedem Löschen eines Kontos die CASCADE-Kette bis zum Ende verfolgen; Nachweise (Kenntnisnahme,
+Protokoll) blockieren das Löschen statt mitzuverschwinden. Protokoll bei destruktiven Admin-Aktionen ist Pflicht
+(Fehler → Rollback), nicht „best effort“.
+Regression Protection: `tests/db/registration_reset.test.mjs` (Gegenprobe: ohne Privacy-Blocker bzw. ohne Zeilensperren rot), `tests/registrationReset.test.mjs`.
+
+### Freischaltung + Vergütung in zwei Client-Schritten
+Problem: Onboarding-Freischaltung legte den Mitarbeiter mit Stundenlohn an; das Fixgehalt setzte der Browser danach
+separat. Scheiterte Schritt 2, stand ein Mitarbeiter mit falschem Vergütungsmodell da (inkl. Erfolgsmeldung).
+Fix: `approve_onboarding_with_pay` (Migration 25) – Freischaltung und Vergütung in einer Transaktion, ungültige
+Kombination → nichts angelegt. (VERIFIED, live 2026-09-28)
+Permanent Lesson: Anti-Pattern 5 gilt auch für Admin-Workflows, die „nur selten“ laufen.
+Regression Protection: `tests/db/lifecycle.test.mjs` (Trigger-Fehler → vollständiger Rollback, parallele Freigabe).
+
 ### Lange Dialoge auf dem iPhone nicht erreichbar
 Problem: Einladungs-Dialog auf dem iPhone nicht bis zum Bestätigungsbutton scrollbar (auch am Desktop bei sehr langen Dialogen).
 Root Cause: Globale `.modal-overlay`/`.modal` ohne maximale Höhe und ohne Scrollbereich – zentrierter Inhalt lief oben
@@ -161,6 +198,7 @@ Do Not: entfernen – die Anfrage wurde in diesem Fall nicht ausgeführt, Wieder
 8. Production-Daten für Tests anlegen/ändern; echte Personaldaten in Tests.
 9. Übersetzte Strings im State speichern oder Freitext übersetzen.
 10. Rechtstexte, die mehr/weniger behaupten als der Code tut (z. B. „keine Standortdaten gespeichert“, erfundene Fristen).
+11. Nur eine Teil-Zeile eines Kontos löschen (z. B. `profiles` ohne `auth.users`) – erzeugt unsichtbare, blockierende Reste.
 
 ## Definition of Done
 

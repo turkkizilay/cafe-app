@@ -101,9 +101,10 @@ test('Zeiteintrag löschen (Admin): Doppelklick-Sperre wird bei Fehler freigegeb
 })
 
 test('Registrierung ablehnen: Fehler wird gemeldet, nicht „abgelehnt“', async () => {
-  for (const [res, expectKind] of [[ERR, 'error'], [{ error: null }, 'info']]) {
+  // Migration 25: Ablehnen über admin_reject_pending_login (Auth + Profil); Erfolg nur bei success:true
+  for (const [res, expectKind] of [[ERR, 'error'], [{ data: { success: false }, error: null }, 'error'], [{ data: { success: true }, error: null }, 'info']]) {
     const toast = spyToast(); const rejectGuard = guard()
-    const fn = load('src/pages/UserManagement.jsx', 'confirmReject', { ...common, rejectGuard, confirmDel: { id: 'u1' }, setWorking: () => {}, supabase: fakeSupabase({ profiles: res }), toast, setConfirmDel: () => {}, fetchAll: () => {} })
+    const fn = load('src/pages/UserManagement.jsx', 'confirmReject', { ...common, rejectGuard, confirmDel: { id: 'u1' }, setWorking: () => {}, supabase: fakeSupabase({ 'rpc:admin_reject_pending_login': res }), toast, setConfirmDel: () => {}, fetchAll: () => {} })
     await fn()
     assert.deepEqual(toast.calls.map(c => c[0]), [expectKind])
     assert.equal(rejectGuard.locked, false)

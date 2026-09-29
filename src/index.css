@@ -1240,4 +1240,5 @@ html.dark .language-segment-indicator { background:var(--bg-hover); }
 
 /* ── Recovery-Hinweise in der Benutzerverwaltung ── */
 .recovery-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.lifecycle-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .recovery-meta { font-size: 11px; color: var(--text-muted); }
