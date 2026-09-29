@@ -17,7 +17,7 @@ test('Ablehnen alter Registrierungen löscht Auth-Konto + Profil serverseitig (k
 })
 
 test('Verwaiste Anmeldungen: nur Admin-RPC, Bestätigung, Doppelklick-Sperre, Erfolg nur nach Server-OK', () => {
-  assert.match(um, /const \{ data: orph, error: orphErr \} = await supabase\.rpc\('admin_login_orphans'\)\s*\n\s*setOrphans\(orphErr \? \[\] : \(orph \|\| \[\]\)\)/)
+  assert.match(um, /const \{ data: orph, error: orphErr \} = await supabase\.rpc\('admin_login_orphans'\)\s*\n(\s*if \(seq !== fetchSeq\.current\) return\n)?\s*setOrphans\(orphErr \? \[\] : \(orph \|\| \[\]\)\)/)
   const f = fn(um, 'removeOrphanLogin')
   assert.match(f, /if \(!recoveryGuard\.begin\(\)\) return/)
   assert.match(f, /supabase\.rpc\('admin_remove_orphan_login', \{ p_user_id: o\.user_id \}\)/)

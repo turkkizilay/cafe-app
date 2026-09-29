@@ -27,7 +27,7 @@ async function signup(email, token) {
   return id
 }
 const invitedDraft = async email => signup(email, (await invite({ email })).token)
-const VALID = { first_name: 'Ada', last_name: 'Test', birth_date: '1995-04-01', street: 'Testweg', house_number: '1', postal_code: '60311', city: 'Frankfurt', phone: '+49 69 1', iban: 'DE89370400440532013000', account_holder: 'Ada Test', tax_id: '12345678901', social_security_number: '12345678A123', health_insurance: 'TK', other_employment: false, emergency_contact_name: 'Bo', emergency_contact_phone: '+49 1', privacy_accepted: true }
+const VALID = { first_name: 'Ada', last_name: 'Test', birth_date: '1995-04-01', street: 'Testweg', house_number: '1', postal_code: '60311', city: 'Frankfurt', phone: '+49 69 1', iban: 'DE89370400440532013000', account_holder: 'Ada Test', tax_id: '12345678901', social_security_number: '12345678A123', health_insurance: 'TK', other_employment: false, emergency_contact_name: 'Bo', emergency_contact_phone: '+49 170 1', privacy_accepted: true }
 
 // Vollständige Beschäftigungshistorie an einem Mitarbeiter (alles hängt an employees.id)
 async function seedHistory(emp, profileId) {

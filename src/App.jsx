@@ -123,6 +123,41 @@ function ErrorScreen({ error, onRetry }) {
   )
 }
 
+// Warnung vor der automatischen Abmeldung – in der App UND im Onboarding (dort gingen sonst still ungespeicherte
+// Eingaben verloren)
+function AutoLogoutWarning({ countdown, onExtend, onLogout }) {
+  useLocale()
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(0,0,0,0.55)',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      zIndex:9998, padding:16,
+    }}>
+      <div style={{
+        background:'var(--card)', borderRadius:16, padding:'32px 28px',
+        maxWidth:420, width:'100%', textAlign:'center',
+        boxShadow:'0 20px 60px rgba(0,0,0,0.4)',
+        border:'1px solid var(--border)',
+      }}>
+        <div style={{ fontSize:44, marginBottom:12 }}>🔒</div>
+        <h2 style={{ fontSize:19, fontWeight:700, marginBottom:10, color:'var(--text-primary)' }}>{tr("ui.17be0d77841a")}</h2>
+        <p style={{ color:'var(--text-secondary)', fontSize:14, lineHeight:1.65, marginBottom:20 }}>{tr("ui.5427a8b9c75f")}</p>
+        <div style={{
+          fontSize:28, fontWeight:700, marginBottom:24,
+          color: countdown <= 30 ? 'var(--danger)' : 'var(--warn)',
+          fontVariantNumeric:'tabular-nums',
+        }}>
+          {String(Math.floor(countdown / 60)).padStart(2,'0')}:{String(countdown % 60).padStart(2,'0')}
+        </div>
+        <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+          <button className="btn btn-primary" style={{ minWidth:160 }} onClick={onExtend}>{tr("ui.307ded5df518")}</button>
+          <button className="btn" style={{ minWidth:140, color:'var(--danger)', border:'1px solid var(--danger)' }} onClick={onLogout}>{tr("ui.60dc6c3a17af")}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 class ErrorBoundary extends Component {
   static contextType = LocaleContext
   state = { error: null }
@@ -359,6 +394,7 @@ export default function App() {
           session={session}
           fallback={<PendingScreen session={session} onRetry={() => fetchProfile(session.user.id, true)} />}
         />
+        {showWarning && <AutoLogoutWarning countdown={countdown} onExtend={extendSession} onLogout={() => performLogout('manual')} />}
       </ToastProvider>
     </DarkModeProvider>
   )
@@ -446,35 +482,7 @@ export default function App() {
               </div>
             </div>
 
-            {showWarning && (
-              <div style={{
-                position:'fixed', inset:0, background:'rgba(0,0,0,0.55)',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                zIndex:9998, padding:16,
-              }}>
-                <div style={{
-                  background:'var(--card)', borderRadius:16, padding:'32px 28px',
-                  maxWidth:420, width:'100%', textAlign:'center',
-                  boxShadow:'0 20px 60px rgba(0,0,0,0.4)',
-                  border:'1px solid var(--border)',
-                }}>
-                  <div style={{ fontSize:44, marginBottom:12 }}>🔒</div>
-                  <h2 style={{ fontSize:19, fontWeight:700, marginBottom:10, color:'var(--text-primary)' }}>{tr("ui.17be0d77841a")}</h2>
-                  <p style={{ color:'var(--text-secondary)', fontSize:14, lineHeight:1.65, marginBottom:20 }}>{tr("ui.5427a8b9c75f")}</p>
-                  <div style={{
-                    fontSize:28, fontWeight:700, marginBottom:24,
-                    color: countdown <= 30 ? 'var(--danger)' : 'var(--warn)',
-                    fontVariantNumeric:'tabular-nums',
-                  }}>
-                    {String(Math.floor(countdown / 60)).padStart(2,'0')}:{String(countdown % 60).padStart(2,'0')}
-                  </div>
-                  <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-                    <button className="btn btn-primary" style={{ minWidth:160 }} onClick={extendSession}>{tr("ui.307ded5df518")}</button>
-                    <button className="btn" style={{ minWidth:140, color:'var(--danger)', border:'1px solid var(--danger)' }} onClick={() => performLogout('manual')}>{tr("ui.60dc6c3a17af")}</button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {showWarning && <AutoLogoutWarning countdown={countdown} onExtend={extendSession} onLogout={() => performLogout('manual')} />}
 
             </RefreshProvider>
           </BrowserRouter>

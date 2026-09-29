@@ -1,9 +1,11 @@
 import { t as tr, getIntlLocale, localizeMessage, message as appMessage } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { BrandBadge, BrandWordmark } from '../components/UI/Brand'
 import { supabase } from '../lib/supabase'
 import PasswordInput from '../components/UI/PasswordInput'
+import { boundedRequest } from '../lib/boundedRequest'
+import { classifySignup, ONB_TIMEOUT } from '../lib/onboardingFlow'
 
 // ── Passwort-Stärke ──────────────────────────────────────────
 function checkPw(pw) {
@@ -27,23 +29,43 @@ export default function InvitationAccept({ token }) {
   const [errMsg,   setErrMsg]   = useState('')
   const [reason,   setReason]   = useState('')
   const [saving,   setSaving]   = useState(false)
+  const [hasSession, setHasSession] = useState(false)
+  const busy = useRef(false)   // Doppelklick-Sperre, greift sofort
 
   useEffect(() => {
     if (!token) { setStep('error'); setErrMsg(appMessage("ui.2cd1bcf73cfd")); return }
     validateToken()
   }, [token])
 
+  // Einladungsstatus vom Server (mit Obergrenze – ohne Antwort endet das Laden trotzdem)
+  const fetchInfo = () => boundedRequest(s => supabase.rpc('get_invitation_info', { p_token: token }).abortSignal(s), { ms: ONB_TIMEOUT.read })
+
+  async function showInvalid(data) {
+    // Bereits verwendet: mit bestehender Sitzung direkt weiter zur App, sonst zur Anmeldung
+    if (data.reason === 'used') {
+      try { const { data: s } = await supabase.auth.getSession(); setHasSession(!!s?.session) } catch { setHasSession(false) }
+    }
+    setReason(data.reason || '')
+    setErrMsg(data.error)
+    setStep('error')
+  }
+
   async function validateToken() {
-    const { data, error } = await supabase.rpc('get_invitation_info', { p_token: token })
-    if (error || !data) { setStep('error'); setErrMsg(appMessage("ui.26dda1d2b2e4")); return }
-    if (!data.valid) { setStep('error'); setReason(data.reason || ''); setErrMsg(data.error); return }
-    setInfo(data)
+    setStep('loading'); setErrMsg(''); setReason('')
+    const r = await fetchInfo()
+    if (r.status === 0 || r.error || !r.data) {
+      setStep('error'); setReason('offline')
+      setErrMsg(appMessage(r.status === 0 ? 'invite.checkUnavailable' : "ui.26dda1d2b2e4"))
+      return
+    }
+    if (!r.data.valid) { await showInvalid(r.data); return }
+    setInfo(r.data)
     setStep('password')
   }
 
   async function handleAccept(e) {
     e.preventDefault()
-    if (saving) return
+    if (busy.current) return
     setErrMsg('')
     const strength = checkPw(pw)
     if (!strength.length || !strength.uppercase || !strength.number) {
@@ -52,58 +74,50 @@ export default function InvitationAccept({ token }) {
     }
     if (pw !== pw2) { setErrMsg(appMessage("ui.89780fc834cd")); return }
 
+    busy.current = true
     setSaving(true)
-
-    // Account erstellen. Der Einladungs-Token geht als Metadaten mit —
-    // die Datenbank prüft ihn beim Anlegen (Token gültig + E-Mail passt)
-    // und löst die Einladung serverseitig ein. So klappt es auch, wenn
-    // Supabase erst eine E-Mail-Bestätigung verlangt (dann gibt es noch keine Session).
-    let authData, signUpErr
     try {
-      const res = await supabase.auth.signUp({
+      // Einladung direkt vor dem Anlegen erneut prüfen – sie kann seit dem Öffnen abgelaufen/zurückgezogen sein
+      const pre = await fetchInfo()
+      if (pre.status === 0) { setErrMsg(appMessage('invite.checkUnavailable')); return }
+      if (!pre.error && pre.data && !pre.data.valid) { await showInvalid(pre.data); return }
+
+      // Account erstellen. Der Einladungs-Token geht als Metadaten mit — die Datenbank prüft ihn beim Anlegen
+      // (Token gültig + E-Mail passt) und löst die Einladung in derselben Transaktion ein; ist sie nicht (mehr)
+      // gültig, wird gar kein Konto angelegt (Migration 28). Klappt auch mit E-Mail-Bestätigung (dann ohne Session).
+      const res = await boundedRequest(() => supabase.auth.signUp({
         email: info.email,
         password: pw,
         options: {
           emailRedirectTo: window.location.origin,
           data: { invite_token: token },
         },
-      })
-      authData = res.data; signUpErr = res.error
-    } catch {
-      signUpErr = { message: 'network' }
-    }
+      }), { ms: ONB_TIMEOUT.write })
+      const outcome = classifySignup(res)
 
-    if (signUpErr) {
-      setSaving(false)
-      const m = (signUpErr.message || '').toLowerCase()
-      if (m.includes('already registered')) {
-        setErrMsg(appMessage("ui.09b8e7bf3dfe"))
-      } else if (m.includes('password')) {
-        setErrMsg(appMessage("ui.8be6b2ef10b3"))
-      } else if (m.includes('rate') || m.includes('security purposes')) {
-        setErrMsg(appMessage("ui.09fab1faf3d6"))
-      } else {
-        setErrMsg(appMessage("ui.93e80a63886d"))
+      if (outcome === 'session') {
+        // Keine Bestätigung nötig → direkt in die App (dort startet das Onboarding). replace: „Zurück“ führt nicht
+        // wieder auf den eingelösten Link.
+        setStep('success')
+        setTimeout(() => { window.location.replace('/') }, 2000)
+        return
       }
-      return
-    }
+      if (outcome === 'confirm') { setStep('confirm'); return }
+      // Supabase meldet bei bereits registrierten Adressen (mit E-Mail-Bestätigung) keinen Fehler, sondern einen User ohne Identitäten.
+      if (outcome === 'exists') { setErrMsg(appMessage("ui.09b8e7bf3dfe")); return }
+      if (outcome === 'password') { setErrMsg(appMessage("ui.8be6b2ef10b3")); return }
+      if (outcome === 'rate') { setErrMsg(appMessage("ui.09fab1faf3d6")); return }
 
-    // Supabase meldet bei bereits registrierten Adressen (mit E-Mail-Bestätigung)
-    // keinen Fehler, sondern einen User ohne Identitäten.
-    if (authData?.user && Array.isArray(authData.user.identities) && authData.user.identities.length === 0) {
+      // Keine Antwort / abgelehnt: Konto anlegen und Einladung einlösen sind EINE Transaktion → der Einladungsstatus
+      // zeigt eindeutig, was passiert ist (Teil-Erfolg wird nicht als Fehler gemeldet)
+      const post = await fetchInfo()
+      if (post.status === 0 || post.error || !post.data) { setErrMsg(appMessage('invite.unclear')); return }
+      if (post.data.valid) { setErrMsg(appMessage(outcome === 'noAnswer' ? 'invite.notCreatedRetry' : "ui.93e80a63886d")); return }
+      if (post.data.reason === 'used') { setStep('confirm'); return }   // Konto wurde angelegt (nur diese Adresse kann einlösen)
+      await showInvalid(post.data)
+    } finally {
+      busy.current = false
       setSaving(false)
-      setErrMsg(appMessage("ui.09b8e7bf3dfe"))
-      return
-    }
-
-    setSaving(false)
-    if (authData?.session) {
-      // Keine Bestätigung nötig → direkt in die App (dort startet das Onboarding)
-      setStep('success')
-      setTimeout(() => { window.location.href = '/' }, 2000)
-    } else {
-      // E-Mail-Bestätigung nötig
-      setStep('confirm')
     }
   }
 
@@ -137,13 +151,16 @@ export default function InvitationAccept({ token }) {
         {step === 'error' && (
           <div style={{ textAlign:'center' }}>
             <div style={{ fontSize:40, marginBottom:12 }}>
-              {{ revoked:'🚫', expired:'⏱️', used:'✅' }[reason] || '❌'}
+              {{ revoked:'🚫', expired:'⏱️', used:'✅', offline:'📡' }[reason] || '❌'}
             </div>
             <div style={{ fontWeight:600, fontSize:16, marginBottom:8, color:'#1C1917' }}>
-              {{ revoked:tr("ui.211fc9e997fa"), expired:tr("ui.3151da7884f4"), used:tr("ui.d06f7ddecd71") }[reason] || tr("ui.c115c98fb3cb")}
+              {{ revoked:tr("ui.211fc9e997fa"), expired:tr("ui.3151da7884f4"), used:tr("ui.d06f7ddecd71"), offline:tr('invite.offlineTitle') }[reason] || tr("ui.c115c98fb3cb")}
             </div>
             <div style={{ color: reason === 'used' ? '#57534E' : '#DC2626', fontSize:13, marginBottom:20, lineHeight:1.6 }}>{localizeMessage(errMsg)}</div>
-            <a href="/" style={{ display:'inline-block', padding:'9px 20px', background:'#C2793A', color:'#fff', borderRadius:8, textDecoration:'none', fontSize:13, fontWeight:600 }}>{tr("ui.04b6b188d904")}</a>
+            {reason === 'used' && !hasSession && <div style={{ color:'#78716C', fontSize:12.5, marginBottom:16, lineHeight:1.6 }}>{tr('invite.usedHint')}</div>}
+            {reason === 'offline'
+              ? <button type="button" onClick={validateToken} style={{ padding:'9px 20px', background:'#C2793A', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>{tr("ui.7df1d235ed7f")}</button>
+              : <a href="/" style={{ display:'inline-block', padding:'9px 20px', background:'#C2793A', color:'#fff', borderRadius:8, textDecoration:'none', fontSize:13, fontWeight:600 }}>{reason === 'used' && hasSession ? tr('invite.toApp') : tr("ui.04b6b188d904")}</a>}
           </div>
         )}
 
@@ -258,9 +275,9 @@ export default function InvitationAccept({ token }) {
               <button type="button" disabled={saving} onClick={async () => {
                   if (saving) return
                   setSaving(true)
-                  const { error } = await supabase.auth.resend({ type:'signup', email: info.email, options:{ emailRedirectTo: window.location.origin } })
+                  const r = await boundedRequest(() => supabase.auth.resend({ type:'signup', email: info.email, options:{ emailRedirectTo: window.location.origin } }), { ms: ONB_TIMEOUT.write })
                   setSaving(false)
-                  setErrMsg(error ? (appMessage("ui.a8989ce113bb")) : (appMessage("ui.7464c81a4d07")))
+                  setErrMsg(r.error || r.status === 0 ? (appMessage("ui.a8989ce113bb")) : (appMessage("ui.7464c81a4d07")))
                 }}
                 style={{ background:'none', border:'1px solid #E7E4DF', borderRadius:8, padding:'8px 14px', fontSize:13, cursor:'pointer', color:'#44403C' }}>
                 {saving ? tr("ui.754ed3f63a88") : tr("ui.1c5bb531381f")}

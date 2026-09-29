@@ -120,7 +120,7 @@ test('11–14: Onboarding: Kenntnisnahme (keine Einwilligung), nicht vorausgewä
   assert.match(onb, /const \[privacy, setPrivacy\] = useState\(false\)/)                       // 12: nicht vorausgewählt
   assert.match(onb, /<input type="checkbox" checked=\{privacy\}/)
   assert.match(onb, /if \(!privacy\) \{ setErrors\(\{ privacy_accepted:/)                       // 11: Pflicht vor Absenden
-  assert.match(onb, /p_data: \{ \.\.\.toPayload\(form\), privacy_accepted: true \}, p_submit: true/)
+  assert.match(onb, /payload: \{ \.\.\.payload, privacy_accepted: true \}, submit: true/)   // Einreichen über saveOnboarding (Migration 28)
   assert.match(onb, /disabled=\{saving \|\| !privacy\}/)
   assert.match(onb, /<a href=\{LEGAL_PATHS\.privacy\} target="_blank" rel="noopener noreferrer"/)   // 14: direkt erreichbar, Formular bleibt
   assert.doesNotMatch(onb, /<PrivacyNotice|import PrivacyNotice|showPrivacy/)   // alter Inline-Hinweis entfernt

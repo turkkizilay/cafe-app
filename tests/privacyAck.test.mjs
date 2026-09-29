@@ -90,11 +90,11 @@ test('3/4/5: Bestätigungsseite – Checkbox nicht vorausgewählt, Weiter erst m
 test('18: neues Onboarding speichert die aktuelle Version über dasselbe System, vor dem Absenden', () => {
   const onb = read('src/pages/Onboarding.jsx')
   const submit = onb.slice(onb.indexOf('async function submit('))                                   // Absenden (nicht Entwurf speichern)
-  const ack = submit.indexOf('const ack = await acknowledgePrivacyNotice(supabase)')
-  assert.ok(ack > 0 && ack < submit.indexOf("supabase.rpc('save_onboarding'"), 'Kenntnisnahme vor dem Absenden')
+  const ack = submit.indexOf('const ack = await boundedRequest(() => acknowledgePrivacyNotice(supabase)')
+  assert.ok(ack > 0 && ack < submit.indexOf('await saveOnboarding(supabase, {'), 'Kenntnisnahme vor dem Absenden')
   assert.ok(submit.indexOf('if (!privacy)') < ack, 'nur mit gesetzter Checkbox')
-  assert.match(onb, /if \(!ack\.ok\) \{ setSaving\(false\); toast\.error\(appMessage\('privacyAck\.error'\)\); return \}/)
-  assert.match(onb, /p_data: \{ \.\.\.toPayload\(form\), privacy_accepted: true \}, p_submit: true/)   // Legacy-Flag unverändert mitgesendet
+  assert.match(onb, /if \(!ack\.ok\) \{ toast\.error\(appMessage\('privacyAck\.error'\)\); return \}/)   // Sperre per finally frei
+  assert.match(onb, /payload: \{ \.\.\.payload, privacy_accepted: true \}, submit: true/)   // Legacy-Flag unverändert mitgesendet
 })
 
 test('19/20/21: DE und EN vollständig, DE → EN → DE, Kenntnisnahme statt Einwilligung', () => {

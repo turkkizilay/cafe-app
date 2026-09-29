@@ -180,6 +180,38 @@ Kombination → nichts angelegt. (VERIFIED, live 2026-09-28)
 Permanent Lesson: Anti-Pattern 5 gilt auch für Admin-Workflows, die „nur selten“ laufen.
 Regression Protection: `tests/db/lifecycle.test.mjs` (Trigger-Fehler → vollständiger Rollback, parallele Freigabe).
 
+### Hängende Anfrage: Dialog ewig „Wird erstellt…“, Einladung trotzdem angelegt
+Problem: Einladung erstellen blieb dauerhaft im Laden; Dialog geschlossen → Einladung erschien trotzdem. (OBSERVED
+2026-09-29: `check_email_registered` 27,5 s serverseitig, sonst 0,1 s; DB-Logs ohne Befund)
+Root Cause: fetch/supabase-js haben keinen Timeout → Guard + Ladezustand hingen ohne Ende (auch nach Wiederöffnen,
+bis Seiten-Reload); der Ablauf war nicht an den Dialog gebunden → nach dem Schließen wurde später trotzdem eingefügt;
+Fehler der Prüfung wurde ignoriert; Dedupe alter Einladungen aus veralteter lokaler Liste. (VERIFIED im Browser, alter Code)
+Fix: `boundedRequest` (Obergrenze je Schritt, `status: 0` = keine Antwort); Schließen bricht nur lesende Schritte ab;
+ab dem ersten Schreibschritt läuft der Versuch zu Ende und meldet sich (Toast statt fremdem Dialog); Insert mit
+Client-UUID → ohne Antwort per ID nachprüfen (Teil-Erfolg ≠ Fehler); offene Einladungen frisch vom Server. (VERIFIED)
+Permanent Lesson: Jede Benutzeraktion mit Netzwerk braucht ein garantiertes Ende. Bei Schreibaktionen heißt „keine
+Antwort“ nicht „nicht gespeichert“ – idempotent machen (eigene ID) und nachprüfen, statt blind zu wiederholen.
+Regression Protection: `tests/invitationFlow.test.mjs` (Hängen, Schließen vor/nach Schreiben, Doppelklick, verlorene Antwort).
+
+### Stiller Fallback im Signup-Trigger erzeugt Sackgassen-Konten
+Problem: Registrierung mit zwischenzeitlich abgelaufener/zurückgezogener Einladung (oder jedem Fehler im Einladungszweig)
+ergab ein „wartendes“ Konto ohne Onboarding; der Client meldete Erfolg, nur der Admin konnte helfen. (VERIFIED lokal
+mit Production-Funktionen, Audit 2026-09-29)
+Root Cause: `handle_new_user` mit `EXCEPTION WHEN OTHERS THEN NULL` + Fallback-Profil; `save_onboarding` überschrieb
+zudem das ganze Formular ohne Versionsprüfung (veralteter Tab setzte Felder des anderen auf NULL).
+Fix: Migration 28 – Einladungsweg ganz oder gar nicht (RAISE bricht das Auth-Konto ab), `revision` + optionales
+`p_expected_revision` (Konflikt statt Überschreiben), Patch-Semantik, idempotentes Einreichen. (VERIFIED, lokale DB-Tests)
+Permanent Lesson: In Triggern, die Konten anlegen, nie Fehler schlucken – ein abgebrochener Vorgang ist wiederholbar,
+ein halbes Konto nicht. Formular-Speichern mit Revision, sobald zwei Fenster/Geräte denkbar sind.
+Regression Protection: `tests/db/onboarding_resume.test.mjs`.
+Frontend (`src/lib/onboardingFlow.js`): Schritt immer aus den Serverdaten ableiten (erster unvollständiger), nie aus
+Client-Zustand; fehlt eine Antwort, am Serverstand entscheiden (Revision + „steht genau das gespeichert?“), nie raten;
+nach Konflikt nur eigene Eingaben in Feldern behalten, die die Gegenseite nicht geändert hat (Drei-Wege-Vergleich).
+(VERIFIED, `tests/onboardingResume.test.mjs` + manueller Browsertest mit zweitem Gerät, Konflikt, verlorener Antwort)
+Test-Falle: `loadLifecycle()` spielt die Production-Vorlage NACH den Migrationen ein und überschreibt so neuere
+Funktionsversionen → solche Migrationen in `LIFECYCLE_MIGRATIONS` eintragen (werden danach erneut eingespielt,
+müssen wiederholt ausführbar sein); der erste Test der Suite prüft, dass wirklich die neue Version aktiv ist.
+
 ### Lange Dialoge auf dem iPhone nicht erreichbar
 Problem: Einladungs-Dialog auf dem iPhone nicht bis zum Bestätigungsbutton scrollbar (auch am Desktop bei sehr langen Dialogen).
 Root Cause: Globale `.modal-overlay`/`.modal` ohne maximale Höhe und ohne Scrollbereich – zentrierter Inhalt lief oben

@@ -1,6 +1,6 @@
 import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MINDESTLOHN } from '../lib/constants'
 import { supabase, toLocalDateStr } from '../lib/supabase'
@@ -10,12 +10,16 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
+import { boundedRequest } from '../lib/boundedRequest'
 import { translateSupabaseError } from '../lib/errorHelper'
 import OnboardingReview, { ONB_STATUS } from '../components/OnboardingReview'
 import PayModelFields from '../components/PayModelFields'
 import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import { accountStage, requestConfirmationResend, inviteConflict, resetCandidate, resetBlockers, performRegistrationReset } from '../lib/accountRecovery'
+
+// Obergrenzen je Schritt beim Einladen (normal: < 0,3 s). Danach endet „Wird erstellt…“ mit einer klaren Meldung.
+const INVITE_TIMEOUT = { read: 20000, write: 30000, verify: 15000 }
 
 const ROLES = [
   { value: 'employee', get label() { return tr("ui.d422e9b832d6") } },
@@ -61,6 +65,9 @@ export default function UserManagement() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [inviteResult, setInviteResult] = useState(null) // generierter Link
   const [inviteSaving, setInviteSaving] = useState(false)
+  const inviteRunRef   = useRef(null)   // laufender Einladungs-Versuch { cancel, modalSeq, committing }
+  const inviteModalSeq = useRef(0)      // zählt Öffnen/Schließen: Ergebnis nur in den Dialog, aus dem es stammt
+  const fetchSeq       = useRef(0)      // nur die jüngste Aktualisierung schreibt den State
   // Recovery festhängender Registrierungen (Migration 24): Auth-Status je Profil, Konflikt beim Einladen
   const [allProfiles,   setAllProfiles]   = useState([])
   const [accountStates, setAccountStates] = useState({})
@@ -74,10 +81,12 @@ export default function UserManagement() {
   useEffect(() => { fetchAll() }, [])
   useRefreshHandler(() => fetchAll())   // Aktualisieren-Button
 
-  async function fetchAll() {
-    setLoading(true)
+  // silent: ohne Ganzseiten-Ladeanzeige (die würde einen offenen Dialog samt Erfolgsanzeige ausblenden)
+  async function fetchAll(silent = false) {
+    const seq = ++fetchSeq.current
+    if (!silent) setLoading(true)
     try {
-    const [{ data: profiles }, { data: emps }, { data: invs }, { data: onbs }] = await Promise.all([
+    const [{ data: profiles }, { data: emps }, { data: invs, error: invErr }, { data: onbs }] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('employees').select('id, first_name, last_name, email, position, avatar_url, avatar_color, is_active, app_access_hidden').order('last_name'),
       supabase.from('invitations').select('*, employees!employee_id(first_name, last_name)').is('used_at', null).is('revoked_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
@@ -87,8 +96,10 @@ export default function UserManagement() {
     const { data: exp } = await supabase.from('invitations').select('*, employees!employee_id(first_name, last_name)')
       .is('used_at', null).is('revoked_at', null).lte('expires_at', new Date().toISOString())
       .gt('expires_at', new Date(Date.now() - 30 * 86400000).toISOString()).order('expires_at', { ascending: false })
+    if (seq !== fetchSeq.current) return   // eine neuere Aktualisierung läuft – deren Stand gilt
     setExpiredInvites(exp || [])
     const { data: orph, error: orphErr } = await supabase.rpc('admin_login_orphans')
+    if (seq !== fetchSeq.current) return
     setOrphans(orphErr ? [] : (orph || []))
     const onbIds = new Set((onbs || []).map(o => o.profile_id))
     setOnboardings(onbs || [])
@@ -99,9 +110,10 @@ export default function UserManagement() {
     setAllProfiles(profiles || [])
     // Bestätigungsstatus der E-Mail (nur serverseitig lesbar). Fehler → keine Recovery-Aktion anzeigen.
     const { data: st, error: stErr } = await supabase.rpc('admin_account_states')
+    if (seq !== fetchSeq.current) return
     setAccountStates(stErr ? {} : Object.fromEntries((st || []).map(x => [x.profile_id, x])))
     setEmployees(emps || [])
-    setInvitations(invs || [])
+    if (!invErr) setInvitations(invs || [])   // Lesefehler leert die Liste nicht
     // Direktsprünge aus „Mitarbeiter“: ?invite=<employee_id> oder ?new=1
     const invId = searchParams.get('invite'), isNewParam = searchParams.get('new')
     if (invId || isNewParam) {
@@ -119,6 +131,7 @@ export default function UserManagement() {
   // ── Einladung erstellen ─────────────────────────────────────
   // emp = bestehender Mitarbeiter-Datensatz (alter Weg) oder null = neuer Mitarbeiter (Onboarding)
   function openInvite(emp, email) {
+    inviteModalSeq.current++
     setInviteModal(emp || { isNew: true })
     setInviteForm({ email: emp?.email || email || '', role: 'employee' })
     setInviteJob(null)
@@ -154,46 +167,106 @@ export default function UserManagement() {
       }
     }
     setInviteSaving(true)
+    // Ein Versuch gehört zu genau einem geöffneten Dialog. Schließen bricht ab, solange nur gelesen wurde;
+    // ab dem ersten Schreibschritt läuft er zu Ende und meldet sein Ergebnis (nie still im Hintergrund).
+    const run = { cancel: new AbortController(), modalSeq: inviteModalSeq.current, committing: false }
+    inviteRunRef.current = run
+    const noAnswer = r => toast.error(appMessage(r.timedOut ? "invite.noResponse" : "ui.535cccb34776"), 9000)
+    const failed   = (err, base = "ui.535cccb34776") => toast.error(err ? messageParts([appMessage(base), translateSupabaseError(err)], ' ') : appMessage(base), 9000)
 
     try {
       // Doppelte Accounts vermeiden: gibt es die Adresse schon als Login (oder bei neuen Personen als Mitarbeiter)?
       // Auch bei bestehenden Mitarbeitern: ein vorhandenes Auth-Konto würde die Registrierung sonst blockieren.
-      const { data: reg } = await supabase.rpc('check_email_registered', { p_email: email })
+      const checked = await boundedRequest(s => supabase.rpc('check_email_registered', { p_email: email }).abortSignal(s), { ms: INVITE_TIMEOUT.read, cancel: run.cancel.signal })
+      if (checked.cancelled) return   // Dialog geschlossen – nichts geschrieben
+      if (checked.error) {
+        // Ohne Prüfung keine Einladung (sonst toter Link bei vorhandenem Konto)
+        if (checked.status === 0) noAnswer(checked)
+        else failed(checked.error, "invite.checkFailed")
+        return
+      }
+      const reg = checked.data
       if (reg?.exists && (reg.reason === 'auth' || isNew)) {
         // Konto existiert schon: keine zweite Einladung/kein zweiter Mitarbeiter – passende Recovery anbieten
         if (reg.reason === 'auth') setInviteConflictInfo({ email, ...inviteConflict(email, allProfiles, accountStates, onboardings), orphan: orphans.find(o => (o.email || '').toLowerCase() === email) || null })
         else toast.warn(appMessage("ui.07b54feedb71"))
         return
       }
-      // Nur EIN gültiger Link pro Person: ältere offene Einladungen zurückziehen
-      // (danach zeigt der alte Link „Einladung wurde zurückgezogen“)
-      const old = invitations.filter(i => isNew
+      // Nur EIN gültiger Link pro Person: ältere offene Einladungen zurückziehen (danach zeigt der alte Link
+      // „Einladung wurde zurückgezogen“). Frisch vom Server statt aus der Liste: die kann veraltet sein
+      // (anderes Gerät, vorheriger Versuch ohne Antwort) – so bleibt auch ein erneuter Versuch eindeutig.
+      const open = await boundedRequest(s => supabase.from('invitations').select('id, email, employee_id')
+        .is('used_at', null).is('revoked_at', null).gt('expires_at', new Date().toISOString()).abortSignal(s), { ms: INVITE_TIMEOUT.read, cancel: run.cancel.signal })
+      if (open.cancelled) return
+      if (open.error) { if (open.status === 0) noAnswer(open); else failed(open.error); return }
+      const old = (open.data || []).filter(i => isNew
         ? (!i.employee_id && (i.email || '').toLowerCase() === email)
         : i.employee_id === inviteModal.id)
-      for (const o of old) await supabase.rpc('revoke_invitation', { p_id: o.id })
 
-      const { data: inv, error } = await supabase.from('invitations').insert([{
+      run.committing = true   // ab hier nicht mehr abbrechbar
+      for (const o of old) {
+        const rv = await boundedRequest(s => supabase.rpc('revoke_invitation', { p_id: o.id }).abortSignal(s), { ms: INVITE_TIMEOUT.write })
+        if (rv.error || !rv.data?.success) {
+          if (rv.status === 0) noAnswer(rv)
+          else if (rv.data?.error) toast.error(rv.data.error, 9000)   // z. B. alte Einladung inzwischen benutzt
+          else failed(rv.error)
+          fetchAll(true)
+          return
+        }
+      }
+
+      // Eigene ID je Versuch: Kommt keine Antwort, lässt sich eindeutig nachprüfen, ob genau diese Einladung existiert
+      const invId = crypto.randomUUID()
+      const ins = await boundedRequest(s => supabase.from('invitations').insert([{
+        id:          invId,
         employee_id: isNew ? null : inviteModal.id,
         email,
         role:        isNew ? 'employee' : inviteForm.role,
         created_by:  profile?.id,
         job,
-      }]).select().maybeSingle()
+      }]).select().maybeSingle().abortSignal(s), { ms: INVITE_TIMEOUT.write })
 
-      if (error || !inv) { toast.error(appMessage("ui.535cccb34776")); return }
+      let inv = ins.data
+      if (!inv && ins.status === 0) {
+        const chk = await boundedRequest(s => supabase.from('invitations').select('*').eq('id', invId).maybeSingle().abortSignal(s), { ms: INVITE_TIMEOUT.verify })
+        inv = chk.data
+        if (!inv) {
+          // Ergebnis unbekannt: nicht als Fehlschlag melden. Erneutes Einladen ist sicher (zieht diese ggf. zurück).
+          toast.warn(appMessage("invite.unconfirmed"), 12000)
+          fetchAll(true)
+          return
+        }
+      }
+      if (!inv) { failed(ins.error); return }
 
+      // Ab hier ist die Einladung angelegt – alles Weitere ist Komfort und darf keinen Fehler melden
       const link = `${window.location.origin}/?invite=${inv.token}`
-      setInviteResult({ link, isNew, name: isNew ? '' : `${inviteModal.first_name} ${inviteModal.last_name}`, email })
+      const name = isNew ? '' : `${inviteModal.first_name} ${inviteModal.last_name}`
+      if (run.modalSeq === inviteModalSeq.current) setInviteResult({ link, isNew, name, email })
+      else toast.success(appMessage("invite.createdClosed", { email }), 8000)   // Dialog inzwischen geschlossen/gewechselt
+      const replaced = new Set(old.map(o => o.id))
+      setInvitations(prev => [{ ...inv, employees: isNew ? null : { first_name: inviteModal.first_name, last_name: inviteModal.last_name } },
+        ...prev.filter(i => i.id !== inv.id && !replaced.has(i.id))])
       logActivity({
         action: 'employee.invited', category: 'employee',
         summary: isNew ? `hat ${email} als neuen Mitarbeiter eingeladen.` : `hat ${inviteModal.first_name} ${inviteModal.last_name} eingeladen.`,
         targetType: 'invitation', targetId: inv.id, targetName: email,
       })
-      fetchAll()
+      fetchAll(true)
     } finally {
+      if (inviteRunRef.current === run) inviteRunRef.current = null
       setInviteSaving(false)
       inviteGuard.end()
     }
+  }
+
+  // Dialog schließen: läuft noch die reine Prüfung, wird sie abgebrochen (nichts angelegt)
+  function closeInvite() {
+    inviteModalSeq.current++
+    const run = inviteRunRef.current
+    if (run && !run.committing) run.cancel.abort()
+    setInviteModal(null)
+    setInviteResult(null)
   }
 
   async function copyLink(link) {
@@ -545,11 +618,11 @@ export default function UserManagement() {
 
         {/* ── Einladungs-Modal ── */}
         {inviteModal && (
-          <div className="modal-overlay" onClick={() => { setInviteModal(null); setInviteResult(null) }}>
+          <div className="modal-overlay" onClick={closeInvite}>
             <div className="modal" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <div className="modal-title">{inviteModal.isNew ? tr("ui.c21aa413ff3c") : tr("ui.bd4b210a4249")}</div>
-                <button className="btn btn-sm" onClick={() => { setInviteModal(null); setInviteResult(null) }}>✕</button>
+                <button className="btn btn-sm" onClick={closeInvite}>✕</button>
               </div>
               <div className="modal-body">
                 {!inviteResult ? (
@@ -669,7 +742,7 @@ export default function UserManagement() {
               </div>
               {!inviteResult && (
                 <div className="modal-footer">
-                  <button className="btn" onClick={() => setInviteModal(null)}>{tr("ui.f7ff1178af20")}</button>
+                  <button className="btn" onClick={closeInvite}>{tr("ui.f7ff1178af20")}</button>
                   <button className="btn btn-primary" onClick={createInvitation} disabled={inviteSaving}>
                     {inviteSaving ? tr("ui.2ec008516cee") : tr("ui.84596a7ec505")}
                   </button>

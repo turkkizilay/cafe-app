@@ -21,7 +21,7 @@ async function signup(email, token) {
   await db.sys.query(`INSERT INTO auth.users (id, email, email_confirmed_at, raw_user_meta_data) VALUES ($1, $2, NULL, $3)`, [id, email, token ? { invite_token: token } : {}])
   return id
 }
-const VALID = { first_name: 'Ada', last_name: 'Müller-Lüdenscheidt', birth_date: '1995-04-01', street: 'Testweg', house_number: '1a', postal_code: '60311', city: 'Frankfurt', phone: '+49 69 123', iban: 'DE89370400440532013000', account_holder: 'Ada Müller', tax_id: '12345678901', social_security_number: '12345678A123', health_insurance: 'TK', other_employment: false, emergency_contact_name: 'Bo', emergency_contact_phone: '+49 1', privacy_accepted: true }
+const VALID = { first_name: 'Ada', last_name: 'Müller-Lüdenscheidt', birth_date: '1995-04-01', street: 'Testweg', house_number: '1a', postal_code: '60311', city: 'Frankfurt', phone: '+49 69 123', iban: 'DE89370400440532013000', account_holder: 'Ada Müller', tax_id: '12345678901', social_security_number: '12345678A123', health_insurance: 'TK', other_employment: false, emergency_contact_name: 'Bo', emergency_contact_phone: '+49 170 1', privacy_accepted: true }
 const submitted = async email => { const id = await signup(email, (await invite({ email })).token); const c = await asId(id); const r = await one(c, `SELECT save_onboarding($1, true) v`, [{ ...VALID }]); assert.equal(r.v.success, true, JSON.stringify(r.v)); return { id, onb: (await one(db.sys, `SELECT id FROM employee_onboarding WHERE profile_id = $1`, [id])).id } }
 const approveArgs = (onb, pay = 'hourly', employment = 'teilzeit', salary = null) => [onb, 'employee', 'Service', employment, 20, 15.5, day(3), 28, pay, salary]
 const approveSql = `SELECT approve_onboarding_with_pay($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) v`
@@ -52,17 +52,23 @@ test('Retry/zweites Gerät: gleiche Adresse kein zweites Konto; gleicher Link mi
   const inv = await invite({ email: 'neu2@example.test' })
   await signup('neu2@example.test', inv.token)
   assert.match(await err(() => signup('neu2@example.test', inv.token)), /duplicate key|unique/i)
-  const other = await signup('fremd@example.test', inv.token)
-  assert.equal(await count(`SELECT count(*)::int n FROM employee_onboarding WHERE profile_id = $1`, [other]), 0, 'fremde Adresse bekommt keine Einladung')
-  assert.equal((await one(db.sys, `SELECT status FROM profiles WHERE id = $1`, [other])).status, 'pending')
+  // Migration 28: fremde Adresse mit dem Link → gar kein Konto (vorher: wartendes Konto ohne Onboarding = Sackgasse)
+  assert.match(await err(() => signup('fremd@example.test', inv.token)), /nicht mehr gültig/)
+  assert.equal(await count(`SELECT count(*)::int n FROM auth.users WHERE email = 'fremd@example.test'`), 0, 'kein Konto')
+  assert.equal(await count(`SELECT count(*)::int n FROM profiles WHERE email = 'fremd@example.test'`), 0, 'kein Profil')
   const info = await one(await db.anon(), `SELECT get_invitation_info($1) v`, [inv.token])
   assert.equal(info.v.reason, 'used')
 })
 
-test('Abgelaufene/zurückgezogene Einladung: kein Onboarding, klare Gründe; Admin kann die Registrierung sauber ablehnen (keine Waise)', async () => {
+test('Abgelaufene/zurückgezogene Einladung: kein Konto, klare Gründe; wartende Registrierung ohne Einladung kann der Admin sauber ablehnen (keine Waise)', async () => {
   const exp = await invite({ email: 'alt@example.test', expiresIn: '-1 day' })
   assert.equal((await one(await db.anon(), `SELECT get_invitation_info($1) v`, [exp.token])).v.reason, 'expired')
-  const id = await signup('alt@example.test', exp.token)
+  // Migration 28: Registrierung mit abgelaufenem Link legt nichts an (vorher: wartendes Konto ohne Onboarding)
+  assert.match(await err(() => signup('alt@example.test', exp.token)), /nicht mehr gültig/)
+  assert.equal(await count(`SELECT count(*)::int n FROM auth.users WHERE email = 'alt@example.test'`), 0)
+  assert.equal((await one(db.sys, `SELECT used_at FROM invitations WHERE id = $1`, [exp.id])).used_at, null, 'Einladung unverändert')
+  // Registrierung ganz ohne Einladung bleibt möglich (wartet auf Admin) → Admin lehnt sauber ab
+  const id = await signup('alt@example.test', null)
   assert.equal(await count(`SELECT count(*)::int n FROM employee_onboarding WHERE profile_id = $1`, [id]), 0)
   for (const who of [E1, MANAGER]) assert.match(await err(() => db.session(who).then(c => c.query(`SELECT admin_reject_pending_login($1)`, [id]))), /Nicht autorisiert/)
   await (await db.session(ADMIN)).query(`SELECT admin_reject_pending_login($1)`, [id])
@@ -78,8 +84,11 @@ test('Bestehender Mitarbeiter: Signup verknüpft genau einmal; zweite Einladung 
   assert.deepEqual(Object.values(await one(db.sys, `SELECT status, employee_id FROM profiles WHERE id = $1`, [id])), ['approved', emp])
   const st = (await (await db.session(ADMIN)).query(`SELECT email_confirmed FROM admin_account_states() WHERE profile_id = $1`, [id])).rows[0]
   assert.equal(st.email_confirmed, false, 'freigeschaltet, aber E-Mail offen → Admin sieht es')
-  const second = await signup('bea2@example.test', (await invite({ email: 'bea2@example.test', employeeId: emp })).token)
-  assert.equal((await one(db.sys, `SELECT employee_id FROM profiles WHERE id = $1`, [second])).employee_id, null, 'keine Doppelverknüpfung')
+  // Migration 28: zweite Verknüpfung scheitert → gar kein Konto (vorher: wartendes Konto ohne Verknüpfung)
+  const inv2 = await invite({ email: 'bea2@example.test', employeeId: emp })
+  assert.ok(await err(() => signup('bea2@example.test', inv2.token)), 'Registrierung abgelehnt')
+  assert.equal(await count(`SELECT count(*)::int n FROM auth.users WHERE email = 'bea2@example.test'`), 0, 'kein Konto ohne Verknüpfung')
+  assert.equal((await one(db.sys, `SELECT used_at FROM invitations WHERE id = $1`, [inv2.id])).used_at, null, 'Einladung nicht verbraucht')
   assert.equal(await count(`SELECT count(*)::int n FROM profiles WHERE employee_id = $1`, [emp]), 1)
 })
 
@@ -95,12 +104,16 @@ test('Onboarding: Entwurf mehrfach speichern idempotent; ungültige Einreichung 
   assert.equal(noPrivacy.v.field, 'privacy_accepted')
   const [x, y] = [await asId(id), await asId(id)]
   const res = await Promise.all([x, y].map(k => one(k, `SELECT save_onboarding($1, true) v`, [{ ...VALID }])))
-  assert.equal(res.filter(r => r.v.success).length, 1, 'genau eine Einreichung')
-  assert.match(res.find(r => !r.v.success).v.error, /bereits eingereicht/)
+  // Migration 28: Einreichen ist idempotent – beide melden Erfolg, genau eine echte Einreichung
+  assert.equal(res.filter(r => r.v.success && !r.v.already).length, 1, 'genau eine Einreichung')
+  assert.equal(res.filter(r => r.v.success && r.v.already).length, 1, 'zweite: bereits eingereicht, kein Fehler')
+  assert.equal(await count(`SELECT count(*)::int n FROM activity_log WHERE action = 'employee.onboarding_submitted' AND target_id = (SELECT id::text FROM employee_onboarding WHERE profile_id = $1)`, [id]), 1)
   const after1 = await one(db.sys, `SELECT status, tax_id, submitted_at FROM employee_onboarding WHERE profile_id = $1`, [id])
   assert.equal(after1.status, 'submitted')
-  assert.equal((await one(c, `SELECT save_onboarding($1, true) v`, [{ ...VALID, tax_id: '99999999999' }])).v.success, false, 'nach Einreichung keine Änderung')
+  const late = (await one(c, `SELECT save_onboarding($1, true) v`, [{ ...VALID, tax_id: '99999999999' }])).v
+  assert.deepEqual([late.success, late.already], [true, true], 'nach Einreichung: Erfolg, aber Daten nicht übernommen')
   assert.equal((await one(db.sys, `SELECT tax_id FROM employee_onboarding WHERE profile_id = $1`, [id])).tax_id, after1.tax_id)
+  assert.equal((await one(c, `SELECT save_onboarding($1, false) v`, [{ ...VALID, tax_id: '99999999999' }])).v.success, false, 'Entwurf nach Einreichung abgelehnt')
 })
 
 test('Freischaltung mit Vergütung: nur Admin, atomar (Fixgehalt oder gar nichts), kein Duplikat bei Retry/parallel', async () => {

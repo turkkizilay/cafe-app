@@ -1,6 +1,6 @@
 // Test-Harness für DB/RLS/Concurrency-Tests.
 // Startet ein TEMPORÄRES lokales PostgreSQL 17 (embedded-postgres) auf einem freien Port in einem Temp-Ordner,
-// spielt die Schema-Vorlage (Production-Struktur vor Migration 17) und danach die Repository-Migrationen 17–27 ein.
+// spielt die Schema-Vorlage (Production-Struktur vor Migration 17) und danach die Repository-Migrationen 17–28 ein.
 // Sicherheit: Es werden KEINE Verbindungsdaten aus der Umgebung gelesen (kein DATABASE_URL o. Ä.) – Verbindungen
 // gehen ausschließlich an 127.0.0.1 auf den selbst gestarteten Server. Production kann nie erreicht werden.
 import EmbeddedPostgres from 'embedded-postgres'
@@ -17,7 +17,11 @@ export const MIGRATIONS = [
   '17_break_tracking.sql', '18_compensation_model.sql', '19_manager_data_minimization.sql', '20_swap_approve_atomic.sql',
   '21_one_open_time_entry.sql', '22_sick_certs_no_manager_delete.sql', '23_privacy_notice_acknowledgements.sql',
   '24_account_recovery.sql', '25_account_lifecycle_hardening.sql', '26_registration_reset.sql', '27_ops_integrity.sql',
+  '28_onboarding_resumable.sql',
 ]
+// Migrationen, die Invite/Auth/Onboarding-Funktionen ersetzen: nach der Production-Vorlage (loadLifecycle) erneut
+// einspielen, sonst prüften Tests den Stand VOR der Migration. Diese Dateien sind wiederholt ausführbar geschrieben.
+export const LIFECYCLE_MIGRATIONS = ['28_onboarding_resumable.sql']
 export const migration = name => readFileSync(join(MIGRATIONS_DIR, name), 'utf8')
 
 // Was Supabase selbst bereitstellt: Rollen, auth.uid()/auth.users, extensions, storage.objects, Default-Grants
@@ -95,8 +99,12 @@ export async function addPeople(sys, list) {
 }
 
 // Invite/Auth/Onboarding-Funktionen wie in Production (inkl. on_auth_user_created). Erst NACH addPeople laden,
-// weil der Trigger bei jedem neuen auth.users-Eintrag ein Profil anlegt.
-export const loadLifecycle = sys => sys.query(readFileSync(join(HERE, 'fixtures', 'lifecycle_functions.sql'), 'utf8'))
+// weil der Trigger bei jedem neuen auth.users-Eintrag ein Profil anlegt. Danach die Migrationen, die diese Funktionen
+// ersetzen (Stand nach dem Rollout).
+export async function loadLifecycle(sys) {
+  await sys.query(readFileSync(join(HERE, 'fixtures', 'lifecycle_functions.sql'), 'utf8'))
+  for (const m of LIFECYCLE_MIGRATIONS) await sys.query(migration(m))
+}
 // Weitere go-live-relevante Production-Funktionen (Konto löschen, Aufbewahrung, …) – NACH loadLifecycle laden
 export const loadProdFunctions = sys => sys.query(readFileSync(join(HERE, 'fixtures', 'prod_functions.sql'), 'utf8'))
 

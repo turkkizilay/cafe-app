@@ -1,4 +1,4 @@
-import { t as tr, getIntlLocale, localizeMessage, message as appMessage, messageError, errorMessage } from '../i18n/runtime.js'
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useRef } from 'react'
 import { BrandBadge } from '../components/UI/Brand'
@@ -7,19 +7,24 @@ import { formatDate, formatDateTime } from '../i18n/format.js'
 import { useToast } from '../components/UI/Toast'
 import {
   validatePersonal, toPayload, formatIBAN, taxIdChecksumOk, cleanTaxId,
-  FIELD_LABELS, FIELD_MESSAGES, PERSONAL_FIELDS,
+  FIELD_LABELS, FIELD_MESSAGES,
 } from '../lib/personalData'
+import { translateSupabaseError } from '../lib/errorHelper'
+import { boundedRequest } from '../lib/boundedRequest'
+import {
+  STEP_FIELDS, REVIEW_STEP, EDITABLE, ONB_TIMEOUT, rowToForm, resumeStep, canOpenStep, loadOnboarding, saveOnboarding, mergeUnsaved,
+} from '../lib/onboardingFlow'
 import DeleteAccountCard from '../components/DeleteAccountCard'
 import { LEGAL_PATHS } from '../legal/legalContent.js'
 import { acknowledgePrivacyNotice } from '../lib/privacyAck.js'
 
-// ── Schritte des Formulars ──────────────────────────────────
+// ── Schritte des Formulars (Felder: src/lib/onboardingFlow.js) ─
 const STEPS = [
-  { key:'person',  get title() { return tr("ui.ef384102f749") },        icon:'👤', fields:['first_name','last_name','birth_name','birth_date','birth_place','nationality'] },
-  { key:'contact', get title() { return tr("ui.3e05c8cee613") },   icon:'🏠', fields:['street','house_number','postal_code','city','phone'] },
-  { key:'bank',    get title() { return tr("ui.551ef56c92ec") },      icon:'🏦', fields:['iban','account_holder'] },
-  { key:'payroll', get title() { return tr("ui.9c7a0f9f2d3a") }, icon:'🧾', fields:['tax_id','social_security_number','health_insurance','other_employment','other_employment_note'] },
-  { key:'emerg',   get title() { return tr("ui.b285b3cd6355") },      icon:'🚑', fields:['emergency_contact_name','emergency_contact_phone'] },
+  { key:'person',  get title() { return tr("ui.ef384102f749") },        icon:'👤', fields:STEP_FIELDS.person },
+  { key:'contact', get title() { return tr("ui.3e05c8cee613") },   icon:'🏠', fields:STEP_FIELDS.contact },
+  { key:'bank',    get title() { return tr("ui.551ef56c92ec") },      icon:'🏦', fields:STEP_FIELDS.bank },
+  { key:'payroll', get title() { return tr("ui.9c7a0f9f2d3a") }, icon:'🧾', fields:STEP_FIELDS.payroll },
+  { key:'emerg',   get title() { return tr("ui.b285b3cd6355") },      icon:'🚑', fields:STEP_FIELDS.emerg },
   { key:'review',  get title() { return tr("ui.8b4f9d373e90") },   icon:'✅', fields:[] },
 ]
 
@@ -73,13 +78,8 @@ function Row({ label, value }) {
   )
 }
 
-function rowToForm(row) {
-  const f = {}
-  for (const k of PERSONAL_FIELDS) f[k] = row?.[k] ?? (k === 'other_employment' ? null : '')
-  if (f.iban) f.iban = formatIBAN(f.iban)
-  return f
-}
-
+// Der Server ist die Quelle der Wahrheit: Angaben, Status und Revision kommen aus employee_onboarding. Der Schritt
+// wird daraus abgeleitet (erster unvollständiger) – Neu laden, Tab schließen, Login statt Link, anderes Gerät → gleicher Punkt.
 export default function Onboarding({ session, fallback }) {
   useLocale()
   const toast = useToast()
@@ -90,21 +90,52 @@ export default function Onboarding({ session, fallback }) {
   const [errors,  setErrors]  = useState({})
   const [saving,  setSaving]  = useState(false)
   const [privacy, setPrivacy] = useState(false)
-  const topRef = useRef(null)
+  const [notice,  setNotice]  = useState(null)        // { kind: 'resumed', step } | { kind: 'conflict' }
+  const topRef       = useRef(null)
+  const busy         = useRef(false)       // Doppelklick-Sperre, greift sofort (nicht erst nach dem nächsten Render)
+  const loadSeq      = useRef(0)           // nur die jüngste Ladeanfrage schreibt den Zustand
+  const revision     = useRef(undefined)   // zuletzt vom Server bestätigte Revision (Migration 28)
+  const savedPayload = useRef('')          // zuletzt gespeicherter Stand → „ungespeicherte Änderungen“
+  const uid = session.user.id
 
-  async function load() {
-    setState('loading')
-    const { data, error } = await supabase
-      .from('employee_onboarding').select('*')
-      .eq('profile_id', session.user.id).maybeSingle()
-    if (error) { setState('error'); return }
-    if (!data) { setState('none'); return }
+  // Serverstand übernehmen: Angaben, Revision, Schritt
+  function adopt(data) {
+    const f = rowToForm(data)
     setRow(data)
-    setForm(rowToForm(data))
+    setForm(f)
+    revision.current = Number.isInteger(data.revision) ? data.revision : undefined
+    savedPayload.current = JSON.stringify(toPayload(f))
+    setStep(resumeStep(f))
+    return f
+  }
+
+  async function load(nextNotice = null) {
+    const seq = ++loadSeq.current
+    setState('loading')
+    const r = await loadOnboarding(supabase, uid)
+    if (seq !== loadSeq.current) return   // veraltete Antwort
+    if (!r.ok) { setState('error'); return }
+    if (!r.row) { setState('none'); return }
+    const at = resumeStep(adopt(r.row))
+    setErrors({})
+    setNotice(nextNotice || (EDITABLE.includes(r.row.status) && at > 0 ? { kind:'resumed', step: at } : null))
     setState('form')
   }
 
-  useEffect(() => { load() }, [session.user.id])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [uid])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Angezeigter Schritt nie hinter unvollständige Angaben (kein Überspringen, auch nicht per manipuliertem Zustand)
+  const at = Math.min(step, resumeStep(form))
+  const editable = state === 'form' && EDITABLE.includes(row?.status)
+  const dirty = editable && JSON.stringify(toPayload(form)) !== savedPayload.current
+
+  // Tab/App schließen mit ungespeicherten Eingaben → Browser fragt nach
+  useEffect(() => {
+    if (!dirty) return
+    const warn = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   function set(k, v) {
     setForm(f => ({ ...f, [k]: v }))
@@ -115,34 +146,107 @@ export default function Onboarding({ session, fallback }) {
     try { topRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }) } catch { /* ignore */ }
   }
 
-  async function saveDraft() {
-    const { data, error } = await supabase.rpc('save_onboarding', { p_data: toPayload(form), p_submit: false })
-    if (error || !data?.success) throw messageError((data?.error || appMessage("ui.dfb7e42ffb81")))
+  // Ergebnis einer Speicherung anwenden. true = gespeichert (weiter), false = stehen bleiben
+  async function applyOutcome(o, payload) {
+    const adoptRevision = () => { if (Number.isInteger(o.revision)) revision.current = o.revision }
+    switch (o.kind) {
+      case 'saved':
+      case 'already':
+        adoptRevision()
+        savedPayload.current = JSON.stringify(payload)
+        return true
+      case 'conflict': {
+        // Anderes Fenster/Gerät hat inzwischen gespeichert → nichts überschreiben, aktuellen Serverstand zeigen;
+        // eigene Eingaben dieses Schritts bleiben, wo dort nichts geändert wurde (erneut „Weiter“ speichert sie)
+        const mine = form, base = JSON.parse(savedPayload.current || '{}'), fields = STEPS[at].fields
+        await load({ kind:'conflict' })
+        setForm(server => mergeUnsaved(server, mine, base, fields))
+        return false
+      }
+      case 'locked':
+        await load()   // eingereicht/freigeschaltet/abgebrochen → passende Statusseite
+        return false
+      case 'invalid': {
+        // Server hat den Entwurf gespeichert und die Einreichung begründet abgelehnt → Fehler am Feld
+        adoptRevision()
+        savedPayload.current = JSON.stringify(payload)
+        const f = o.field
+        setErrors({ [f]: o.message })
+        const idx = STEPS.findIndex(s => s.fields.includes(f))
+        if (idx >= 0) { setStep(idx); scrollTop() }
+        toast.error(o.message || appMessage("ui.8d9c237fd495"))
+        return false
+      }
+      case 'notSaved':
+        adoptRevision()
+        toast.error(appMessage('onb.noAnswer'), 9000)
+        return false
+      case 'unknown':
+        toast.error(appMessage('onb.unknown'), 9000)
+        return false
+      default:
+        toast.error(o.message || (o.error ? translateSupabaseError(o.error) : appMessage("ui.dfb7e42ffb81")))
+        return false
+    }
   }
 
   async function next() {
-    if (saving) return
-    const errs = validatePersonal(form, STEPS[step].fields)
+    if (busy.current) return
+    const errs = validatePersonal(form, STEPS[at].fields)
     if (Object.keys(errs).length) { setErrors(errs); return }
+    busy.current = true
     setSaving(true)
     try {
-      await saveDraft()
-      setStep(s => Math.min(s + 1, STEPS.length - 1))
-      scrollTop()
-    } catch (e) {
-      toast.error(e.message === 'Failed to fetch' ? (appMessage("ui.2853bd7844a9")) : (errorMessage(e)))
+      const payload = toPayload(form)
+      const o = await saveOnboarding(supabase, { uid, payload, revision: revision.current })
+      if (await applyOutcome(o, payload)) {
+        setNotice(null)
+        setStep(Math.min(at + 1, REVIEW_STEP))
+        scrollTop()
+      }
+    } finally {
+      busy.current = false
+      setSaving(false)
     }
-    setSaving(false)
   }
 
-  function back() {
-    setErrors({  })
-    setStep(s => Math.max(s - 1, 0))
+  // Zurück speichert ebenfalls (ohne Prüfung, als Entwurf) – Eingaben dieses Schritts überleben so auch einen Reload
+  async function back() {
+    if (busy.current) return
+    const payload = toPayload(form)
+    if (JSON.stringify(payload) !== savedPayload.current) {
+      busy.current = true
+      setSaving(true)
+      try {
+        const o = await saveOnboarding(supabase, { uid, payload, revision: revision.current })
+        if (o.kind === 'conflict' || o.kind === 'locked') { await applyOutcome(o, payload); return }
+        if (o.kind === 'saved' || o.kind === 'already') await applyOutcome(o, payload)
+        else {
+          if (o.kind === 'notSaved' && Number.isInteger(o.revision)) revision.current = o.revision
+          toast.warn(appMessage('onb.backNotSaved'))
+        }
+      } finally {
+        busy.current = false
+        setSaving(false)
+      }
+    }
+    setErrors({})
+    setNotice(null)
+    setStep(Math.max(at - 1, 0))
+    scrollTop()
+  }
+
+  // Aus der Übersicht zu einem Abschnitt springen (nur zu bereits erreichbaren Schritten)
+  function goTo(i) {
+    if (busy.current || !canOpenStep(form, i)) return
+    setErrors({})
+    setNotice(null)
+    setStep(i)
     scrollTop()
   }
 
   async function submit() {
-    if (saving) return
+    if (busy.current) return
     const allFields = STEPS.flatMap(s => s.fields)
     const errs = validatePersonal(form, allFields)
     if (Object.keys(errs).length) {
@@ -154,26 +258,23 @@ export default function Onboarding({ session, fallback }) {
       return
     }
     if (!privacy) { setErrors({ privacy_accepted: (appMessage("ui.47deeac03c22")) }); return }
+    busy.current = true
     setSaving(true)
-    // Versionierte Kenntnisnahme (gleiches System wie für bestehende Konten) – ohne Serverbestätigung kein Absenden
-    const ack = await acknowledgePrivacyNotice(supabase)
-    if (!ack.ok) { setSaving(false); toast.error(appMessage('privacyAck.error')); return }
-    const { data, error } = await supabase.rpc('save_onboarding', {
-      p_data: { ...toPayload(form), privacy_accepted: true }, p_submit: true,
-    })
-    setSaving(false)
-    if (error || !data?.success) {
-      const f = data?.field
-      if (f) {
-        setErrors({ f: (data.error) })
-        const idx = STEPS.findIndex(s => s.fields.includes(f))
-        if (idx >= 0) { setStep(idx); scrollTop() }
+    try {
+      // Versionierte Kenntnisnahme (gleiches System wie für bestehende Konten) – ohne Serverbestätigung kein Absenden
+      const ack = await boundedRequest(() => acknowledgePrivacyNotice(supabase), { ms: ONB_TIMEOUT.write })
+      if (!ack.ok) { toast.error(appMessage('privacyAck.error')); return }
+      const payload = toPayload(form)
+      const o = await saveOnboarding(supabase, { uid, payload: { ...payload, privacy_accepted: true }, submit: true, revision: revision.current })
+      if (await applyOutcome(o, payload)) {
+        // Auch „bereits eingereicht“ (z. B. erste Antwort verloren) ist ein Erfolg – kein Fehler
+        toast.success(appMessage(o.kind === 'already' ? 'onb.alreadySubmitted' : "ui.6c8dd191bd56"))
+        await load()
       }
-      toast.error((data?.error || appMessage("ui.8d9c237fd495")))
-      return
+    } finally {
+      busy.current = false
+      setSaving(false)
     }
-    toast.success(appMessage("ui.6c8dd191bd56"))
-    load()
   }
 
   // ── Zustände ohne Formular ──────────────────────────────
@@ -186,7 +287,7 @@ export default function Onboarding({ session, fallback }) {
       <div className="card"><div className="card-body" style={{ textAlign:'center', padding:28 }}>
         <div style={{ fontSize:36, marginBottom:10 }}>⚠️</div>
         <div style={{ fontWeight:600, marginBottom:8 }}>{tr("ui.fd1f3fb400b8")}</div>
-        <button className="btn btn-primary" onClick={load}>{tr("ui.7df1d235ed7f")}</button>
+        <button className="btn btn-primary" onClick={() => load()}>{tr("ui.7df1d235ed7f")}</button>
       </div></div>
     </Shell>
   )
@@ -227,7 +328,7 @@ export default function Onboarding({ session, fallback }) {
   )
 
   // ── Formular (draft / changes_requested) ─────────────────
-  const cur = STEPS[step]
+  const cur = STEPS[at]
   const e = errors
   const inputStyle = k => e[k] ? { borderColor:'var(--danger)' } : undefined
   const taxHint = form.tax_id && cleanTaxId(form.tax_id).length === 11 && !taxIdChecksumOk(form.tax_id)
@@ -238,11 +339,22 @@ export default function Onboarding({ session, fallback }) {
     <Shell wide>
       <div ref={topRef} />
 
-      {step === 0 && (
+      {at === 0 && (
         <div className="card" style={{ marginBottom:16 }}>
           <div className="card-body" style={{ fontSize:14, lineHeight:1.65, color:'var(--text-secondary)' }}>
             <div style={{ fontWeight:700, fontSize:17, color:'var(--text-primary)', marginBottom:6 }}>{tr("ui.1fd63804594b")}</div>{tr("ui.b599da32e834")}<div style={{ fontSize:12.5, color:'var(--text-muted)', marginTop:8 }}>{tr("ui.ea566f0677ac")}</div>
           </div>
+        </div>
+      )}
+
+      {notice?.kind === 'resumed' && (
+        <div role="status" style={{ background:'var(--accent-light)', borderRadius:10, padding:'12px 14px', marginBottom:16, fontSize:13.5, lineHeight:1.6, color:'var(--text-primary)' }}>
+          {tr('onb.resumed', { step: notice.step + 1, total: STEPS.length })}
+        </div>
+      )}
+      {notice?.kind === 'conflict' && (
+        <div role="alert" style={{ background:'var(--warn-bg)', border:'1px solid #FDE68A', borderRadius:10, padding:'12px 14px', marginBottom:16, fontSize:13.5, lineHeight:1.6, color:'var(--text-primary)' }}>
+          {tr('onb.conflict')}
         </div>
       )}
 
@@ -255,10 +367,10 @@ export default function Onboarding({ session, fallback }) {
       {/* Fortschritt */}
       <div style={{ display:'flex', gap:4, marginBottom:8 }} aria-hidden="true">
         {STEPS.map((s, i) => (
-          <div key={s.key} style={{ flex:1, height:4, borderRadius:2, background: i <= step ? 'var(--accent)' : 'var(--border)', transition:'background 0.25s' }} />
+          <div key={s.key} style={{ flex:1, height:4, borderRadius:2, background: i <= at ? 'var(--accent)' : 'var(--border)', transition:'background 0.25s' }} />
         ))}
       </div>
-      <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:12 }}>{tr("ui.c0f684317a91")}{step + 1}{tr("ui.24db69445a9d")}{STEPS.length}
+      <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:12 }}>{tr("ui.c0f684317a91")}{at + 1}{tr("ui.24db69445a9d")}{STEPS.length}
       </div>
 
       <div className="card">
@@ -385,6 +497,14 @@ export default function Onboarding({ session, fallback }) {
             <Row label={tr("ui.ec918980364d")} value={form.other_employment ? tr("ui.bedf0a2cefd6", { p1: (form.other_employment_note) }) : tr("ui.90ebc1bde6f3")} />
             <Row label={tr("ui.b285b3cd6355")} value={`${form.emergency_contact_name}, ${form.emergency_contact_phone}`} />
 
+            {/* Direkt zu einem Abschnitt, um etwas zu ändern (z. B. nach „Korrektur angefordert“) */}
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', marginTop:12, fontSize:12.5, color:'var(--text-muted)' }}>
+              <span>{tr('onb.editSection')}</span>
+              {STEPS.slice(0, REVIEW_STEP).map((s, i) => (
+                <button key={s.key} type="button" className="btn btn-sm" disabled={saving} onClick={() => goTo(i)}>{s.icon} {s.title}</button>
+              ))}
+            </div>
+
             <div style={{ marginTop:18, background:'var(--bg)', borderRadius:10, padding:'12px 14px' }}>
               {/* Kenntnisnahme der Datenschutzhinweise (keine Einwilligung); Link öffnet neuen Tab, Formular bleibt erhalten */}
               <label style={{ display:'flex', gap:10, alignItems:'flex-start', cursor:'pointer', fontSize:13, color:'var(--text-primary)' }}>
@@ -393,12 +513,12 @@ export default function Onboarding({ session, fallback }) {
                 <span>{tr('legal.ackBefore')}<a href={LEGAL_PATHS.privacy} target="_blank" rel="noopener noreferrer"
                   style={{ color:'var(--accent-text, var(--accent))', fontWeight:600 }}>{tr('legal.ackLink')}</a>{tr('legal.ackAfter')}</span>
               </label>
-              {e.privacy_accepted && <div role="alert" style={{ fontSize:12, color:'var(--danger)', marginTop:6 }}>{e.privacy_accepted}</div>}
+              {e.privacy_accepted && <div role="alert" style={{ fontSize:12, color:'var(--danger)', marginTop:6 }}>{localizeMessage(e.privacy_accepted)}</div>}
             </div>
           </>}
 
           <div style={{ display:'flex', gap:10, marginTop:20 }}>
-            {step > 0 && <button className="btn" onClick={back} disabled={saving} style={{ flex:1, justifyContent:'center' }}>{tr("ui.10eefef364ea")}</button>}
+            {at > 0 && <button className="btn" onClick={back} disabled={saving} style={{ flex:1, justifyContent:'center' }}>{tr("ui.10eefef364ea")}</button>}
             {cur.key !== 'review'
               ? <button className="btn btn-primary" onClick={next} disabled={saving} style={{ flex:2, justifyContent:'center' }}>
                   {saving ? tr("ui.7c22c9f556d9") : tr("ui.b3e3f54b2131")}
