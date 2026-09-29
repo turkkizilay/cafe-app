@@ -21,6 +21,7 @@
 -- identisches Ergebnis (keine Revisionsprüfung ohne p_expected_revision). Deploy-Reihenfolge: erst diese Migration,
 -- dann das Frontend. Rückweg: Funktionen aus fixtures/lifecycle_functions.sql wiederherstellen; die Spalte revision
 -- und der Trigger können bleiben (stören den alten Stand nicht).
+-- Bereits live eingespielt (Migration onboarding_resumable, 2026-09-29) — NICHT erneut ausführen.
 -- ============================================================
 
 -- ── Revision: jede Änderung am Onboarding zählt hoch ─────────
