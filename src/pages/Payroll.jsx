@@ -8,7 +8,7 @@ import { logActivity } from '../lib/activityLog'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { monthlyModel, monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
-import { payTypeOf, monthlyGross, sickPayAmount, isPartialMonth, datevRateCell, datevHintCell, PAY_FIXED, missingPersonnelNumbers } from '../lib/compensation'
+import { payTypeOf, monthlyGross, sickPayAmount, isPartialMonth, datevRateCell, datevHintCell, PAY_FIXED, missingPersonnelNumbers, payrollYearOptions } from '../lib/compensation'
 import { saveFile } from '../lib/download'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import { unresolvedByEmployee } from '../lib/workHours'
@@ -384,7 +384,7 @@ export default function Payroll() {
           <button className="btn" onClick={() => handleDatevExport(rows, exportMonthLabel)} disabled={loading || rows.length === 0}
             title={tr('payroll.exportAllHint', { count: rows.length })}>{tr("ui.6d2bd07b0514")}</button>
           <select value={year} onChange={e => setYear(+e.target.value)} style={{ width:90 }}>
-            {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
+            {payrollYearOptions(new Date().getFullYear(), year).map(y => <option key={y}>{y}</option>)}
           </select>
         </div>
       </div>

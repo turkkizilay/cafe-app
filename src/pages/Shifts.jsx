@@ -10,6 +10,7 @@ import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { useDarkMode } from '../context/DarkModeContext'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import TimeInput24 from '../components/UI/TimeInput24'
 
 const DAY_NAMES  = () => [tr("ui.d23e867e38e8"), tr("ui.16ab72874809"), tr("ui.d8f33a13ae6e"), tr("ui.30094e0bec00"), tr("ui.eed8f901692d"), tr("ui.a951efc79deb"), tr("ui.fb1df1a24e3f")]
 const DAY_FULL   = () => [tr("ui.b703fc6aeb9c"),tr("ui.c2e102ca1f11"),tr("ui.76c93ad154a5"),tr("ui.b15c4daa80ba"),tr("ui.5815ddf1ffb1"),tr("ui.7c22aad82322"),tr("ui.a5984592501e")]
@@ -287,7 +288,7 @@ export default function Shifts() {
     const nextShifts = shifts.filter(sh => sh.employee_id === empId && sh.date === nextDate)
 
     for (const prev of prevShifts) {
-      const prevEnd   = new Date(`${prevDate}T${prev.end_time || '23:59'}:00`)
+      const prevEnd   = new Date(`${prevDate}T${(prev.end_time || '23:59').slice(0, 5)}:00`)   // DB liefert HH:MM:SS
       const thisStart = new Date(`${date}T${startTime}:00`)
       const rest = (thisStart - prevEnd) / 3600000
       if (rest < 11 && rest > 0)
@@ -295,7 +296,7 @@ export default function Shifts() {
     }
     for (const next of nextShifts) {
       const thisEnd   = new Date(`${date}T${endTime}:00`)
-      const nextStart = new Date(`${nextDate}T${next.start_time || '00:00'}:00`)
+      const nextStart = new Date(`${nextDate}T${(next.start_time || '00:00').slice(0, 5)}:00`)
       const rest = (nextStart - thisEnd) / 3600000
       if (rest < 11 && rest > 0)
         warnings.push(appMessage("ui.48591bbeef02", { p1: (formatParam("number", rest, {minimumFractionDigits:1, maximumFractionDigits:1})) }))
@@ -314,6 +315,8 @@ export default function Shifts() {
     // Live ArbZG check beim Tippen
     if (newForm.employee_id && newForm.date && newForm.start_time && newForm.end_time) {
       setArbzgWarnings(checkArbZG(newForm.employee_id, newForm.date, newForm.start_time, newForm.end_time))
+    } else {
+      setArbzgWarnings([])   // unvollständige/gelöschte Uhrzeit: keine Warnungen auf Basis des vorherigen Werts
     }
   }
 
@@ -599,8 +602,8 @@ export default function Shifts() {
                 📅 {formatDate(editModal.date)} · {employees.find(e => e.id === editModal.employee_id)?.first_name || ''} {employees.find(e => e.id === editModal.employee_id)?.last_name || ''}
               </div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.0d95fd6a769f")}</label><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} /></div>
-                <div className="form-group"><label>{tr("ui.2ddcd606c872")}</label><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.0d95fd6a769f")}</label><TimeInput24 value={form.start_time} onChange={v => f('start_time', v)} aria-label={tr("ui.0d95fd6a769f")} invalidText={tr('time.invalid24Short')} /></div>
+                <div className="form-group"><label>{tr("ui.2ddcd606c872")}</label><TimeInput24 value={form.end_time} onChange={v => f('end_time', v)} aria-label={tr("ui.2ddcd606c872")} invalidText={tr('time.invalid24Short')} /></div>
               </div>
               {form.start_time && form.end_time && (
                 <div className="alert alert-info" style={{ marginBottom:12 }}>
@@ -648,8 +651,8 @@ export default function Shifts() {
               </div>
               <div className="form-group"><label>{tr("ui.9135882d323c")}</label><input type="date" value={form.date} onChange={e => f('date', e.target.value)} /></div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.0d95fd6a769f")}</label><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} /></div>
-                <div className="form-group"><label>{tr("ui.2ddcd606c872")}</label><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.0d95fd6a769f")}</label><TimeInput24 value={form.start_time} onChange={v => f('start_time', v)} aria-label={tr("ui.0d95fd6a769f")} invalidText={tr('time.invalid24Short')} /></div>
+                <div className="form-group"><label>{tr("ui.2ddcd606c872")}</label><TimeInput24 value={form.end_time} onChange={v => f('end_time', v)} aria-label={tr("ui.2ddcd606c872")} invalidText={tr('time.invalid24Short')} /></div>
               </div>
               {form.start_time && form.end_time && (
                 <div className="alert alert-info">

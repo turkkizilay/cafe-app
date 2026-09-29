@@ -11,6 +11,7 @@ import { breakElapsedMinutes, BREAK_WARNING_MINUTES, formerStaffCutoff, correcti
 import { fetchBreaksForEntries, isBreakFeatureMissing } from '../lib/breaks'
 import Avatar from '../components/UI/Avatar'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import TimeInput24 from '../components/UI/TimeInput24'
 
 const EMPTY_FORM = {
   employee_id: '', date: toLocalDateStr(new Date()),
@@ -53,6 +54,7 @@ export default function TimeManagement() {
   const [loading,      setLoading]      = useState(false)
   const [modal,        setModal]        = useState(null)
   const [form,         setForm]         = useState(EMPTY_FORM)
+  const [badTimes,     setBadTimes]     = useState({})   // Zeitfelder mit unvollständiger/ungültiger Eingabe
   const [saving,       setSaving]       = useState(false)
   const [deleteModal,  setDeleteModal]  = useState(null)
   const [deleteReason, setDeleteReason] = useState('')
@@ -109,6 +111,7 @@ export default function TimeManagement() {
       ? `${filterYear}-${String(filterMonth).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`
       : filterDate
     setForm({ ...EMPTY_FORM, employee_id: filterEmp, date })
+    setBadTimes({})
     setModal('add')
   }
 
@@ -126,6 +129,7 @@ export default function TimeManagement() {
       breaks:         breakRows,
       breaksOrig:     breakRows,
     })
+    setBadTimes({})
     setModal('edit')
   }
 
@@ -136,6 +140,8 @@ export default function TimeManagement() {
   }
 
   async function doSave() {
+    // Unvollständige/ungültige Uhrzeit nie speichern – ein leeres Ausstempel-/Pausenende hieße sonst „offen“
+    if (Object.values(badTimes).some(Boolean)) { toast.warn(appMessage("time.invalid24")); return }
     if (!form.reason.trim()) { toast.warn(appMessage("ui.9631f4375e40")); return }
     // Mitternacht: Uhrzeiten vor der Einstempelzeit gehören zum Folgetag (wie die DB) – keine „gleicher Tag“-Annahme
     const plan = correctionPlan({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
@@ -201,7 +207,12 @@ export default function TimeManagement() {
   function f(k, v) { setForm(x => ({ ...x, [k]: v })) }
   function setBreak(i, k, v) { setForm(x => ({ ...x, breaks: x.breaks.map((b, j) => j === i ? { ...b, [k]: v } : b) })) }
   function addBreak() { setForm(x => ({ ...x, breaks: [...x.breaks, { key: `new-${Date.now()}-${x.breaks.length}`, start: '', end: '' }] })) }
-  function removeBreak(i) { setForm(x => ({ ...x, breaks: x.breaks.filter((_, j) => j !== i), break_minutes: x.breaks.length === 1 ? 0 : x.break_minutes })) }
+  function removeBreak(i) {
+    const key = form.breaks[i]?.key
+    setBadTimes(t => ({ ...t, [`bs:${key}`]: false, [`be:${key}`]: false }))
+    setForm(x => ({ ...x, breaks: x.breaks.filter((_, j) => j !== i), break_minutes: x.breaks.length === 1 ? 0 : x.break_minutes }))
+  }
+  const timeChange = (key, apply) => (v, meta) => { setBadTimes(t => ({ ...t, [key]: !!meta?.incomplete })); apply(v) }
   const formPlan     = correctionPlan({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
   const formBreakMin = form.breaks.length ? (formPlan.breakMin ?? 0) : (Number(form.break_minutes) || 0)
   const nextDayHint  = t => endsNextDay(form.clock_in_time, t) ? <span className="badge badge-amber" style={{ marginLeft:6 }}>{tr('time.nextDay')}</span> : null
@@ -442,11 +453,11 @@ export default function TimeManagement() {
               <div className="two-col">
                 <div className="form-group">
                   <label>{tr("ui.7527c410788b")}</label>
-                  <input type="time" value={form.clock_in_time} onChange={e => f('clock_in_time', e.target.value)} />
+                  <TimeInput24 value={form.clock_in_time} onChange={timeChange('in', v => f('clock_in_time', v))} invalidText={tr('time.invalid24Short')} />
                 </div>
                 <div className="form-group">
                   <label>{tr("ui.574b19674395")}<span style={{ fontSize:10, fontWeight:400, color:'var(--text-muted)' }}>{tr("ui.e8ec76d20c43")}</span></label>
-                  <input type="time" value={form.clock_out_time} onChange={e => f('clock_out_time', e.target.value)} />
+                  <TimeInput24 value={form.clock_out_time} onChange={timeChange('out', v => f('clock_out_time', v))} invalidText={tr('time.invalid24Short')} />
                   {nextDayHint(form.clock_out_time)}
                 </div>
               </div>
@@ -460,9 +471,9 @@ export default function TimeManagement() {
                   <div className="break-rows">
                     {form.breaks.map((b, i) => (
                       <div className="break-row" key={b.key}>
-                        <input type="time" aria-label={tr("time.breakStart")} value={b.start} onChange={e => setBreak(i, 'start', e.target.value)} />
+                        <TimeInput24 aria-label={tr("time.breakStart")} value={b.start} onChange={timeChange(`bs:${b.key}`, v => setBreak(i, 'start', v))} />
                         <span aria-hidden="true">–</span>
-                        <input type="time" aria-label={tr("time.breakEnd")} value={b.end} onChange={e => setBreak(i, 'end', e.target.value)} />
+                        <TimeInput24 aria-label={tr("time.breakEnd")} value={b.end} onChange={timeChange(`be:${b.key}`, v => setBreak(i, 'end', v))} />
                         {nextDayHint(b.start)}
                         <button type="button" className="btn btn-sm" aria-label={tr("time.removeBreak")} title={tr("time.removeBreak")} onClick={() => removeBreak(i)}>✕</button>
                       </div>

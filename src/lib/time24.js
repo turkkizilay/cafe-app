@@ -1,0 +1,34 @@
+// 24-Stunden-Uhrzeit (HH:MM) für Eingabefelder – unabhängig von Browser-/OS-Locale.
+// Hintergrund: <input type="time"> zeigt je nach Browser/System 12 h mit AM/PM (Chrome folgt der Browsersprache,
+// Safari der Systemeinstellung – <html lang="de"> hilft nicht). Löscht man dort ein Segment (z. B. AM/PM), wird der
+// Wert leer und das kontrollierte Feld hängt in einem halben Zustand. Deshalb: Freitext + eindeutige Normalisierung.
+
+const pad = n => String(n).padStart(2, '0')
+
+// Akzeptiert „08:30“, „8:30“, „8.30“, „8,30“, „0830“, „830“, „8“, „18“ → „08:30“ / „08:00“ / „18:00“.
+// Liefert null für alles Unvollständige/Ungültige (z. B. „8:3“, „24:00“, „12:60“, „ab“). Nie 12-h-Deutung.
+export function parseTime24(text) {
+  const t = String(text ?? '').trim().replace(/[.,hH]/g, ':')
+  let m
+  let h, min
+  if ((m = t.match(/^(\d{1,2}):(\d{2})$/))) { h = +m[1]; min = +m[2] }
+  else if ((m = t.match(/^(\d{1,2})(\d{2})$/))) { h = +m[1]; min = +m[2] }
+  else if ((m = t.match(/^(\d{1,2})$/))) { h = +m[1]; min = 0 }
+  else return null
+  if (h > 23 || min > 59) return null
+  return `${pad(h)}:${pad(min)}`
+}
+
+// Nur Zeichen zulassen, die in einer Uhrzeit vorkommen (Ziffern und Trenner), max. 5 Zeichen.
+export function sanitizeTimeDraft(text) {
+  return String(text ?? '').replace(/[^0-9:.,]/g, '').slice(0, 5)
+}
+
+// Während des Tippens: nur eine VOLLSTÄNDIGE Uhrzeit gilt (Minuten zweistellig angegeben): „18:00“, „8:30“, „8.30“,
+// „0830“. Kurzformen („18“, „8“, „830“) sind hier noch unvollständig – der Nutzer tippt evtl. weiter („18“ → „1830“) –
+// und werden erst beim Verlassen des Feldes über parseTime24 normalisiert. So erreicht nie ein Zwischenstand wie
+// „01:00“ (beim Tippen von „18“) die Formular-/Validierungs-/ArbZG-Logik.
+export function parseCompleteTime24(text) {
+  const t = String(text ?? '').trim()
+  return /^\d{1,2}[:.,hH]\d{2}$/.test(t) || /^\d{4}$/.test(t) ? parseTime24(t) : null
+}

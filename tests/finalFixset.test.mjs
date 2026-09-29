@@ -90,3 +90,14 @@ test('i18n: neue Texte DE/EN vollständig, Platzhalter identisch', () => {
     assert.deepEqual((en[k].match(/\{\w+\}/g) || []).sort(), (de[k].match(/\{\w+\}/g) || []).sort(), k)
   }
 })
+
+test('Lohnabrechnung: Jahresauswahl wächst mit (ab 2024 bis Folgejahr), gewähltes Jahr bleibt auswählbar', async () => {
+  const { payrollYearOptions } = await import('../src/lib/compensation.js')
+  assert.deepEqual(payrollYearOptions(2026, 2026), [2024, 2025, 2026, 2027])
+  assert.deepEqual(payrollYearOptions(2028, 2028), [2024, 2025, 2026, 2027, 2028, 2029], 'nach 2027 weiter nutzbar')
+  assert.deepEqual(payrollYearOptions(2031, 2031).slice(-2), [2031, 2032])
+  assert.deepEqual(payrollYearOptions(2026, 2023), [2023, 2024, 2025, 2026, 2027], 'Jahr außerhalb bleibt sichtbar')
+  const p = read('src/pages/Payroll.jsx')
+  assert.match(p, /\{payrollYearOptions\(new Date\(\)\.getFullYear\(\), year\)\.map\(y => <option key=\{y\}>\{y\}<\/option>\)\}/)
+  assert.doesNotMatch(p, /\[2024,\s*2025,\s*2026,\s*2027\]/, 'keine feste Jahresliste')
+})

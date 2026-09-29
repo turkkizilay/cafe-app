@@ -67,3 +67,13 @@ export function datevHintCell(row) {
 export function missingPersonnelNumbers(rows) {
   return (rows || []).filter(r => !/^[0-9]{1,10}$/.test(String(r.personnel_number ?? '')))
 }
+
+// Jahresauswahl der Lohnabrechnung: ab dem ersten Abrechnungsjahr bis Folgejahr, mitwachsend (keine feste Liste).
+// Ein gewähltes Jahr außerhalb des Bereichs bleibt auswählbar (sonst zeigte das Feld einen falschen Wert).
+export const FIRST_PAYROLL_YEAR = 2024
+export function payrollYearOptions(currentYear, selectedYear) {
+  const last = Math.max(currentYear + 1, FIRST_PAYROLL_YEAR)
+  const years = Array.from({ length: last - FIRST_PAYROLL_YEAR + 1 }, (_, i) => FIRST_PAYROLL_YEAR + i)
+  if (selectedYear != null && !years.includes(selectedYear)) years.push(selectedYear)
+  return years.sort((a, b) => a - b)
+}

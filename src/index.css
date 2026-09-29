@@ -544,7 +544,7 @@ select.select-styled {
 /* Admin: Pausen in Zeitkorrekturen */
 .break-rows { display: flex; flex-direction: column; gap: 6px; }
 .break-row { display: flex; align-items: center; gap: 6px; }
-.break-row input[type="time"] { flex: 1; min-width: 0; }
+.break-row input[type="time"], .break-row input[inputmode="numeric"] { flex: 1; min-width: 0; }
 .break-rows-sum { font-size: 12px; color: var(--text-secondary); }
 .break-hint { font-size: 11px; color: var(--text-muted); }
 .break-hint-open { color: var(--warn); font-weight: 600; }
