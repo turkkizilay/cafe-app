@@ -1,6 +1,6 @@
 // Test-Harness für DB/RLS/Concurrency-Tests.
 // Startet ein TEMPORÄRES lokales PostgreSQL 17 (embedded-postgres) auf einem freien Port in einem Temp-Ordner,
-// spielt die Schema-Vorlage (Production-Struktur vor Migration 17) und danach die Repository-Migrationen 17–26 ein.
+// spielt die Schema-Vorlage (Production-Struktur vor Migration 17) und danach die Repository-Migrationen 17–27 ein.
 // Sicherheit: Es werden KEINE Verbindungsdaten aus der Umgebung gelesen (kein DATABASE_URL o. Ä.) – Verbindungen
 // gehen ausschließlich an 127.0.0.1 auf den selbst gestarteten Server. Production kann nie erreicht werden.
 import EmbeddedPostgres from 'embedded-postgres'
@@ -16,7 +16,7 @@ const MIGRATIONS_DIR = join(HERE, '..', '..', 'supabase', 'migrations_onboarding
 export const MIGRATIONS = [
   '17_break_tracking.sql', '18_compensation_model.sql', '19_manager_data_minimization.sql', '20_swap_approve_atomic.sql',
   '21_one_open_time_entry.sql', '22_sick_certs_no_manager_delete.sql', '23_privacy_notice_acknowledgements.sql',
-  '24_account_recovery.sql', '25_account_lifecycle_hardening.sql', '26_registration_reset.sql',
+  '24_account_recovery.sql', '25_account_lifecycle_hardening.sql', '26_registration_reset.sql', '27_ops_integrity.sql',
 ]
 export const migration = name => readFileSync(join(MIGRATIONS_DIR, name), 'utf8')
 
@@ -27,7 +27,7 @@ const PLATFORM = `
   CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb DEFAULT '{}', raw_app_meta_data jsonb DEFAULT '{}', created_at timestamptz DEFAULT now(),
                            email_confirmed_at timestamptz DEFAULT now(), confirmation_sent_at timestamptz, last_sign_in_at timestamptz);
   CREATE UNIQUE INDEX users_email_key ON auth.users (email);   -- wie Supabase: eine Adresse = ein Auth-Konto
-  CREATE TABLE storage.objects (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, bucket_id text, name text, owner uuid, owner_id text, created_at timestamptz DEFAULT now());
+  CREATE TABLE storage.objects (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, bucket_id text, name text, owner uuid, owner_id text, metadata jsonb, created_at timestamptz DEFAULT now());
   CREATE FUNCTION storage.foldername(name text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$ SELECT (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', '')::uuid $$;
   CREATE FUNCTION extensions.uuid_generate_v4() RETURNS uuid LANGUAGE sql AS $$ SELECT gen_random_uuid() $$;
@@ -97,6 +97,8 @@ export async function addPeople(sys, list) {
 // Invite/Auth/Onboarding-Funktionen wie in Production (inkl. on_auth_user_created). Erst NACH addPeople laden,
 // weil der Trigger bei jedem neuen auth.users-Eintrag ein Profil anlegt.
 export const loadLifecycle = sys => sys.query(readFileSync(join(HERE, 'fixtures', 'lifecycle_functions.sql'), 'utf8'))
+// Weitere go-live-relevante Production-Funktionen (Konto löschen, Aufbewahrung, …) – NACH loadLifecycle laden
+export const loadProdFunctions = sys => sys.query(readFileSync(join(HERE, 'fixtures', 'prod_functions.sql'), 'utf8'))
 
 // Fehlermeldung einer Operation (null = erfolgreich)
 export const err = async fn => { try { await fn(); return null } catch (e) { return e.message } }

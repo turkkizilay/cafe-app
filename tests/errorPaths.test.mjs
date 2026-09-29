@@ -92,12 +92,16 @@ test('Urlaubsantrag zurückziehen, der inzwischen genehmigt wurde → Fehler sta
 })
 
 test('Zeiteintrag löschen (Admin): Doppelklick-Sperre wird bei Fehler freigegeben', async () => {
-  const deleteGuard = guard(); const toast = spyToast()
-  const fn = load('src/pages/TimeManagement.jsx', 'confirmDelete', { ...common, deleteGuard, deleteReason: 'Test', deleteModal: { id: 'e1', employee_id: 'x', clock_in: null, clock_out: null }, toTime: () => '', profile: { id: 'p' }, supabase: fakeSupabase({ time_entries: ERR }), toast, setDeleteModal: () => {}, setDeleteReason: () => {}, employees: [], fetchEntries: () => {} })
-  await fn()
-  assert.equal(deleteGuard.locked, false, 'Sperre frei → erneuter Versuch möglich')
-  assert.ok(toast.calls.some(c => c[0] === 'error'))
-  assert.ok(!toast.calls.some(c => c[0] === 'success'))
+  // Migration 27: Löschen + Protokoll atomar per RPC; Fehler oder success:false → keine Erfolgsmeldung
+  for (const res of [ERR, { data: { success: false }, error: null }]) {
+    const deleteGuard = guard(); const toast = spyToast(); let refreshed = 0
+    const fn = load('src/pages/TimeManagement.jsx', 'confirmDelete', { ...common, deleteGuard, deleteReason: 'Test', deleteModal: { id: 'e1', employee_id: 'x', clock_in: null, clock_out: null }, timeEntryState: () => ({}), breaksByEntry: {}, profile: { id: 'p' }, supabase: fakeSupabase({ 'rpc:admin_delete_time_entry': res }), toast, setDeleteModal: () => {}, setDeleteReason: () => {}, employees: [], fetchEntries: () => refreshed++ })
+    await fn()
+    assert.equal(deleteGuard.locked, false, 'Sperre frei → erneuter Versuch möglich')
+    assert.ok(toast.calls.some(c => c[0] === 'error'))
+    assert.ok(!toast.calls.some(c => c[0] === 'success'))
+    assert.equal(refreshed, 1, 'Ansicht neu laden (evtl. veraltet)')
+  }
 })
 
 test('Registrierung ablehnen: Fehler wird gemeldet, nicht „abgelehnt“', async () => {
@@ -146,7 +150,6 @@ test('Krankmeldung mit Attest: fehlgeschlagene Verknüpfung wird gemeldet', () =
 test('Keine Supabase-Schreibaktion ohne Fehlerauswertung in Seiten (außer bewusst tolerierten)', () => {
   const allowed = [
     "src/pages/PayrollDocuments.jsx: await supabase.storage.from('payroll-docs').remove([doc.file_path])",   // Datei nach gelöschtem Datensatz aufräumen
-    "src/pages/TimeManagement.jsx: await supabase.from('time_corrections').insert([{",                         // Protokoll vor dem Speichern/Löschen
     "src/pages/Employees.jsx: await supabase.storage.from('employee-documents').remove([filePath])",
   ]
   const found = []

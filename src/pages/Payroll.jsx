@@ -8,9 +8,10 @@ import { logActivity } from '../lib/activityLog'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { monthlyModel, monthlyTargetHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
-import { payTypeOf, monthlyGross, sickPayAmount, isPartialMonth, datevRateCell, datevHintCell, PAY_FIXED } from '../lib/compensation'
+import { payTypeOf, monthlyGross, sickPayAmount, isPartialMonth, datevRateCell, datevHintCell, PAY_FIXED, missingPersonnelNumbers } from '../lib/compensation'
 import { saveFile } from '../lib/download'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import { unresolvedByEmployee } from '../lib/workHours'
 
 const MINIJOB_LIMIT      = 603    // € / Monat 2026 (§ 8 Abs. 1 Nr. 1 SGB IV)
 const WERKSTUDENT_LIMIT  = STUDENT_MONTHLY_LIMIT_H   // Stunden / Monat (betriebliche Regel, zentral in workTimeModels)
@@ -126,8 +127,8 @@ function OvertimeBadge({ emp, overtime, actualHours, limit, earnings }) {
 function exportDATEV(rows, monthLabel) {
   const EMP_TYPE_DATEV = { vollzeit:'Vollzeit', teilzeit:'Teilzeit', werkstudent:'Werkstudent', minijob:'Geringfügig' }
   const headers = ['Personalnummer','Nachname','Vorname','Beschäftigungsart','Stunden Soll','Stunden Ist','Urlaubsstunden (§11 BUrlG)','Krankheitsstunden (Lohnfortzahlung §3 EFZG)','Überstunden','Stundenlohn EUR','Bruttolohn EUR','Hinweise']
-  const rows_csv = rows.map((r, i) => [
-    String(i+1).padStart(4,'0'),
+  const rows_csv = rows.map(r => [
+    String(r.personnel_number ?? ''),   // feste Personalnummer aus der Personalakte (Migration 27), nie die Zeilennummer
     r.last_name, r.first_name,
     EMP_TYPE_DATEV[r.employment_type] || r.employment_type,
     r.monthTarget.toFixed(2).replace('.',','),
@@ -158,9 +159,14 @@ export default function Payroll() {
   const [filter,      setFilter]      = useState('all') // all | overtime | alert
   const [isFinalized, setIsFinalized] = useState(false)
   const [finalizing,  setFinalizing]  = useState(false)
+  const [unresolved,  setUnresolved]  = useState([])   // offene / „Ausstempeln vergessen“ → zählen als 0 Std.
 
-  function handleDatevExport(filtered, monthLabel) {
-    exportDATEV(filtered, monthLabel)
+  // DATEV: immer ALLE abgerechneten Mitarbeiter des Monats (unabhängig vom Ansichtsfilter), nur mit fester Personalnummer
+  function handleDatevExport(allRows, monthLabel) {
+    const missing = missingPersonnelNumbers(allRows)
+    if (missing.length) { toast.error(appMessage('payroll.personnelNumberMissing', { names: missing.map(r => `${r.first_name} ${r.last_name}`).join(', ') }), 15000); return }
+    if (!confirmUnresolved()) return
+    exportDATEV(allRows, monthLabel)
     logActivity({
       action: 'payroll.datev_export', category: 'payroll',
       summary: `hat einen DATEV-Export für ${monthLabel} erstellt.`,
@@ -180,8 +186,9 @@ export default function Payroll() {
     const end   = `${year}-${pad}-${String(new Date(year, month, 0).getDate()).padStart(2,'0')}`
 
     const [{ data: employees }, { data: entries }, { data: finalized }, { data: vacations }, { data: sickLeaves }] = await Promise.all([
-      supabase.from('employees').select('*').eq('is_active', true).order('last_name'),
-      supabase.from('time_entries').select('employee_id, hours_worked, date').gte('date', start).lte('date', end),
+      // Aktive + im Monat Ausgeschiedene (end_date ≥ Monatsbeginn): der letzte Monat gehört noch in die Abrechnung
+      supabase.from('employees').select('*').or(`is_active.eq.true,end_date.gte.${start}`).order('last_name'),
+      supabase.from('time_entries').select('employee_id, hours_worked, date, clock_out, notes').gte('date', start).lte('date', end),
       // Bereits abgeschlossene (eingefrorene) Lohnwerte für diesen Monat, falls vorhanden.
       supabase.from('payroll_months').select('*').eq('year', year).eq('month', month),
       // §11 BUrlG Urlaubsentgelt: genehmigte Urlaube, die (teilweise) in den Monat fallen.
@@ -280,6 +287,8 @@ export default function Payroll() {
 
     setRows(result)
     setIsFinalized(result.length > 0 && result.every(r => r.frozen))
+    const empName = Object.fromEntries((employees || []).map(e => [e.id, `${e.first_name} ${e.last_name}`]))
+    setUnresolved(unresolvedByEmployee(entries).filter(u => empName[u.employee_id]).map(u => ({ ...u, name: empName[u.employee_id] })))
     } catch (err) {
       toast.error(messageParts([appMessage("ui.bca4918dcbef"), errorMessage(err)]))
     }
@@ -290,8 +299,13 @@ export default function Payroll() {
   // sonst würden unvollständige, noch laufende Daten eingefroren.
   const monthHasEnded = new Date(year, month, 1) <= new Date()
 
+  // Ungeklärte Zeiteinträge zählen als 0 Std. – Abschluss/Export nur nach ausdrücklicher Bestätigung
+  const unresolvedCount = unresolved.reduce((s, u) => s + u.count, 0)
+  const confirmUnresolved = () => unresolvedCount === 0 || window.confirm(tr('payroll.unresolvedConfirm', { count: unresolvedCount }))
+
   async function finalizeMonth() {
     if (finalizing || rows.length === 0) return
+    if (!confirmUnresolved()) return
     setFinalizing(true)
     const payload = rows.map(r => ({
       employee_id:    r.id,
@@ -367,7 +381,8 @@ export default function Payroll() {
                 title={!monthHasEnded ? tr("ui.fb55d952c370") : tr("ui.9563eaee5234")}>{tr("ui.f6ba644f3057")}</button>
             )
           )}
-          <button className="btn" onClick={() => handleDatevExport(filtered, exportMonthLabel)} disabled={loading || rows.length === 0}>{tr("ui.6d2bd07b0514")}</button>
+          <button className="btn" onClick={() => handleDatevExport(rows, exportMonthLabel)} disabled={loading || rows.length === 0}
+            title={tr('payroll.exportAllHint', { count: rows.length })}>{tr("ui.6d2bd07b0514")}</button>
           <select value={year} onChange={e => setYear(+e.target.value)} style={{ width:90 }}>
             {[2024,2025,2026,2027].map(y => <option key={y}>{y}</option>)}
           </select>
@@ -404,12 +419,24 @@ export default function Payroll() {
           <div className="alert" style={{ marginBottom:16, fontSize:12, color:'var(--text-secondary)' }}>{tr("ui.f9c6246d89ff")}</div>
         )}
 
+        {unresolved.length > 0 && !loading && (
+          <div className="alert alert-danger" role="alert" style={{ marginBottom:16, fontSize:13 }}>
+            <strong>{tr('payroll.unresolvedTitle', { count: unresolvedCount })}</strong>
+            <div style={{ marginTop:4 }}>{tr('payroll.unresolvedHint')}</div>
+            <div style={{ marginTop:4 }}>{unresolved.map(u => `${u.name} (${u.count})`).join(', ')}</div>
+          </div>
+        )}
+
         {/* Alert Banner */}
         {alertCount > 0 && (
           <div className="alert alert-danger" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span>{tr("payroll.alerts", { count: alertCount })}</span>
             <button className="btn btn-sm btn-danger" onClick={() => setFilter('alert')}>{tr("ui.ccb27f03f03e")}</button>
           </div>
+        )}
+
+        {filter !== 'all' && !loading && (
+          <div className="alert alert-info" style={{ marginBottom:12, fontSize:12 }}>{tr('payroll.exportAllHint', { count: rows.length })}</div>
         )}
 
         {/* Filter Tabs */}

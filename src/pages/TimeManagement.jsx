@@ -7,8 +7,8 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
-import { calcWorkedHours, sumBreakMinutes, validateBreaks, breakElapsedMinutes, BREAK_WARNING_MINUTES } from '../lib/workHours'
-import { fetchBreaksForEntries, syncBreaks, logBreakCorrection, isBreakFeatureMissing } from '../lib/breaks'
+import { breakElapsedMinutes, BREAK_WARNING_MINUTES, formerStaffCutoff, correctionPlan, endsNextDay, timeEntryState, berlinTime } from '../lib/workHours'
+import { fetchBreaksForEntries, isBreakFeatureMissing } from '../lib/breaks'
 import Avatar from '../components/UI/Avatar'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
@@ -19,14 +19,13 @@ const EMPTY_FORM = {
   breaks: [], breaksOrig: [],   // erfasste Pausen { id?, key, start:'HH:MM', end:'HH:MM' }
 }
 
-function toISO(date, time) { return new Date(`${date}T${time}:00`).toISOString() }
 function toTime(iso) {
   if (!iso) return '–'
   return new Date(iso).toLocaleTimeString(getIntlLocale(), { hour:'2-digit', minute:'2-digit' })
 }
-const calcHours = calcWorkedHours
-const fmtBreaks = rows => rows.map(b => `${b.start}–${b.end || '…'}`).join(', ') || '–'
 const BREAK_ERROR_KEY = {
+  missingIn:    "ui.3d4194b88e7c",
+  sameInOut:    "time.sameInOut",
   missing:      "time.breakMissing",
   order:        "time.breakOrder",
   outside:      "time.breakOutside",
@@ -62,11 +61,12 @@ export default function TimeManagement() {
 
   useEffect(() => {
     supabase.from('employees')
-      .select('id, first_name, last_name, avatar_url, avatar_color')
-      .eq('is_active', true).order('last_name')
+      .select('id, first_name, last_name, avatar_url, avatar_color, is_active')
+      .or(`is_active.eq.true,end_date.gte.${formerStaffCutoff()}`).order('last_name')   // + kürzlich Ausgeschiedene
       .then(({ data }) => {
         setEmployees(data || [])
-        if (data?.length) setFilterEmp(data[0].id)
+        const first = (data || []).find(e => e.is_active) || data?.[0]
+        if (first) setFilterEmp(first.id)
       })
   }, [])
 
@@ -113,13 +113,13 @@ export default function TimeManagement() {
   }
 
   function openEdit(entry) {
-    const breakRows = (breaksByEntry[entry.id] || []).map(b => ({ id: b.id, key: b.id, start: toTime(b.break_start), end: b.break_end ? toTime(b.break_end) : '' }))
+    const breakRows = (breaksByEntry[entry.id] || []).map(b => ({ id: b.id, key: b.id, start: berlinTime(b.break_start), end: berlinTime(b.break_end) }))
     setForm({
       id:             entry.id,
       employee_id:    entry.employee_id,
       date:           entry.date,
-      clock_in_time:  toTime(entry.clock_in),
-      clock_out_time: entry.clock_out ? toTime(entry.clock_out) : '',
+      clock_in_time:  berlinTime(entry.clock_in),   // Formularwerte: Europe/Berlin, 24 h (wie die DB rechnet)
+      clock_out_time: berlinTime(entry.clock_out),
       break_minutes:  entry.break_minutes || 0,
       notes:          entry.notes?.replace('[ADMIN-KORREKTUR]','').replace(/⚠️ AUSSTEMPELN VERGESSEN[^)]*\)/, '').trim() || '',
       reason:         '',
@@ -137,62 +137,26 @@ export default function TimeManagement() {
 
   async function doSave() {
     if (!form.reason.trim()) { toast.warn(appMessage("ui.9631f4375e40")); return }
-    if (!form.clock_in_time)  { toast.warn(appMessage("ui.3d4194b88e7c")); return }
-    if (form.clock_out_time && form.clock_out_time <= form.clock_in_time) {
-      toast.warn(appMessage("ui.ae51b9542766")); return
-    }
+    // Mitternacht: Uhrzeiten vor der Einstempelzeit gehören zum Folgetag (wie die DB) – keine „gleicher Tag“-Annahme
+    const plan = correctionPlan({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
+    if (plan.error) { toast.warn(appMessage(BREAK_ERROR_KEY[plan.error.code], { n: (plan.error.index ?? 0) + 1 })); return }
     setSaving(true)
-    const clockIn  = toISO(form.date, form.clock_in_time)
-    const clockOut = form.clock_out_time ? toISO(form.date, form.clock_out_time) : null
-    // Erfasste Pausen haben Vorrang; ohne Pausen-Zeilen gilt das Minuten-Feld (Altbestand)
-    const breakRows = form.breaks.map(b => ({
-      id: b.id, employee_id: form.employee_id,
-      break_start: b.start ? toISO(form.date, b.start) : null,
-      break_end:   b.end   ? toISO(form.date, b.end)   : null,
-    }))
-    const syncRows = breaksOn && (breakRows.length > 0 || form.breaksOrig.length > 0)
-    const invalid  = breakRows.length ? validateBreaks(breakRows, clockIn, clockOut) : null
-    if (invalid) { toast.warn(appMessage(BREAK_ERROR_KEY[invalid.code], { n: invalid.index + 1 })); setSaving(false); return }
-    const breakMin = breakRows.length ? (clockOut ? sumBreakMinutes(breakRows, clockOut) : 0) : (parseInt(form.break_minutes)||0)
-    const hoursNet = clockOut ? calcHours(clockIn, clockOut, breakMin) : null
-    // Offene Schicht wird geschlossen: Pausen zuerst anpassen – die DB summiert sie beim Ausclocken
-    const origEntry = modal === 'edit' ? entries.find(e => e.id === form.id) : null
-    const syncFirst = syncRows && origEntry && !origEntry.clock_out
-    if (syncFirst) {
-      const { error } = await syncBreaks(form.id, breakRows, breaksByEntry[form.id] || [])
-      if (error) { toast.error(messageParts([appMessage("time.breaksSaveFailed"), errorMessage(error)])); setSaving(false); fetchEntries(); return }
-    }
-    const payload  = {
-      employee_id:   form.employee_id, date: form.date, clock_in: clockIn, clock_out: clockOut,
-      break_minutes: breakMin,
-      hours_worked:  hoursNet ? parseFloat(hoursNet.toFixed(2)) : null,
-      notes:         `[ADMIN-KORREKTUR] ${form.notes}`.trim(), approved: true,
-    }
-    let entryId = form.id, oldValue = null
-    if (modal === 'add') {
-      const { data, error } = await supabase.from('time_entries').insert([payload]).select().maybeSingle()
-      if (error) { toast.error(errorMessage(error)); setSaving(false); return }
-      entryId = data.id
-    } else {
-      const orig = entries.find(e => e.id === form.id)
-      oldValue = `${toTime(orig?.clock_in)} – ${toTime(orig?.clock_out)}`
-      const { error } = await supabase.from('time_entries').update(payload).eq('id', form.id)
-      if (error) { toast.error(errorMessage(error)); setSaving(false); return }
-    }
-    await supabase.from('time_corrections').insert([{
-      time_entry_id: entryId, employee_id: form.employee_id, corrected_by: profile.id,
-      field_changed: modal === 'add' ? 'new_entry' : 'manual_edit',
-      old_value: oldValue, new_value: `${form.clock_in_time} – ${form.clock_out_time}`,
-      reason: form.reason,
-    }])
-    if (syncRows && !syncFirst) {
-      const { error } = await syncBreaks(entryId, breakRows, breaksByEntry[entryId] || [])
-      if (error) { toast.error(messageParts([appMessage("time.breaksSaveFailed"), errorMessage(error)])); setSaving(false); setModal(null); fetchEntries(); return }
-    }
-    if (syncRows && fmtBreaks(form.breaksOrig) !== fmtBreaks(form.breaks)) {
-      await logBreakCorrection({ timeEntryId: entryId, employeeId: form.employee_id, correctedBy: profile.id,
-        oldValue: fmtBreaks(form.breaksOrig), newValue: fmtBreaks(form.breaks), reason: form.reason })
-    }
+    const orig = modal === 'edit' ? entries.find(e => e.id === form.id) : null
+    // Eintrag + Pausen + Stunden + Korrekturprotokoll atomar in der DB; veraltete Ansicht → Abbruch statt Überschreiben
+    const { data, error } = await supabase.rpc('admin_save_time_entry', {
+      p_id:            orig ? orig.id : null,
+      p_employee_id:   form.employee_id,
+      p_date:          form.date,
+      p_in:            form.clock_in_time,
+      p_out:           form.clock_out_time || null,
+      p_breaks:        form.breaks.map(b => ({ start: b.start, end: b.end || null })),
+      p_break_minutes: form.breaks.length ? null : (parseInt(form.break_minutes) || 0),
+      p_notes:         form.notes,
+      p_reason:        form.reason,
+      p_expected:      orig ? timeEntryState(orig, breaksByEntry[orig.id] || []) : null,
+    })
+    if (error || !data?.success) { toast.error(messageParts([appMessage("time.saveFailed"), errorMessage(error)]), 9000); setSaving(false); fetchEntries(); return }
+    const entryId = data.id
     toast.success(appMessage("ui.29f204c81646", { p1: (modal === 'add' ? (appMessage("ui.d5601d043f1d")) : (appMessage("time.corrected"))) }))
 
     // Protokoll
@@ -214,13 +178,11 @@ export default function TimeManagement() {
     if (!deleteGuard.begin()) return
     if (!deleteReason.trim()) { toast.warn(appMessage("ui.f45548749dce")); deleteGuard.end(); return }
     const entry = deleteModal
-    await supabase.from('time_corrections').insert([{
-      time_entry_id: entry.id, employee_id: entry.employee_id, corrected_by: profile.id,
-      field_changed: 'deleted', old_value: `${toTime(entry.clock_in)} – ${toTime(entry.clock_out)}`,
-      reason: deleteReason,
-    }])
-    const { error } = await supabase.from('time_entries').delete().eq('id', entry.id)
-    if (error) { toast.error(errorMessage(error)); deleteGuard.end(); return }   // Sperre freigeben, sonst reagiert „Löschen“ nicht mehr
+    // Protokoll + Löschen atomar in der DB; inzwischen geänderter Eintrag → Abbruch
+    const { data, error } = await supabase.rpc('admin_delete_time_entry', {
+      p_id: entry.id, p_reason: deleteReason, p_expected: timeEntryState(entry, breaksByEntry[entry.id] || []),
+    })
+    if (error || !data?.success) { toast.error(messageParts([appMessage("time.deleteFailed"), errorMessage(error)]), 9000); deleteGuard.end(); fetchEntries(); return }   // Sperre freigeben, sonst reagiert „Löschen“ nicht mehr
     setDeleteModal(null); setDeleteReason('')
     toast.success(appMessage("ui.0473ea60b74c"))
 
@@ -240,9 +202,9 @@ export default function TimeManagement() {
   function setBreak(i, k, v) { setForm(x => ({ ...x, breaks: x.breaks.map((b, j) => j === i ? { ...b, [k]: v } : b) })) }
   function addBreak() { setForm(x => ({ ...x, breaks: [...x.breaks, { key: `new-${Date.now()}-${x.breaks.length}`, start: '', end: '' }] })) }
   function removeBreak(i) { setForm(x => ({ ...x, breaks: x.breaks.filter((_, j) => j !== i), break_minutes: x.breaks.length === 1 ? 0 : x.break_minutes })) }
-  const formBreakMin = form.breaks.length
-    ? sumBreakMinutes(form.breaks.filter(b => b.start && b.end && b.end > b.start).map(b => ({ break_start: `2000-01-01T${b.start}`, break_end: `2000-01-01T${b.end}` })))
-    : (Number(form.break_minutes) || 0)
+  const formPlan     = correctionPlan({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
+  const formBreakMin = form.breaks.length ? (formPlan.breakMin ?? 0) : (Number(form.break_minutes) || 0)
+  const nextDayHint  = t => endsNextDay(form.clock_in_time, t) ? <span className="badge badge-amber" style={{ marginLeft:6 }}>{tr('time.nextDay')}</span> : null
 
   const emp          = employees.find(e => e.id === filterEmp)
   const totalHours   = entries.reduce((s, e) => s + (e.hours_worked || 0), 0)
@@ -273,7 +235,7 @@ export default function TimeManagement() {
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   {emp && <Avatar src={emp.avatar_url} firstName={emp.first_name} lastName={emp.last_name} color={emp.avatar_color} size={28} />}
                   <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} style={{ flex:1 }}>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                   </select>
                 </div>
               </div>
@@ -470,7 +432,7 @@ export default function TimeManagement() {
               <div className="form-group">
                 <label>{tr("ui.f4cb6891b9e5")}</label>
                 <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)}>
-                  {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+                  {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -485,6 +447,7 @@ export default function TimeManagement() {
                 <div className="form-group">
                   <label>{tr("ui.574b19674395")}<span style={{ fontSize:10, fontWeight:400, color:'var(--text-muted)' }}>{tr("ui.e8ec76d20c43")}</span></label>
                   <input type="time" value={form.clock_out_time} onChange={e => f('clock_out_time', e.target.value)} />
+                  {nextDayHint(form.clock_out_time)}
                 </div>
               </div>
               <div className="form-group">
@@ -500,6 +463,7 @@ export default function TimeManagement() {
                         <input type="time" aria-label={tr("time.breakStart")} value={b.start} onChange={e => setBreak(i, 'start', e.target.value)} />
                         <span aria-hidden="true">–</span>
                         <input type="time" aria-label={tr("time.breakEnd")} value={b.end} onChange={e => setBreak(i, 'end', e.target.value)} />
+                        {nextDayHint(b.start)}
                         <button type="button" className="btn btn-sm" aria-label={tr("time.removeBreak")} title={tr("time.removeBreak")} onClick={() => removeBreak(i)}>✕</button>
                       </div>
                     ))}
@@ -512,7 +476,7 @@ export default function TimeManagement() {
               </div>
               {form.clock_in_time && form.clock_out_time && (
                 <div style={{ background:'var(--accent-light)', borderRadius:8, padding:'10px 12px', marginBottom:12, fontSize:13 }}>{tr("ui.e82f7c50fd79")}<strong>
-                    {Math.max(0, (new Date(`2000-01-01T${form.clock_out_time}`) - new Date(`2000-01-01T${form.clock_in_time}`)) / 3600000 - formBreakMin/60).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong>
+                    {(formPlan.outMin == null ? 0 : Math.max(0, (formPlan.outMin - formBreakMin) / 60)).toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong>
                 </div>
               )}
               <div className="form-group">

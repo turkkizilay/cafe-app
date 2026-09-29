@@ -160,7 +160,13 @@ test('DATEV-CSV: Anführungszeichen/Semikolon im Namen (Freitext) bleiben gülti
   const before = load(execFileSync('git', ['show', 'f2a2a42:src/pages/Payroll.jsx'], { encoding: 'utf8' }))
   const base = { employment_type: 'vollzeit', pay_type: 'hourly', hourly_rate: 15.5, monthTarget: 172, actualHours: 180, vacationHours: 0, sickHours: 0, overtime: 8, total: 2790, isAlert: true }
   const normal = [{ ...base, last_name: 'Müller-Lüdenscheidt', first_name: 'Jörg' }, { ...base, last_name: 'Weiß', first_name: 'Anna', pay_type: 'fixed', monthly_salary: 2000, total: 2000 }]
-  assert.equal(await now(normal), await before(normal), 'Format für normale Daten unverändert')
+  // Einzige freigegebene Änderung (H3, Migration 27): Spalte 1 = feste Personalnummer statt Zeilennummer
+  const withPn = normal.map((r, i) => ({ ...r, personnel_number: String(4711 + i) }))
+  const strip = t => t.split('\n').map(l => l.slice(l.indexOf(';'))).join('\n')
+  assert.equal(strip(await now(withPn)), strip(await before(withPn)), 'alle übrigen Spalten byte-identisch zum bisherigen Export')
+  assert.deepEqual((await now(withPn)).split('\n').slice(1).map(l => l.split(';')[0]), ['"4711"', '"4712"'], 'Personalnummer aus der Personalakte')
+  assert.deepEqual((await now([...withPn].reverse())).split('\n').slice(1).map(l => l.split(';')[0]), ['"4712"', '"4711"'], 'unabhängig von Reihenfolge/Filter')
+  assert.deepEqual((await before(withPn)).split('\n').slice(1).map(l => l.split(';')[0]), ['"0001"', '"0002"'], 'Gegenprobe: alter Export nutzte die Zeilennummer')
   // RFC-4180-Parser: Felder in "…", "" = ein Anführungszeichen
   const parse = text => text.split('\n').map(line => { const out = []; let i = 0; while (i < line.length) { assert.equal(line[i], '"'); let v = ''; i++; for (;;) { if (line[i] === '"' && line[i + 1] === '"') { v += '"'; i += 2 } else if (line[i] === '"') { i++; break } else v += line[i++] } out.push(v); if (line[i] === ';') i++ } return out })
   const names = [['O"Brien; Jr.', 'Anna "Anni"'], ["O'Connor", 'Seán'], ['Name, mit Komma', 'Jörg'], ['Mustermann-Smith', 'Äöü ß'], ['Name "mit Anführungszeichen"', '']]

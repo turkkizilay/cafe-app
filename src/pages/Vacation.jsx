@@ -437,7 +437,7 @@ export default function Vacation() {
   async function deleteSickLeave(sickId, ownEmployeeId, dateLabel, hasAttest = false) {
     if (deletingSickId) return
     const isOwnLeave = ownEmployeeId === (profile?.employee_id)
-    if (!canManage && !isOwnLeave) {
+    if (!isAdmin && !isOwnLeave) {   // Löschen: nur Admin bzw. eigene frische Meldung (Migration 27)
       toast.error(appMessage("ui.fc5b42196a31"))
       return
     }
@@ -898,7 +898,7 @@ export default function Vacation() {
                                     {/* Löschen: NUR bei Einzelmeldung über diesen Button.
                                         Bei mehreren Meldungen im Fall: individuelle Buttons im Warn-Bereich unten. */}
                                     {sc.leaves.length === 1 &&
-                                     (canManage || (sc.employee_id === profile?.employee_id && canSelfDeleteSick(sc.leaves[0]))) && (
+                                     (isAdmin || (sc.employee_id === profile?.employee_id && canSelfDeleteSick(sc.leaves[0]))) && (
                                       <button
                                         className="btn btn-sm"
                                         disabled={!!deletingSickId}
@@ -947,7 +947,7 @@ export default function Vacation() {
                                                     ? <span style={{ fontSize:11, color:'#059669' }}>✓</span>
                                                     : <span style={{ fontSize:11, color:'#DC2626' }}>{tr("ui.24e80f20f406")}</span>
                                                 }
-                                                {(canManage || (lv.employee_id === profile?.employee_id && canSelfDeleteSick(lv))) && (
+                                                {(isAdmin || (lv.employee_id === profile?.employee_id && canSelfDeleteSick(lv))) && (
                                                   <button
                                                     className="btn btn-sm"
                                                     style={{ background:'#FEF2F2', color:'#DC2626', border:'1px solid #FECACA', padding:'1px 6px', fontSize:11 }}

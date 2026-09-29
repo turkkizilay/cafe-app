@@ -9,6 +9,7 @@ import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import { formerStaffCutoff } from '../lib/workHours'
 
 const getMonths = () => Array.from({ length: 12 }, (_, i) => ({
   v: i + 1,
@@ -43,7 +44,7 @@ export default function PayrollDocuments() {
     try {
     if (isAdmin) {
       const [{ data: emps }, { data: docs }] = await Promise.all([
-        supabase.from('employees').select('id, first_name, last_name').eq('is_active', true).order('last_name'),
+        supabase.from('employees').select('id, first_name, last_name, is_active').or(`is_active.eq.true,end_date.gte.${formerStaffCutoff()}`).order('last_name'),   // + kürzlich Ausgeschiedene (letzte Abrechnung)
         supabase.from('payroll_documents').select('*, employees!employee_id(first_name, last_name)').order('year', { ascending: false }).order('month', { ascending: false }),
       ])
       setEmployees(emps || [])
@@ -207,7 +208,7 @@ export default function PayrollDocuments() {
                 <div className="form-group" style={{ marginBottom:0, flex:2, minWidth:180 }}>
                   <label>{tr("ui.f4cb6891b9e5")}</label>
                   <select value={selEmp} onChange={e => setSelEmp(e.target.value)}>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                   </select>
                 </div>
                 <div className="form-group" style={{ marginBottom:0 }}>

@@ -73,3 +73,63 @@ export function netWorkedHours(clockIn, clockOut, breaks, now = new Date()) {
   const end = clockOut || now
   return calcWorkedHours(clockIn, end, sumBreakMinutes(breaks, end))
 }
+
+// ── Lohnrelevante offene Punkte ──
+// Ein Zeiteintrag ist für die Abrechnung „ungeklärt“, solange er noch offen ist (kein Ausstempeln) oder vom Server als
+// „Ausstempeln vergessen“ markiert wurde (> 12 h, mit 0 Std. bewertet, erst nach Admin-Korrektur bezahlt).
+// Beide zählen in der Monatsabrechnung als 0 Std. – der Admin muss das vor Abschluss/Export sehen.
+export const FORGOT_CLOCKOUT_MARK = 'AUSSTEMPELN VERGESSEN'
+export function isUnresolvedEntry(e) {
+  return !!e && (!e.clock_out || String(e.notes || '').includes(FORGOT_CLOCKOUT_MARK))
+}
+// → [{ employee_id, count }] je Mitarbeiter mit ungeklärten Einträgen
+export function unresolvedByEmployee(entries) {
+  const m = new Map()
+  for (const e of entries || []) if (isUnresolvedEntry(e)) m.set(e.employee_id, (m.get(e.employee_id) || 0) + 1)
+  return [...m].map(([employee_id, count]) => ({ employee_id, count }))
+}
+
+// Admin-Auswahllisten (Zeitkorrektur, Lohndokumente): Ausgeschiedene der letzten 12 Monate bleiben auswählbar –
+// letzte Schicht korrigieren / letzte Abrechnung hochladen, ohne zu reaktivieren (das würde den Login entsperren).
+// → erster Tag des Monats vor 12 Monaten (YYYY-MM-DD, lokales Datum)
+export function formerStaffCutoff(today = new Date()) {
+  const d = new Date(today.getFullYear(), today.getMonth() - 12, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+// ── Admin-Zeitkorrektur (Migration 27: admin_save_time_entry) ──
+// Eingabe = Datum + Wanduhrzeiten (HH:MM). Regel (identisch zur DB): Uhrzeiten VOR der Einstempelzeit gehören zum
+// Folgetag → Schichten über Mitternacht; jede Schicht ist kürzer als 24 h. Maßgeblich rechnet die DB (Zeitzone,
+// Sommer-/Winterzeit); hier nur Vorschau und Vorab-Prüfung ohne Server-Rundreise.
+const hhmm = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m }
+export function shiftOffsetMin(inT, t) {
+  if (!inT || !t) return null
+  const d = hhmm(t) - hhmm(inT)
+  return d < 0 ? d + 1440 : d
+}
+export function endsNextDay(inT, t) { return !!inT && !!t && hhmm(t) < hhmm(inT) }
+// → { error: { code, index? } } | { outMin, breakMin, hours }
+export function correctionPlan({ inT, outT, breaks = [] }) {
+  if (!inT) return { error: { code: 'missingIn' } }
+  if (outT && hhmm(outT) === hhmm(inT)) return { error: { code: 'sameInOut' } }
+  const outMin = outT ? shiftOffsetMin(inT, outT) : null
+  const rows = breaks.map(b => ({
+    break_start: b.start ? shiftOffsetMin(inT, b.start) * 60000 : null,
+    break_end:   b.end   ? shiftOffsetMin(inT, b.end) * 60000 : null,
+  }))
+  const invalid = rows.length ? validateBreaks(rows, 0, outMin == null ? null : outMin * 60000) : null
+  if (invalid) return { error: invalid }
+  const breakMin = rows.length ? Math.round(rows.reduce((s, r) => s + (r.break_end == null ? 0 : r.break_end - r.break_start), 0) / 60000) : null
+  return { outMin, breakMin, hours: outMin == null ? null : Math.max(0, (outMin - (breakMin || 0)) / 60) }
+}
+// Stand eines Eintrags wie _time_entry_state() in der DB (Epoch-Sekunden) – für die Prüfung auf veraltete Ansicht
+export function timeEntryState(entry, breaks = []) {
+  const sec = v => (v ? Math.floor(new Date(v).getTime() / 1000) : null)
+  return {
+    clock_in: sec(entry.clock_in), clock_out: sec(entry.clock_out),
+    breaks: [...breaks].sort((a, b) => new Date(a.break_start) - new Date(b.break_start)).map(b => [sec(b.break_start), sec(b.break_end)]),
+  }
+}
+// Formularwert HH:MM immer als Wanduhrzeit Europe/Berlin (24 h) – unabhängig von Sprache und Zeitzone des Geräts
+const BERLIN_HHMM = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Berlin' })
+export function berlinTime(iso) { return iso ? BERLIN_HHMM.format(new Date(iso)) : '' }

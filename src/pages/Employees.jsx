@@ -60,6 +60,7 @@ export default function Employees() {
   const [employees, setEmployees] = useState([])
   // Vergütungsmodell erst nutzen, wenn die DB die Spalten hat (Migration 18)
   const payFeatureOn = employees.some(e => 'pay_type' in e)
+  const pnFeatureOn  = employees.some(e => 'personnel_number' in e)   // Migration 27 – vorher Spalte nicht mitsenden
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null)
   const [form,      setForm]      = useState(EMPTY)
@@ -254,6 +255,8 @@ export default function Employees() {
       if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError(appMessage("ui.9ec91c2ee981")); return }
       // Wochenstunden sind Pflicht – sonst wäre das Monats-Soll 0 und alle Stunden würden als Überstunden gelten
       if (parseWeeklyHours(form.hours_per_week) === null) { setError(appMessage("employees.hoursInvalid")); return }
+      const pn = String(form.personnel_number ?? '').trim()
+      if (pnFeatureOn && pn && !/^[0-9]{1,10}$/.test(pn)) { setError(appMessage("employee.personnelNumberInvalid")); return }
       const payErr = payFeatureOn ? validatePayModel({ ...form, pay_type: payTypeOf(form) }) : null
       if (payErr) { setError(appMessage(PAY_ERROR_KEY[payErr])); return }
 
@@ -315,6 +318,7 @@ export default function Employees() {
           pay_type:             payTypeOf(form),
           monthly_salary:       payTypeOf(form) === PAY_FIXED ? parseMonthlySalary(form.monthly_salary) : null,
         } : {}),
+        ...(pnFeatureOn ? { personnel_number: pn || null } : {}),
         start_date:             form.start_date,
         end_date:               n(form.end_date),
         vacation_days_per_year: parseInt(form.vacation_days_per_year),
@@ -345,7 +349,7 @@ export default function Employees() {
         : await supabase.from('employees').update(payload).eq('id', form.id).select('id').maybeSingle()
 
       if (err) {
-        setError(translateSupabaseError(err, appMessage("ui.84853b348826")))
+        setError(/personnel_number/.test(err.message || '') ? appMessage("employee.personnelNumberTaken") : translateSupabaseError(err, appMessage("ui.84853b348826")))
         return
       }
       if (modal === 'add' && saved) setJustCreated(saved)
@@ -367,7 +371,10 @@ export default function Employees() {
       .is('clock_out', null)
       .maybeSingle()
     setOpenClockIn(!!openEntry)
-    setConfirmDeact({ id, name, openEntry })
+    setConfirmDeact({ id, name, openEntry, offboarding: null, offboardingError: false })
+    // Offboarding: offene Punkte serverseitig lesen (nichts wird automatisch gelöscht/abgelehnt – Migration 27)
+    const { data: ob, error: obErr } = await supabase.rpc('admin_offboarding_check', { p_employee_id: id })
+    setConfirmDeact(c => c && c.id === id ? { ...c, offboarding: obErr ? null : ob, offboardingError: !!obErr } : c)
   }
 
   async function doDeactivate() {
@@ -565,6 +572,7 @@ export default function Employees() {
                   <span style={{ fontSize:12, lineHeight:1.5, display:'block', marginTop:4 }}>{tr("ui.b63b3c2ba8b2")}<strong>{tr("ui.1ba6ae4c4865")}</strong>{tr("ui.ab7c3aaa7bfa")}</span>
                 </div>
               )}
+              <OffboardingHints c={confirmDeact} onGo={path => { setConfirmDeact(null); setOpenClockIn(false); navigate(path) }} />
               <div className="alert alert-danger">
                 {confirmDeact.name}{tr("ui.0fc1cc79ccd9")}{openClockIn ? tr("ui.d7fa805a7f5a") : ''}{tr("ui.dd7b3f33115f")}</div>
               {access[confirmDeact.id] && access[confirmDeact.id] !== 'invited' && (
@@ -656,6 +664,13 @@ export default function Employees() {
                     </div>
                   )}
                 </div>
+                {isAdmin && pnFeatureOn && (
+                <div className="form-group">
+                  <label>{tr("employee.personnelNumber")}</label>
+                  <input inputMode="numeric" value={form.personnel_number ?? ''} onChange={e => f('personnel_number', e.target.value)} maxLength={10} />
+                  <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3 }}>{tr("employee.personnelNumberHint")}</div>
+                </div>
+                )}
                 {isAdmin && (
                 <div className="form-group">
                   <label>{tr("ui.04d8b7c7a102")}</label>
@@ -887,5 +902,32 @@ export default function Employees() {
         </div>
       )}
     </>
+  )
+}
+
+// Offene Punkte vor dem Deaktivieren (admin_offboarding_check) – nur Hinweise + Sprünge, keine automatische Aktion
+function OffboardingHints({ c, onGo }) {
+  if (c.offboardingError) return <div className="alert alert-warn" style={{ fontSize:12.5, marginBottom:12 }}>{tr('offboarding.checkFailed')}</div>
+  const o = c.offboarding
+  if (!o) return <div style={{ fontSize:12.5, color:'var(--text-muted)', marginBottom:12 }}>{tr('offboarding.checking')}</div>
+  const items = [
+    o.future_shifts > 0     && ['shifts',   tr('offboarding.futureShifts', { count: o.future_shifts, date: o.next_shift ? formatDate(o.next_shift) : '–' })],
+    o.open_swaps > 0        && ['shifts',   tr('offboarding.openSwaps', { count: o.open_swaps })],
+    o.pending_vacation > 0  && ['vacation', tr('offboarding.pendingVacation', { count: o.pending_vacation })],
+    o.future_vacation > 0   && ['vacation', tr('offboarding.futureVacation', { count: o.future_vacation })],
+    o.open_sick_leave > 0   && ['vacation', tr('offboarding.openSick', { count: o.open_sick_leave })],
+  ].filter(Boolean)
+  if (!items.length) return <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginBottom:12 }}>✓ {tr('offboarding.none')}</div>
+  const has = k => items.some(i => i[0] === k)
+  return (
+    <div className="alert alert-warn" role="alert" style={{ fontSize:12.5, marginBottom:12, lineHeight:1.5 }}>
+      <strong>{tr('offboarding.title')}</strong>
+      <ul style={{ margin:'4px 0 6px', paddingLeft:18 }}>{items.map(([, text]) => <li key={text}>{text}</li>)}</ul>
+      <div>{tr('offboarding.nothingAutomatic')}</div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:6 }}>
+        {has('shifts') && <button type="button" className="btn btn-sm" onClick={() => onGo('/schichten')}>{tr('offboarding.toShifts')}</button>}
+        {has('vacation') && <button type="button" className="btn btn-sm" onClick={() => onGo('/urlaub')}>{tr('offboarding.toVacation')}</button>}
+      </div>
+    </div>
   )
 }

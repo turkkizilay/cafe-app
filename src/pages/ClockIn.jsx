@@ -147,7 +147,8 @@ export default function ClockIn({ session }) {
       clock_in: now.toISOString(),
       gps_lat_in: gps.lat ?? null, gps_lng_in: gps.lng ?? null,
     }])
-    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); setWorking(false); return }
+    // Z. B. Antwort verloren und erneut getippt („bereits eingeclockt“): echten Zustand vom Server zeigen
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); await fetchData(); setWorking(false); return }
     toast.success(appMessage("ui.28f97c874d34", { p1: (formatParam("time", now, { hour:'2-digit', minute:'2-digit' })) }))
     await fetchData()
     setWorking(false)

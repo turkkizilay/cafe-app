@@ -23,7 +23,7 @@ Tests: App/Logik `node --test tests/*.test.mjs` · Server-Invarianten `npm --pre
 6. **Vergütung:** Fixgehalt = Brutto-Monatsgehalt, keine Teilmonatskürzung, keine Erhöhung durch Überstunden;
    Fixgehalt nur Vollzeit/Teilzeit (DB-Constraint); `hourly_rate` bleibt Pflicht. (VERIFIED, Migration 18, `tests/compensation`)
 7. **DATEV-Export (`exportDATEV`) ist eingefroren:** Spalten/Format nur mit ausdrücklicher Freigabe ändern; die
-   i18n-Baseline (`.i18n-work/baseline.zip`) erzwingt das. Erlaubt war nur RFC-4180-Escaping. (VERIFIED)
+   i18n-Baseline (`.i18n-work/baseline.zip`) erzwingt das. Freigegeben: RFC-4180-Escaping, feste Personalnummer (Migration 27). (VERIFIED)
 8. **Angewendete Migrationen werden nie geändert oder erneut ausgeführt.** Neue Änderung = neue Datei `NN_*.sql`;
    nach dem Einspielen nur den Kopf auf „Bereits live eingespielt … NICHT erneut ausführen“ setzen. (VERIFIED)
 9. **Datenschutz:** Onboarding/Portal holen eine *Kenntnisnahme*, keine Einwilligung. Kenntnisnahme ist versioniert
@@ -33,6 +33,8 @@ Tests: App/Logik `node --test tests/*.test.mjs` · Server-Invarianten `npm --pre
     übersetzte Strings; Freitext/Namen/Audit-`summary` werden nie übersetzt; API-/Audit-Aufrufe bleiben sprachneutral.
     (VERIFIED, `I18N_IMPLEMENTATION_REPORT.md`, `tests/i18n`, `scripts/check-i18n-invariants.py`)
 11. **Production ist keine Testumgebung.** Dort nur Read-only-Prüfungen; destruktive Tests lokal mit synthetischen Daten.
+12. **Mindestens ein freigeschalteter Admin** – per DB-Trigger `ensure_admin_remains` (Migration 27), nicht nur im UI.
+    Sonst sperrt sich die App durch Selbst-Herabstufung/-Sperre dauerhaft aus. (VERIFIED, live 2026-09-29)
 
 ## Lessons Learned
 
@@ -128,6 +130,48 @@ Protokoll) blockieren das Löschen statt mitzuverschwinden. Protokoll bei destru
 (Fehler → Rollback), nicht „best effort“.
 Regression Protection: `tests/db/registration_reset.test.mjs` (Gegenprobe: ohne Privacy-Blocker bzw. ohne Zeilensperren rot), `tests/registrationReset.test.mjs`.
 
+### Offboarding: „aktiv“ ist kein Abrechnungszeitraum
+Problem: Nach dem Deaktivieren (end_date = heute) fehlte die Person in Lohnabrechnung/DATEV ihres Austrittsmonats,
+in der Zeitkorrektur und bei Lohndokumenten; Ausweg „reaktivieren“ entsperrte zugleich den Login. Offene/„vergessen“-
+Einträge zählten still als 0 Std. und ließen sich abschließen/exportieren.
+Root Cause: Admin-/Lohnlisten filterten `.eq('is_active', true)` statt nach Zeitraum; ungeklärte Einträge wurden nicht geladen.
+Fix: Lohn `is_active OR end_date ≥ Monatsbeginn`; Admin-Auswahllisten + Ausgeschiedene der letzten 12 Monate
+(`formerStaffCutoff`, als „archiviert“ markiert); ungeklärte Einträge sichtbar + Bestätigung vor Abschluss/Export
+(`unresolvedByEmployee`). DATEV-Funktion unverändert. (VERIFIED, live 2026-09-29)
+Permanent Lesson: Für Abrechnung/Korrektur nie „aktiv“ filtern, sondern den betroffenen Zeitraum. Werte, die still als 0
+zählen, müssen vor jedem Abschluss/Export sichtbar sein.
+Regression Protection: `tests/opsIntegrity.test.mjs`.
+
+### Zeit als Datum + Wanduhrzeit: Folgetag-Regel und Zeitzone in der DB
+Problem: Admin-Korrektur verlangte „Ende nach Beginn am selben Tag“ (Nachtschichten unmöglich), rechnete Stunden im
+Browser (Browser-Zeitzone) und schrieb Eintrag, Pausen und Protokoll in getrennten Client-Schritten.
+Fix: `admin_save_time_entry`/`admin_delete_time_entry` (Migration 27): Datum + HH:MM, Uhrzeiten vor der Einstempelzeit
+= Folgetag (Schicht < 24 h), Umrechnung `AT TIME ZONE 'Europe/Berlin'` in der DB, alles in einer Transaktion,
+optimistische Sperre über `_time_entry_state` (Client berechnet denselben Stand, `timeEntryState`). (VERIFIED, live 2026-09-29)
+Permanent Lesson: Production-DB läuft in UTC – Zeitlogik nie von der Sitzungs-Zeitzone abhängig machen und in Tests
+mit UTC prüfen (Harness-Standard war Europe/Berlin und hätte Fehler verdeckt). Kein Zwischenzustand „offen“ beim
+Umschreiben – kollidiert mit dem Unique-Index „ein offener Eintrag“ einer laufenden Schicht.
+Regression Protection: `tests/db/time_correction.test.mjs` (Mutationen: Stale-Prüfung, Sperre, Folgetag, Zeitzone, Protokoll).
+
+### Kontolöschung ≠ Löschung der Beschäftigungs-Nachweise
+Decision: Datenschutz-Kenntnisnahmen hängen am Konto (CASCADE). Vor jeder Profil-Löschung werden sie per Trigger an
+die Personalakte archiviert (`privacy_proof_history`, Lebensdauer = Personalakte, keine eigene Frist). Konten ohne
+Personalakte: unverändert gelöscht – Aufbewahrung dafür ist eine offene organisatorische Frage.
+
+### DATEV-Personalnummer
+Decision (freigegeben): Export nutzt `employees.personnel_number` (eindeutig, nur Ziffern), nie die Zeilennummer; fehlt
+eine Nummer, wird der Export gestoppt; Export immer aller abgerechneten Zeilen, unabhängig vom Ansichtsfilter.
+Do Not: Ersatznummern erzeugen oder gefilterte Teilmengen exportieren.
+
+### Fremdschlüssel ohne Löschregel = Sackgasse
+Problem: Schicht, die je Gegenschicht einer Tauschanfrage war (auch abgelehnt), war für niemanden löschbar (FK-Fehler).
+Root Cause: `target_shift_id` ohne ON DELETE (NO ACTION), `requester_shift_id` mit CASCADE – asymmetrisch.
+Fix: Migration 27 → CASCADE (SET NULL hätte einen Tausch in eine Abgabe verwandelt). Zudem breite FOR-ALL-Policies auf
+Krankmeldungen/Urlaub getrennt: Löschen nur Admin. (VERIFIED, live 2026-09-29)
+Permanent Lesson: Jede FK-Löschregel bewusst wählen und je Beziehung symmetrisch prüfen; „NO ACTION“ auf Historie
+blockiert operative Löschungen dauerhaft.
+Regression Protection: `tests/db/ops_integrity.test.mjs` (Gegenprobe: ohne Migration 27 alle rot).
+
 ### Freischaltung + Vergütung in zwei Client-Schritten
 Problem: Onboarding-Freischaltung legte den Mitarbeiter mit Stundenlohn an; das Fixgehalt setzte der Browser danach
 separat. Scheiterte Schritt 2, stand ein Mitarbeiter mit falschem Vergütungsmodell da (inkl. Erfolgsmeldung).
@@ -199,6 +243,7 @@ Do Not: entfernen – die Anfrage wurde in diesem Fall nicht ausgeführt, Wieder
 9. Übersetzte Strings im State speichern oder Freitext übersetzen.
 10. Rechtstexte, die mehr/weniger behaupten als der Code tut (z. B. „keine Standortdaten gespeichert“, erfundene Fristen).
 11. Nur eine Teil-Zeile eines Kontos löschen (z. B. `profiles` ohne `auth.users`) – erzeugt unsichtbare, blockierende Reste.
+12. `.eq('is_active', true)` in Lohn-/Korrektur-/Dokument-Ansichten – Ausgeschiedene verschwinden aus ihrem letzten Monat.
 
 ## Definition of Done
 

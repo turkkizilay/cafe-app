@@ -61,3 +61,9 @@ export function datevHintCell(row) {
     row.isAlert && (row.employment_type === 'minijob' ? 'MINIJOB-GRENZE PRÜFEN' : 'ÜBERSTUNDEN'),
   ].filter(Boolean).join(' / ')
 }
+
+// DATEV-Personalnummer (Migration 27: employees.personnel_number) – feste Nummer je Person, nie die Zeilennummer.
+// Zeilen ohne Nummer → Export blockieren (lieber anhalten als Werte der falschen Person zuordnen).
+export function missingPersonnelNumbers(rows) {
+  return (rows || []).filter(r => !/^[0-9]{1,10}$/.test(String(r.personnel_number ?? '')))
+}

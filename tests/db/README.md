@@ -10,8 +10,8 @@ npm --prefix tests/db test    # ca. 10–20 s
 ```
 
 Aufbau: `fixtures/schema_before_17.sql` (Production-Struktur vor Migration 17, nur Schema, keine Daten/Secrets)
-+ die Repository-Migrationen 17–26 in Reihenfolge (`harness.mjs`); `fixtures/lifecycle_functions.sql` enthält die
-Invite-/Auth-/Onboarding-Funktionen wie in Production (für `lifecycle.test.mjs`). Nur synthetische Personen.
++ die Repository-Migrationen 17–27 in Reihenfolge (`harness.mjs`); `fixtures/lifecycle_functions.sql` enthält die
+Invite-/Auth-/Onboarding-Funktionen wie in Production (für `lifecycle.test.mjs`), `fixtures/prod_functions.sql` weitere go-live-relevante Production-Funktionen. Nur synthetische Personen.
 
 | Datei | Schützt |
 | --- | --- |
@@ -23,6 +23,9 @@ Invite-/Auth-/Onboarding-Funktionen wie in Production (für `lifecycle.test.mjs`
 | `account_recovery.test.mjs` | Auth-Status/Bestätigung erneut anfordern/Registrierung wieder öffnen nur Admin, keine Duplikate, Vergütung bleibt (Migration 24) |
 | `lifecycle.test.mjs` | Invite→Signup→Onboarding→Freischaltung mit Production-Funktionen; atomare Freischaltung mit Vergütung, verwaiste Anmeldungen, Ablehnen ohne Waise, Parallelität (Migration 25) |
 | `registration_reset.test.mjs` | Registrierung zurücksetzen: Klassifizierung, nur Admin, Personalakte/Historie/Vergütung/Kenntnisnahmen bleiben, Doppelklick/parallel/veraltete Ansicht, Pflichtprotokoll ohne False Success (Migration 26) |
+| `ops_integrity.test.mjs` | Schichten mit Tausch-Historie löschbar, Krankmeldungen/Urlaub löscht nur Admin, mindestens ein Admin bleibt (auch parallel) (Migration 27) |
+| `time_correction.test.mjs` | Admin-Zeitkorrektur atomar (Eintrag+Pausen+Protokoll), veraltete Ansicht/parallel, Mitternacht, Sommer-/Winterzeit (Sitzungs-TZ UTC wie Production), Frontend-Stand = DB-Stand; Personalnummer; Offboarding-Übersicht (Migration 27) |
+| `prod_functions.test.mjs` | Production-Funktionen außerhalb der Schema-Vorlage (`fixtures/prod_functions.sql`): Konto selbst löschen + Datenschutz-Nachweise an der Personalakte, Onboarding-Korrektur, `approve_user`, Aufbewahrungs-Löschung, Protokoll |
 
 Neue Migration `NN_*.sql`: in `harness.mjs` → `MIGRATIONS` ergänzen und hier einen Test dafür anlegen.
 Ändert sich die Production-Struktur außerhalb der Migrationen (z. B. Dashboard), die Vorlage per schema-only
