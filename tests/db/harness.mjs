@@ -1,6 +1,6 @@
 // Test-Harness für DB/RLS/Concurrency-Tests.
 // Startet ein TEMPORÄRES lokales PostgreSQL 17 (embedded-postgres) auf einem freien Port in einem Temp-Ordner,
-// spielt die Schema-Vorlage (Production-Struktur vor Migration 17) und danach die Repository-Migrationen 17–30 ein.
+// spielt die Schema-Vorlage (Production-Struktur vor Migration 17) und danach die Repository-Migrationen 17–31 ein.
 // Sicherheit: Es werden KEINE Verbindungsdaten aus der Umgebung gelesen (kein DATABASE_URL o. Ä.) – Verbindungen
 // gehen ausschließlich an 127.0.0.1 auf den selbst gestarteten Server. Production kann nie erreicht werden.
 import EmbeddedPostgres from 'embedded-postgres'
@@ -17,7 +17,7 @@ export const MIGRATIONS = [
   '17_break_tracking.sql', '18_compensation_model.sql', '19_manager_data_minimization.sql', '20_swap_approve_atomic.sql',
   '21_one_open_time_entry.sql', '22_sick_certs_no_manager_delete.sql', '23_privacy_notice_acknowledgements.sql',
   '24_account_recovery.sql', '25_account_lifecycle_hardening.sql', '26_registration_reset.sql', '27_ops_integrity.sql',
-  '28_onboarding_resumable.sql', '29_remote_clock.sql', '30_fixed_pay_hourly_optional.sql',
+  '28_onboarding_resumable.sql', '29_remote_clock.sql', '30_fixed_pay_hourly_optional.sql', '31_hessen_holidays.sql',
 ]
 // Migrationen, die Invite/Auth/Onboarding-Funktionen ersetzen: nach der Production-Vorlage (loadLifecycle) erneut
 // einspielen, sonst prüften Tests den Stand VOR der Migration. Diese Dateien sind wiederholt ausführbar geschrieben.

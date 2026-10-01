@@ -285,6 +285,14 @@ Alte `privacy_accepted_at` gilt nicht als Kenntnisnahme neuer Versionen. Do Not:
 Decision: `fetchWithSkewRetry` in `src/lib/supabase.js` wiederholt Anfragen bei „JWT issued at future“ (c38252f).
 Do Not: entfernen – die Anfrage wurde in diesem Fall nicht ausgeführt, Wiederholen ist sicher.
 
+### Feiertage berechnet, nicht gepflegt (Migration 31)
+Decision: Gesetzliche Feiertage Hessen (fachlich bestätigt: 10, ohne Allerheiligen) kommen aus `cafe_calendar.hessen_holidays(year)`
+(Osterformel); `public.public_holidays` ist eine View darüber (gleiche Spalten → App-Abfragen und `vacation_guard_insert`
+unverändert). Die alte Handliste bleibt als `public_holidays_manual_2025_2026` (nur Nachweis). Lohn/DATEV lesen KEINE
+Feiertage – Vergütungsfolgen sind eine getrennte, offene Fachentscheidung. Do Not: Feiertagslisten im Frontend oder als
+jährliche Datenpflege; gespeicherte `days_count` automatisch korrigieren (nur Hinweis, `vacationDaysMismatch`).
+Regression Protection: `tests/db/holidays.test.mjs`, `tests/holidays.test.mjs` (Mutationen: Feiertag fehlt/±1 Tag/Allerheiligen/zweite Quelle).
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

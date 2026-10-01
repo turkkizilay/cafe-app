@@ -280,6 +280,23 @@ export function calculateRequestedDays(startDate, endDate, holidays = []) {
   return countWorkdays(startDate, endDate, holidaySet)
 }
 
+/**
+ * Konsistenzprüfung (nur Hinweis, nie Korrektur): gespeicherte Urlaubstage (days_count) gegen die aktuelle
+ * Feiertagsberechnung (public_holidays, Migration 31). Liefert die neu berechnete Zahl, wenn sie abweicht, sonst null.
+ * Nur wenn die Feiertage ALLER betroffenen Jahre geladen sind (loadedYears) – sonst null, damit fehlende
+ * Daten keinen falschen Alarm erzeugen. Ursachen: Feiertage fehlten beim Antrag (z. B. ab 2027 vor Migration 31),
+ * Manager-Antrag ohne Server-Zählung, Datumsänderung nach dem Antrag, Korrektur des Feiertagskalenders.
+ */
+export function vacationDaysMismatch(vacation, holidays, loadedYears = []) {
+  const v = vacation
+  if (!v?.start_date || !v?.end_date || v.days_count == null || v.start_date > v.end_date) return null
+  for (let y = Number(v.start_date.slice(0, 4)); y <= Number(v.end_date.slice(0, 4)); y++) {
+    if (!loadedYears.includes(y)) return null
+  }
+  const expected = calculateRequestedDays(v.start_date, v.end_date, holidays)
+  return expected === Number(v.days_count) ? null : expected
+}
+
 export function canRequestVacation(requestedDays, balance) {
   if (requestedDays <= 0)               return { ok: false, reason: appMessage("vacation.unavailable") }
   if (requestedDays > balance.remaining) return { ok: false, reason: appMessage("vacation.insufficient", { available: (balance.remaining), requested: (requestedDays) }) }

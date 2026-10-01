@@ -19,6 +19,7 @@ import {
   checkVacationDuringSick,
   checkSickDuringVacation,
   canRequestVacation,
+  vacationDaysMismatch,
 } from '../lib/vacationLogic'
 
 export default function Vacation() {
@@ -26,6 +27,8 @@ export default function Vacation() {
   const { isAdmin, isManager, profile, refetch } = useProfile()
   const toast     = useToast()
   const canManage = isAdmin || isManager
+  // Feiertage werden für Vorjahr, laufendes und Folgejahr geladen (fetchAll) – nur für diese Jahre wird days_count geprüft
+  const holidayYears = [new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1]
   const fileRef   = useRef()
 
   const [tab,        setTab]       = useState('urlaub')
@@ -682,6 +685,11 @@ export default function Vacation() {
           </button>
         </div>
 
+        {tab === 'urlaub' && canManage && (() => {
+          // Nur Hinweis: gespeicherte Urlaubstage weichen vom aktuellen Feiertagskalender ab – nichts wird automatisch geändert
+          const n = vacations.filter(v => vacationDaysMismatch(v, holidays, holidayYears) !== null).length
+          return n > 0 ? <div className="alert alert-warn" style={{ fontSize:13, marginBottom:12 }}>{tr("vacation.daysMismatchSummary", { count: n })}</div> : null
+        })()}
         {tab === 'urlaub' && (
           <div className="card">
             <div className="table-wrap">
@@ -717,6 +725,14 @@ export default function Vacation() {
                           <td>{formatDate(v.end_date)}</td>
                           <td>
                             {v.days_count}
+                            {canManage && (() => {
+                              const expected = vacationDaysMismatch(v, holidays, holidayYears)
+                              return expected === null ? null : (
+                                <div className="badge badge-amber" style={{ display:'block', marginTop:4, fontSize:10.5, whiteSpace:'normal' }}>
+                                  {tr("vacation.daysMismatch", { stored: v.days_count, expected })}
+                                </div>
+                              )
+                            })()}
                             {(() => {
                               const empVacs = vacations.filter(x => x.employee_id === v.employee_id && x.status === 'approved')
                               const empSick = sick.filter(s => s.employee_id === v.employee_id)

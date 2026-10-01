@@ -10,7 +10,7 @@ npm --prefix tests/db test    # ca. 10–20 s
 ```
 
 Aufbau: `fixtures/schema_before_17.sql` (Production-Struktur vor Migration 17, nur Schema, keine Daten/Secrets)
-+ die Repository-Migrationen 17–30 in Reihenfolge (`harness.mjs`); `fixtures/lifecycle_functions.sql` enthält die
++ die Repository-Migrationen 17–31 in Reihenfolge (`harness.mjs`); `fixtures/lifecycle_functions.sql` enthält die
 Invite-/Auth-/Onboarding-Funktionen wie in Production VOR Migration 28, `fixtures/prod_functions.sql` weitere go-live-relevante Production-Funktionen. Nur synthetische Personen.
 Migrationen, die Funktionen aus `lifecycle_functions.sql` ersetzen, stehen zusätzlich in `LIFECYCLE_MIGRATIONS` und werden
 von `loadLifecycle()` nach der Vorlage erneut eingespielt (sonst testete man den alten Stand) – solche Migrationen
@@ -31,6 +31,7 @@ müssen wiederholt ausführbar sein.
 | `onboarding_resume.test.mjs` | Registrierung ganz oder gar nicht (ungültige Einladung/Fehler → kein Konto, parallel genau eins), Revision gegen stille Überschreibung (zwei Tabs/Geräte, auch nach Admin-Aktion), Patch-Semantik, idempotentes Einreichen, Server-Prüfung = Client (IBAN mod 97, Telefon, Nebenbeschäftigung), alter Client kompatibel (Migration 28) |
 | `remote_clock.test.mjs` | Stempeln außerhalb des Cafés: nur Manager/Admin (Rolle live), nur sich selbst, nur bestätigt und mit bestimmtem Standort; Mitarbeiter auch per RPC/Flag/gefälschtem JWT blockiert; Pflichtprotokoll ohne Koordinaten; parallel/Doppeltipp/Retry genau ein Eintrag; Rolle entzogen/inaktiv; > 12 h, Mitternacht, Admin-Korrektur (Migration 29) |
 | `fixed_salary.test.mjs` | Fixgehalt ohne Stundenlohn: Freischaltung Vollzeit/Teilzeit, Monatsgehalt Pflicht, Stundenlohn nur bei Stundenlohn Pflicht (nie Ersatzwert), Werkstudent/Minijob blockiert, alte Signatur unverändert, parallel, spätere Wechsel Stundenlohn ↔ Fixgehalt, Bestand unverändert, wiederholt ausführbar (Migration 30) |
+| `holidays.test.mjs` | Hessen-Feiertage berechnet: genau 10 je Jahr (2026–2030 fest geprüft, 1990–2100 gegen unabhängige Osterformel), kein Allerheiligen/Reformationstag, View wie bisherige Tabelle (nur lesen), Server-Zählung über Monats-/Jahreswechsel in jeder Sitzungs-Zeitzone, App = Server, Vorher/Nachher: Daten + Lohn/DATEV identisch (Migration 31) |
 | `prod_functions.test.mjs` | Production-Funktionen außerhalb der Schema-Vorlage (`fixtures/prod_functions.sql`): Konto selbst löschen + Datenschutz-Nachweise an der Personalakte, Onboarding-Korrektur, `approve_user`, Aufbewahrungs-Löschung, Protokoll |
 
 Neue Migration `NN_*.sql`: in `harness.mjs` → `MIGRATIONS` ergänzen und hier einen Test dafür anlegen.
