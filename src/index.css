@@ -527,6 +527,11 @@ select.select-styled {
 .btn-clock-out:hover { background: #B91C1C; }
 .btn-clock-break { background: #D97706; color: #fff; }
 .btn-clock-break:hover { background: #B45309; }
+/* Manager/Admin außerhalb des Cafés: klar abgesetzt, öffnet immer erst die Bestätigung */
+.btn-clock-remote { background: var(--warn-bg); color: #92400E; border: 2px solid var(--warn); }
+.btn-clock-remote:hover:not(:disabled) { background: #FEF3C7; }
+html.dark .btn-clock-remote { color: var(--warn); }
+html.dark .btn-clock-remote:hover:not(:disabled) { background: #3A2A08; }
 
 /* Pause starten / beenden – mobil: Buttons untereinander, volle Breite */
 .clock-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; }

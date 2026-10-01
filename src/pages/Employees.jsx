@@ -13,7 +13,7 @@ import { useSavingGuard } from '../lib/savingGuard'
 import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
 import { monthlyTargetFromInput, parseWeeklyHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
-import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_HOURLY, PAY_FIXED } from '../lib/compensation'
+import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, parseHourlyRate, validateHourlyRate, PAY_HOURLY, PAY_FIXED } from '../lib/compensation'
 import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
 
 const PAY_ERROR_KEY = { fixedNotAllowed: "payModel.fixedNotAllowed", salaryMissing: "payModel.salaryMissing" }
@@ -251,17 +251,20 @@ export default function Employees() {
       if (!form.last_name?.trim())  { setError(appMessage("ui.473f6c626760")); return }
       if (!form.email?.trim())      { setError(appMessage("ui.0753440cb1d0")); return }
       if (!form.start_date)         { setError(appMessage("ui.d0c35bf70bc0")); return }
-      const rate = parseFloat(form.hourly_rate)
-      if (!form.hourly_rate || isNaN(rate) || rate <= 0) { setError(appMessage("ui.9ec91c2ee981")); return }
+      // Stundenlohn: Pflicht nur bei Vergütung „Stundenlohn“; bei Fixgehalt optional (leer → null, kein Ersatzwert)
+      const formPayType = payFeatureOn ? payTypeOf(form) : PAY_HOURLY
+      const rateErr = validateHourlyRate({ pay_type: formPayType, hourly_rate: form.hourly_rate })
+      const rate = parseHourlyRate(form.hourly_rate)
       // Wochenstunden sind Pflicht – sonst wäre das Monats-Soll 0 und alle Stunden würden als Überstunden gelten
       if (parseWeeklyHours(form.hours_per_week) === null) { setError(appMessage("employees.hoursInvalid")); return }
       const pn = String(form.personnel_number ?? '').trim()
       if (pnFeatureOn && pn && !/^[0-9]{1,10}$/.test(pn)) { setError(appMessage("employee.personnelNumberInvalid")); return }
       const payErr = payFeatureOn ? validatePayModel({ ...form, pay_type: payTypeOf(form) }) : null
       if (payErr) { setError(appMessage(PAY_ERROR_KEY[payErr])); return }
+      if (rateErr) { setError(appMessage(rateErr === 'rateMissing' ? "ui.fb10bc721e8c" : "ui.9ec91c2ee981")); return }
 
       // ── Gesetzliche Warnungen ──
-      if (rate < MINDESTLOHN) {
+      if (rate !== null && rate < MINDESTLOHN) {
         setError(appMessage("ui.e464f6564209", { p1: (formatParam("number", rate, { minimumFractionDigits: 2, maximumFractionDigits: 2 })), p2: (MINDESTLOHN) }))
         return
       }
@@ -481,7 +484,7 @@ export default function Employees() {
                         </td>
                         <td>{emp.hours_per_week}{tr("ui.aaa9402664f1")}</td>
                         {isAdmin && (<td>
-                          {payTypeOf(emp) === PAY_FIXED ? tr("payModel.perMonth", { amount: formatCurrency(emp.monthly_salary) }) : <>{formatCurrency(emp.hourly_rate)}{tr("ui.141582aa3785")}</>}{emp.hourly_rate < MINDESTLOHN && <span className="badge badge-red" style={{ marginLeft: 6, fontSize: 10 }}>{tr("ui.73d8e2d2f8fd")}</span>}
+                          {payTypeOf(emp) === PAY_FIXED ? tr("payModel.perMonth", { amount: formatCurrency(emp.monthly_salary) }) : <>{formatCurrency(emp.hourly_rate)}{tr("ui.141582aa3785")}</>}{payTypeOf(emp) !== PAY_FIXED && emp.hourly_rate < MINDESTLOHN && <span className="badge badge-red" style={{ marginLeft: 6, fontSize: 10 }}>{tr("ui.73d8e2d2f8fd")}</span>}
                         </td>)}
                         <td>{emp.vacation_days_per_year}{tr("ui.d00de448b9e2")}</td>
                         <td className="text-muted">{formatDate(emp.start_date)}</td>
@@ -673,8 +676,8 @@ export default function Employees() {
                 )}
                 {isAdmin && (
                 <div className="form-group">
-                  <label>{tr("ui.04d8b7c7a102")}</label>
-                  <input type="number" step="0.01" value={form.hourly_rate} onChange={e => f('hourly_rate', e.target.value)} placeholder="12.41" />
+                  <label>{payFeatureOn && payTypeOf(form) === PAY_FIXED ? tr("payModel.hourlyOptional") : tr("ui.04d8b7c7a102")}</label>
+                  <input type="number" step="0.01" value={form.hourly_rate ?? ''} onChange={e => f('hourly_rate', e.target.value)} placeholder={payFeatureOn && payTypeOf(form) === PAY_FIXED ? '' : String(MINDESTLOHN)} />
                   {form.hourly_rate && parseFloat(form.hourly_rate) < MINDESTLOHN && (
                     <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>{tr("ui.beb41500da12")}{MINDESTLOHN}{tr("ui.2e48fc993743")}</div>
                   )}

@@ -24,6 +24,23 @@ export function parseMonthlySalary(value) {
   return Number.isFinite(n) && n > 0 ? round2(n) : null
 }
 
+// Stundenlohn: leer → null; sonst Zahl > 0 (Komma oder Punkt). Ungültig → NaN (≠ leer, damit es gemeldet wird).
+export function parseHourlyRate(value) {
+  const raw = String(value ?? '').replace(/\s/g, '')
+  if (raw === '') return null
+  const n = parseFloat(raw.replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? round2(n) : NaN
+}
+
+// Stundenlohn nach Vergütungsmodell (Quelle der Wahrheit: pay_type; gleiche Regel wie Migration 30):
+// Stundenlohn → Pflicht; Fixgehalt → optional (wird für Lohn/DATEV nicht verwendet), wenn angegeben > 0.
+export function validateHourlyRate({ pay_type, hourly_rate }) {
+  const rate = parseHourlyRate(hourly_rate)
+  if (Number.isNaN(rate)) return 'rateInvalid'
+  if (rate === null && payTypeOf({ pay_type }) !== PAY_FIXED) return 'rateMissing'
+  return null
+}
+
 // Formularprüfung (gleiche Regeln wie die DB-Constraints). Liefert Fehlercode oder null.
 export function validatePayModel({ employment_type, pay_type, monthly_salary }) {
   if (pay_type !== PAY_FIXED) return null

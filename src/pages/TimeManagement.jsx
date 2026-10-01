@@ -393,7 +393,10 @@ export default function TimeManagement() {
                               {e.clock_in_method === 'wlan' ? '📶 WLAN' : e.clock_in_method === 'gps+wlan' ? '📍📶 GPS+WLAN' : '📍 GPS'}
                             </span>
                           )}
-                          {!isKorr && !isOffen && !e.gps_ok_in && e.clock_in_method !== 'wlan' && (
+                          {(e.clock_in_method === 'remote' || e.clock_out_method === 'remote') && (
+                            <span className="badge badge-amber" style={{ fontSize:11 }}>{tr("clock.remote.badge")}</span>
+                          )}
+                          {!isKorr && !isOffen && !e.gps_ok_in && e.clock_in_method !== 'wlan' && e.clock_in_method !== 'remote' && e.clock_out_method !== 'remote' && (
                             <span style={{ color:'var(--text-muted)', fontSize:12 }}>{tr("ui.a7248eeb45eb")}</span>
                           )}
                         </td>

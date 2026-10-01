@@ -1,18 +1,19 @@
 import { t as tr, getIntlLocale, message as appMessage, formatParam } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase, getDistanceMeters } from '../lib/supabase'
 import { formatTime } from '../i18n/format.js'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { calcWorkedHours, openBreak, sumBreakMinutes, isBreakTooLong, netWorkedHours, breakElapsedMinutes, breakUiState, BREAK_WARNING_MINUTES } from '../lib/workHours'
 import { fetchBreaks, startBreak, endBreak, isBreakFeatureMissing } from '../lib/breaks'
+import { remoteClockState, remoteErrorKind, clockInRemote, clockOutRemote } from '../lib/remoteClock'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 export default function ClockIn({ session }) {
   useLocale()
-  const { profile }           = useProfile()
+  const { profile, isManager } = useProfile()   // isManager = Manager ODER Admin (nur fürs Anbieten; Server prüft selbst)
   const toast                 = useToast()
   const [tick, setTick]       = useState(new Date())
   const [employee, setEmp]    = useState(null)
@@ -27,6 +28,8 @@ export default function ClockIn({ session }) {
   const [breaks, setBreaks]     = useState([])    // erfasste Pausen der offenen Schicht
   const [breaksOn, setBreaksOn] = useState(true)  // false, solange Migration 17 fehlt
   const [breakLoad, setBreakLoad] = useState('ok') // 'loading' | 'ok' | 'error' – unbekannt ist nie „keine Pause“
+  const [remoteAsk, setRemoteAsk] = useState(null) // 'in' | 'out' – Bestätigungsdialog „außerhalb des Cafés“
+  const remoteBusy = useRef(false)                 // synchroner Schutz gegen Doppeltipp (State ist asynchron)
 
   useEffect(() => {
     const t = setInterval(() => setTick(new Date()), 1000)
@@ -216,6 +219,48 @@ export default function ClockIn({ session }) {
     setWorking(false)
   }
 
+  // ── Bestätigtes Stempeln außerhalb des Cafés (nur Manager/Admin; Server prüft Rolle, Person, Standort) ──
+  async function confirmRemote() {
+    const kind = remoteAsk
+    if (!kind || remoteBusy.current || working) return
+    remoteBusy.current = true
+    setWorking(true)
+    try {
+      const res = await (kind === 'in' ? clockInRemote : clockOutRemote)({ lat: gps.lat, lng: gps.lng })
+      setRemoteAsk(null)
+      const errKind = remoteErrorKind(res)
+      if (errKind || !res.data?.success) {
+        const msg = {
+          remote_not_allowed:    'clock.remote.errNotAllowed',
+          inactive:              'ui.9470891f33ea',
+          location_unknown:      'clock.remote.errUnknown',
+          confirmation_required: 'clock.remote.errConfirm',
+          already_clocked_in:    'clock.remote.errAlreadyIn',
+          not_clocked_in:        'clock.remote.errNotIn',
+          no_response:           'clock.remote.errNoResponse',
+          unavailable:           'clock.remote.errUnavailable',
+        }[errKind]
+        if (msg) toast.error(appMessage(msg), 9000)
+        else toast.error(translateSupabaseError(res.error, appMessage("ui.d31430ba7ba3")))
+        return   // Kein Erfolg ohne bestätigte Serverwirkung – Stand wird unten neu geladen
+      }
+      const d = res.data
+      if (kind === 'in') {
+        const time = formatParam("time", new Date(d.clock_in), { hour:'2-digit', minute:'2-digit' })
+        toast.success(appMessage(d.remote ? "clock.remote.successIn" : "clock.remote.successInCafe", { time }))
+      } else if (String(d.notes || '').includes('AUSSTEMPELN VERGESSEN')) {
+        toast.warn(appMessage("ui.ce394dbf8d29"), 12000)
+      } else {
+        const hours = formatParam("number", Number(d.hours_worked) || 0, { minimumFractionDigits:2, maximumFractionDigits:2 })
+        toast.success(appMessage(d.remote ? "clock.remote.successOut" : "clock.remote.successOutCafe", { hours }))
+      }
+    } finally {
+      await fetchData()   // Serverzustand ist maßgeblich – auch nach Fehler/Zeitüberschreitung
+      setWorking(false)
+      remoteBusy.current = false
+    }
+  }
+
   // ── Standort-Status: GPS ODER Café-WLAN genügt (Server prüft dasselbe noch einmal) ──
   const GPS_TEXT = {
     checking:    tr("ui.8f885759e8d1"),
@@ -239,6 +284,8 @@ export default function ClockIn({ session }) {
   // Bei Prüf-Fehler ohne GPS entscheidet der Server (er prüft ohnehin selbst)
   const canClock = located || (!netOnly && !gpsConfigured && (net.status === 'unconfigured' || net.status === 'error'))
   const blockReason = stillChecking ? tr("ui.75c87c02a7f2") : tr("ui.f2ecba2c057d")
+  // Manager/Admin: außerhalb nur nach Bestätigung; Standort unbekannt ≠ außerhalb (kein Angebot)
+  const remote = canClock ? 'none' : remoteClockState({ canManage: !!isManager, located, anyConfigured, stillChecking, netOnly, gpsConfigured, gpsStatus: gps.status, netStatus: net.status })
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
   const elapsedMin = openEntry ? Math.max(0, Math.floor((tick - new Date(openEntry.clock_in)) / 60000)) : 0
   const breakUi      = breakUiState({ featureOn: breaksOn, loadState: breakLoad, breaks })
@@ -247,7 +294,7 @@ export default function ClockIn({ session }) {
   const netHNow      = openEntry ? netWorkedHours(openEntry.clock_in, null, breaks, tick) : 0
   const breakSec     = runningBreak ? Math.max(0, Math.floor((tick - new Date(runningBreak.break_start)) / 1000)) : 0
   const breakTimer   = `${Math.floor(breakSec / 3600)}:${String(Math.floor(breakSec / 60) % 60).padStart(2, '0')}:${String(breakSec % 60).padStart(2, '0')}`
-  const METHOD_LABEL = { gps: '📍 GPS', wlan: '📶 WLAN', 'gps+wlan': '📍📶', 'ohne Prüfung': '–' }
+  const METHOD_LABEL = { gps: '📍 GPS', wlan: '📶 WLAN', 'gps+wlan': '📍📶', 'ohne Prüfung': '–', remote: tr("clock.remote.method") }
 
   const today = localDateStr()
   if (loading) return <div style={{ padding:24, color:'var(--text-secondary)' }}>{tr("ui.ebbb1d1f265f")}</div>
@@ -302,10 +349,17 @@ export default function ClockIn({ session }) {
                 {netOnly ? tr("ui.77204e32623a") : <>{tr("ui.b21f0d33bf79")}{netConfigured ? tr("ui.874a844c2e3f") : ''}</>}{tr("ui.7f441ac056bd")}{netConfigured && isIOS && net.status === 'no' && (
                   <>{tr("ui.a4fbabf31591")}</>
                 )}
+                {remote === 'unknown' && <div style={{ marginTop:6 }}>{tr("clock.remote.unknownHint")}</div>}
+                {remote === 'outside' && <div style={{ marginTop:6 }}>{tr("clock.remote.outsideHint")}</div>}
               </div>
             )}
 
             {employee && !openEntry && (
+              remote === 'outside' ? (
+                <button className="clock-btn btn-clock-remote" onClick={() => setRemoteAsk('in')} disabled={working}>
+                  {working ? '…' : tr("clock.remote.button")}
+                </button>
+              ) : (
               <button
                 className={`clock-btn ${canClock ? 'btn-clock-in' : 'btn-clock-blocked'}`}
                 onClick={canClock ? clockIn : undefined}
@@ -314,6 +368,7 @@ export default function ClockIn({ session }) {
               >
                 {working ? '…' : canClock ? tr("ui.5a69fe8540cc") : `🔒 ${blockReason}`}
               </button>
+              )
             )}
 
             {employee && openEntry && (
@@ -350,6 +405,11 @@ export default function ClockIn({ session }) {
                   {breakUi === 'loading' && (
                     <button className="clock-btn btn-clock-break" disabled aria-busy="true">…</button>
                   )}
+                  {remote === 'outside' ? (
+                    <button className="clock-btn btn-clock-remote" onClick={() => setRemoteAsk('out')} disabled={working}>
+                      {working ? '…' : tr("clock.remote.buttonOut")}
+                    </button>
+                  ) : (
                   <button
                     className={`clock-btn ${canClock ? 'btn-clock-out' : 'btn-clock-blocked'}`}
                     onClick={canClock ? clockOut : undefined}
@@ -358,6 +418,7 @@ export default function ClockIn({ session }) {
                   >
                     {working ? '…' : canClock ? tr("ui.161d46983281") : `🔒 ${blockReason}`}
                   </button>
+                  )}
                 </div>
               </div>
             )}
@@ -397,6 +458,44 @@ export default function ClockIn({ session }) {
           }
         </div>
       </div>
+      {remoteAsk && (
+        <RemoteClockDialog kind={remoteAsk} busy={working}
+          onCancel={() => { if (!remoteBusy.current) setRemoteAsk(null) }}
+          onConfirm={confirmRemote} />
+      )}
     </>
+  )
+}
+
+// Bestätigung „außerhalb des Cafés“: Abbrechen ist die sichere Vorauswahl (Fokus, Escape, Tipp daneben)
+function RemoteClockDialog({ kind, busy, onCancel, onConfirm }) {
+  useLocale()
+  const cancelRef = useRef(null)
+  useEffect(() => {
+    cancelRef.current?.focus()
+    const onKey = e => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+  const out = kind === 'out'
+  return (
+    <div className="modal-overlay" onClick={() => !busy && onCancel()}>
+      <div className="modal" role="alertdialog" aria-modal="true" aria-labelledby="remote-clock-title" aria-describedby="remote-clock-body"
+           style={{ maxWidth:440 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header"><div className="modal-title" id="remote-clock-title">{tr(out ? "clock.remote.titleOut" : "clock.remote.title")}</div></div>
+        <div className="modal-body" id="remote-clock-body" style={{ fontSize:14, lineHeight:1.6 }}>
+          <p style={{ margin:'0 0 10px', fontWeight:600 }}>{tr("clock.remote.body1")}</p>
+          <p style={{ margin:'0 0 10px' }}>{tr(out ? "clock.remote.body2Out" : "clock.remote.body2")}</p>
+          <p style={{ margin:'0 0 10px' }}>{tr(out ? "clock.remote.questionOut" : "clock.remote.question")}</p>
+          <p style={{ margin:0, fontSize:12.5, color:'var(--text-secondary)' }}>{tr("clock.remote.note")}</p>
+        </div>
+        <div className="modal-footer">
+          <button ref={cancelRef} type="button" className="btn" onClick={onCancel} disabled={busy}>{tr("clock.remote.cancel")}</button>
+          <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={busy} aria-busy={busy}>
+            {busy ? '…' : tr(out ? "clock.remote.confirmOut" : "clock.remote.confirm")}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -7,7 +7,7 @@ import { useToast } from './UI/Toast'
 import { formatIBAN, isValidIBAN, taxIdChecksumOk } from '../lib/personalData'
 import { MINDESTLOHN } from '../lib/constants'
 import PayModelFields from './PayModelFields'
-import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
+import { payTypeOf, canHaveFixedPay, parseMonthlySalary, validatePayModel, parseHourlyRate, validateHourlyRate, PAY_FIXED, PAY_HOURLY } from '../lib/compensation'
 
 export const ONB_STATUS = {
   draft:             { get label() { return tr("ui.658154755bb4") },   cls:'badge-gray'  },
@@ -86,19 +86,22 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
   const canAct    = isAdmin && row.status === 'submitted'
   // Auch unfertige Registrierungen (Entwurf / Korrektur) kann der Admin abbrechen
   const canCancel = isAdmin && ['draft', 'changes_requested'].includes(row.status)
-  const rate = parseFloat(String(job.hourly_rate).replace(',', '.'))
+  // Stundenlohn nur bei Vergütung „Stundenlohn“ Pflicht; bei Fixgehalt optional (leer → null, kein Ersatzwert)
+  const rate = parseHourlyRate(job.hourly_rate)
 
   async function approve() {
     if (busy) return
     setErr('')
-    if (!rate || rate <= 0) { setErr(appMessage("ui.fb10bc721e8c")); return }
+    // Erst das gewählte Vergütungsmodell prüfen – die Meldung passt so immer zur gewählten Vergütungsart
+    const payErr = validatePayModel({ employment_type: job.employment_type, pay_type: payTypeOf(job), monthly_salary: job.monthly_salary })
+    if (payErr) { setErr(appMessage(payErr === 'fixedNotAllowed' ? "payModel.fixedNotAllowed" : "payModel.salaryMissing")); return }
+    const rateErr = validateHourlyRate({ pay_type: payTypeOf(job), hourly_rate: job.hourly_rate })
+    if (rateErr) { setErr(appMessage(rateErr === 'rateMissing' ? "ui.fb10bc721e8c" : "payModel.rateInvalid")); return }
     if (!job.start_date)   { setErr(appMessage("ui.de86f9505e91")); return }
     const hours = parseFloat(String(job.hours_per_week).replace(',', '.'))
     const vac   = parseInt(job.vacation_days, 10)
     if (!hours || hours <= 0 || hours > 60) { setErr(appMessage("ui.d69fa185470a")); return }
     if (isNaN(vac) || vac < 0 || vac > 60)  { setErr(appMessage("ui.c72b67933b74")); return }
-    const payErr = validatePayModel({ employment_type: job.employment_type, pay_type: payTypeOf(job), monthly_salary: job.monthly_salary })
-    if (payErr) { setErr(appMessage(payErr === 'fixedNotAllowed' ? "payModel.fixedNotAllowed" : "payModel.salaryMissing")); return }
     setBusy(true)
     // Freischaltung + Vergütungsmodell in EINER Transaktion (Migration 25): Fixgehalt oder gar nichts
     const { data, error } = await supabase.rpc('approve_onboarding_with_pay', {
@@ -220,8 +223,8 @@ export default function OnboardingReview({ row, isAdmin, onClose, onDone }) {
                 onChange={patch => setJob(j => ({ ...j, ...patch }))} />
               <div className="two-col">
                 <div className="form-group">
-                  <label>{tr("ui.04d8b7c7a102")}</label>
-                  <input inputMode="decimal" value={job.hourly_rate} onChange={e => setJ('hourly_rate', e.target.value.replace(/[^0-9.,]/g, ''))} placeholder={MINDESTLOHN.toLocaleString(getIntlLocale())} />
+                  <label>{payTypeOf(job) === PAY_FIXED ? tr("payModel.hourlyOptional") : tr("ui.04d8b7c7a102")}</label>
+                  <input inputMode="decimal" value={job.hourly_rate ?? ''} onChange={e => setJ('hourly_rate', e.target.value.replace(/[^0-9.,]/g, ''))} placeholder={payTypeOf(job) === PAY_FIXED ? '' : MINDESTLOHN.toLocaleString(getIntlLocale())} />
                   {payTypeOf(job) === PAY_FIXED && (
                     <div style={{ fontSize:10.5, color:'var(--text-muted)', marginTop:3 }}>{tr("payModel.hourlyInternal")}</div>
                   )}

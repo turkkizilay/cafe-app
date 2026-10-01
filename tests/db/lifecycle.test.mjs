@@ -131,10 +131,10 @@ test('Freischaltung mit Vergütung: nur Admin, atomar (Fixgehalt oder gar nichts
   assert.equal((await one(a, approveSql, approveArgs(s1.onb, 'fixed', 'teilzeit', 1800))).v.success, false, 'Retry ohne Wirkung')
   assert.equal(await count(`SELECT count(*)::int n FROM employees WHERE lower(email) = 'neu4@example.test'`), 1)
 
-  // Atomarität: schlägt das Setzen des Fixgehalts fehl, wird die gesamte Freischaltung zurückgerollt
+  // Atomarität: schlägt das Anlegen mit Fixgehalt fehl (seit Migration 30 ein INSERT), wird die gesamte Freischaltung zurückgerollt
   const s2 = await submitted('neu5@example.test')
   await db.sys.query(`CREATE FUNCTION test_fail_pay() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.pay_type = 'fixed' THEN RAISE EXCEPTION 'simulierter Fehler'; END IF; RETURN NEW; END $$;
-                      CREATE TRIGGER test_fail_pay BEFORE UPDATE OF pay_type ON employees FOR EACH ROW EXECUTE FUNCTION test_fail_pay();`)
+                      CREATE TRIGGER test_fail_pay BEFORE INSERT OR UPDATE OF pay_type ON employees FOR EACH ROW EXECUTE FUNCTION test_fail_pay();`)
   assert.match(await err(() => a.query(approveSql, approveArgs(s2.onb, 'fixed', 'vollzeit', 3000))), /simulierter Fehler/)
   await db.sys.query(`DROP TRIGGER test_fail_pay ON employees; DROP FUNCTION test_fail_pay();`)
   assert.equal(await count(`SELECT count(*)::int n FROM employees WHERE lower(email) = 'neu5@example.test'`), 0, 'kein halb angelegter Mitarbeiter')

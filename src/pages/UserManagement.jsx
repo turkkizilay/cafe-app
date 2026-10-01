@@ -670,7 +670,7 @@ export default function UserManagement() {
                               onChange={patch => setInviteJob(j => ({ ...j, ...patch }))} />
                             <div className="two-col">
                               <div className="form-group"><label>{tr("ui.015cd60df3a4")}</label>
-                                <input inputMode="decimal" value={inviteJob.hourly_rate} placeholder={MINDESTLOHN.toLocaleString(getIntlLocale())}
+                                <input inputMode="decimal" value={inviteJob.hourly_rate} placeholder={payTypeOf(inviteJob) === PAY_FIXED ? '' : MINDESTLOHN.toLocaleString(getIntlLocale())}
                                   onChange={e => setInviteJob(j => ({ ...j, hourly_rate:e.target.value.replace(/[^0-9.,]/g, '') }))} />
                                 {parseFloat(String(inviteJob.hourly_rate).replace(',', '.')) < MINDESTLOHN && (
                                   <div style={{ fontSize:11.5, color:'var(--danger)', marginTop:3 }}>{tr("ui.73d8e2d2f8fd")}</div>)}

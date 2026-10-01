@@ -21,7 +21,9 @@ Tests: App/Logik `node --test tests/*.test.mjs` · Server-Invarianten `npm --pre
    nie Stunden kappen (220 h / 80 h Werkstudent sind nur Warnungen). > 12 h offen → Stunden 0 + Markierung,
    bezahlt erst nach Admin-Korrektur. (VERIFIED, Migrationen 07/16/17, `tests/workHours`, `workTimeModels`)
 6. **Vergütung:** Fixgehalt = Brutto-Monatsgehalt, keine Teilmonatskürzung, keine Erhöhung durch Überstunden;
-   Fixgehalt nur Vollzeit/Teilzeit (DB-Constraint); `hourly_rate` bleibt Pflicht. (VERIFIED, Migration 18, `tests/compensation`)
+   Fixgehalt nur Vollzeit/Teilzeit (DB-Constraint). Quelle der Wahrheit ist `pay_type`: Stundenlohn → `hourly_rate` Pflicht,
+   Fixgehalt → `monthly_salary` Pflicht, `hourly_rate` optional (NULL, nie ein Ersatzwert; Migration 30). (VERIFIED, Migrationen 18/30,
+   `tests/compensation`, `tests/fixedSalary`, `tests/db/fixed_salary.test.mjs`)
 7. **DATEV-Export (`exportDATEV`) ist eingefroren:** Spalten/Format nur mit ausdrücklicher Freigabe ändern; die
    i18n-Baseline (`.i18n-work/baseline.zip`) erzwingt das. Freigegeben: RFC-4180-Escaping, feste Personalnummer (Migration 27). (VERIFIED)
 8. **Angewendete Migrationen werden nie geändert oder erneut ausgeführt.** Neue Änderung = neue Datei `NN_*.sql`;
@@ -208,9 +210,30 @@ Frontend (`src/lib/onboardingFlow.js`): Schritt immer aus den Serverdaten ableit
 Client-Zustand; fehlt eine Antwort, am Serverstand entscheiden (Revision + „steht genau das gespeichert?“), nie raten;
 nach Konflikt nur eigene Eingaben in Feldern behalten, die die Gegenseite nicht geändert hat (Drei-Wege-Vergleich).
 (VERIFIED, `tests/onboardingResume.test.mjs` + manueller Browsertest mit zweitem Gerät, Konflikt, verlorener Antwort)
+Supabase Auth (Production, 2026-09-29): Ein RAISE im Signup-Trigger kommt beim Client als HTTP 500 mit der
+Original-Meldung + `hint` an (z. B. `P0001`, `invite_invalid`), NICHT als „Database error saving new user“; es bleibt
+kein Auth-Konto zurück, es geht keine Mail raus. Client-Logik daher nie an den Fehlertext binden, sondern am
+Serverzustand entscheiden (hier: Einladungsstatus erneut lesen). (VERIFIED, echter Signup mit ungültigem Token)
 Test-Falle: `loadLifecycle()` spielt die Production-Vorlage NACH den Migrationen ein und überschreibt so neuere
 Funktionsversionen → solche Migrationen in `LIFECYCLE_MIGRATIONS` eintragen (werden danach erneut eingespielt,
 müssen wiederholt ausführbar sein); der erste Test der Suite prüft, dass wirklich die neue Version aktiv ist.
+
+### Rollen-Ausnahme bei Server-Guards (Stempeln außerhalb, Migration 29)
+Decision: Ausnahmen von einem Trigger-Guard nur über eine eigene SECURITY-DEFINER-RPC, die Rolle/Person/Bestätigung prüft
+und ein transaktionslokales Flag setzt; der Trigger prüft Flag UND Rolle erneut live (`is_manager_or_admin()`), Protokoll
+in derselben Transaktion. Admins umgehen die Zeit-Trigger komplett → die RPC muss Serverzeit, Methode und Stunden für
+Admins selbst setzen. „Standort unbekannt“ ist nie „außerhalb“. (VERIFIED, `tests/db/remote_clock.test.mjs`, 13 Mutationen rot)
+Test-Falle: Rollen/Status per Systemverbindung (`db.sys`) zu ändern wird vom Eskalationsschutz STILL zurückgesetzt
+(auth.uid() NULL → kein Admin) – im Test über eine Admin-Sitzung ändern und den Zustand prüfen.
+
+### Altregel in mehreren Ebenen: Fixgehalt scheiterte am Stundenlohn
+Problem: Freischaltung mit Fixgehalt + Monatsgehalt blockierte mit „Bitte einen Stundenlohn angeben.“ (Production).
+Root Cause: „Stundenlohn immer Pflicht“ lag in App, `approve_onboarding` (vor dem Vergütungsmodell geprüft) UND Spalte NOT NULL;
+die Freischaltung legte erst als Stundenlohn an und stellte dann um. Leeres Feld mit grauem Platzhalter „13,90“ wirkte vorbelegt.
+Fix: Migration 30 – Regel an `pay_type` gebunden (Tabellenregel `employees_hourly_rate_required`), Anlage in EINEM INSERT
+(`_approve_onboarding_core`), App-Regel `validateHourlyRate`; kein Platzhalter bei Fixgehalt. (VERIFIED, 7 Gegenproben rot)
+Permanent Lesson: Fachregeln mit Bedingung (je Vergütungsart) auf ALLEN Ebenen gleich formulieren; `null < Zahl` ist in JS true
+(Mindestlohn-Warnung bei leerem Satz) – optionale Zahlen vor Vergleichen auf null prüfen.
 
 ### Lange Dialoge auf dem iPhone nicht erreichbar
 Problem: Einladungs-Dialog auf dem iPhone nicht bis zum Bestätigungsbutton scrollbar (auch am Desktop bei sehr langen Dialogen).
