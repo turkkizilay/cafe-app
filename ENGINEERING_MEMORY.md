@@ -293,6 +293,13 @@ Feiertage – Vergütungsfolgen sind eine getrennte, offene Fachentscheidung. Do
 jährliche Datenpflege; gespeicherte `days_count` automatisch korrigieren (nur Hinweis, `vacationDaysMismatch`).
 Regression Protection: `tests/db/holidays.test.mjs`, `tests/holidays.test.mjs` (Mutationen: Feiertag fehlt/±1 Tag/Allerheiligen/zweite Quelle).
 
+### Stille Vorauswahl und abgeleitete Datumsparameter
+Problem: Zeitkorrekturen zeigten sofort die Daten des ersten Mitarbeiters (automatische Auswahl); „Meine Stunden“ verlinkte
+den Stundennachweis mit dem Monat des Wochen-Montags (01.10. → September).
+Fix: Personenbezogene Admin-Ansichten starten ohne Auswahl (Platzhalter, keine Abfrage, Aktionen gesperrt); beim Wechsel
+gilt nur die zuletzt angeforderte Antwort (Sequenz-Ref). Links auf Monatsansichten ohne Monat → Seite nimmt den lokalen
+aktuellen Monat (`src/lib/timesheetMonth.js`, nie `toISOString()`). (VERIFIED, `tests/uxDefaults.test.mjs`, 5 Gegenproben rot)
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

@@ -1,6 +1,6 @@
 import { t as tr, getIntlLocale, message as appMessage, errorMessage, messageParts } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase, toLocalDateStr } from '../lib/supabase'
 import { formatDate } from '../i18n/format.js'
 import { useProfile } from '../context/ProfileContext'
@@ -65,14 +65,16 @@ export default function TimeManagement() {
     supabase.from('employees')
       .select('id, first_name, last_name, avatar_url, avatar_color, is_active')
       .or(`is_active.eq.true,end_date.gte.${formerStaffCutoff()}`).order('last_name')   // + kürzlich Ausgeschiedene
-      .then(({ data }) => {
-        setEmployees(data || [])
-        const first = (data || []).find(e => e.is_active) || data?.[0]
-        if (first) setFilterEmp(first.id)
-      })
+      .then(({ data }) => setEmployees(data || []))   // bewusst KEINE automatische Auswahl – der Admin wählt selbst
   }, [])
 
-  useEffect(() => { if (filterEmp) fetchEntries() }, [filterEmp, filterMode, filterYear, filterMonth, filterDate])
+  // Erst nach bewusster Auswahl laden; ohne Auswahl nichts anzeigen (keine Daten einer zufälligen Person)
+  const fetchSeq = useRef(0)
+  useEffect(() => {
+    if (filterEmp) { fetchEntries(); return }
+    fetchSeq.current++                       // laufende Antwort einer vorherigen Auswahl verwerfen
+    setEntries([]); setBreaksByEntry({}); setLoading(false)
+  }, [filterEmp, filterMode, filterYear, filterMonth, filterDate])
   useRefreshHandler(() => (filterEmp ? fetchEntries() : null))   // Aktualisieren-Button
 
   function getDateRange() {
@@ -91,6 +93,7 @@ export default function TimeManagement() {
   }
 
   async function fetchEntries() {
+    const seq = ++fetchSeq.current           // nur die zuletzt angeforderte Auswahl darf die Anzeige setzen
     setLoading(true)
     const { start, end } = getDateRange()
     const { data, error } = await supabase
@@ -98,15 +101,18 @@ export default function TimeManagement() {
       .eq('employee_id', filterEmp)
       .gte('date', start).lte('date', end)
       .order('date').order('clock_in')
+    if (seq !== fetchSeq.current) return
     if (error) toast.error(messageParts([appMessage("ui.60efe70adb51"), errorMessage(error)]))
     setEntries(data || [])
     const { byEntry, error: bErr } = await fetchBreaksForEntries((data || []).map(e => e.id))
+    if (seq !== fetchSeq.current) return
     setBreaksOn(!isBreakFeatureMissing(bErr))
     setBreaksByEntry(bErr ? {} : byEntry)
     setLoading(false)
   }
 
   function openAdd() {
+    if (!filterEmp) { toast.warn(appMessage("time.selectEmployeeFirst")); return }
     const date = filterMode === 'month'
       ? `${filterYear}-${String(filterMonth).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}`
       : filterDate
@@ -140,6 +146,7 @@ export default function TimeManagement() {
   }
 
   async function doSave() {
+    if (!form.employee_id) { toast.warn(appMessage("time.selectEmployeeFirst")); return }   // nie ohne Mitarbeiter speichern
     // Unvollständige/ungültige Uhrzeit nie speichern – ein leeres Ausstempel-/Pausenende hieße sonst „offen“
     if (Object.values(badTimes).some(Boolean)) { toast.warn(appMessage("time.invalid24")); return }
     if (!form.reason.trim()) { toast.warn(appMessage("ui.9631f4375e40")); return }
@@ -246,7 +253,8 @@ export default function TimeManagement() {
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   {emp && <Avatar src={emp.avatar_url} firstName={emp.first_name} lastName={emp.last_name} color={emp.avatar_color} size={28} />}
                   <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} style={{ flex:1 }}>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
+                    {/* Erster Eintrag = Platzhalter (leere Auswahl); kein Mitarbeiter ist vorausgewählt */}
+                    {[{ id: '', placeholder: true }, ...employees].map(e => <option key={e.id || 'none'} value={e.id}>{e.placeholder ? tr("time.selectEmployee") : `${e.first_name} ${e.last_name}`}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                   </select>
                 </div>
               </div>
@@ -286,7 +294,7 @@ export default function TimeManagement() {
                 </div>
               )}
 
-              <button className="btn btn-primary" style={{ marginLeft:'auto' }} onClick={openAdd}>{tr("ui.76c7dfd50b13")}</button>
+              <button className="btn btn-primary" style={{ marginLeft:'auto' }} onClick={openAdd} disabled={!filterEmp}>{tr("ui.76c7dfd50b13")}</button>
             </div>
           </div>
         </div>
@@ -331,7 +339,12 @@ export default function TimeManagement() {
             )}
           </div>
 
-          {loading ? (
+          {!filterEmp ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">👤</div>
+              <div className="empty-state-text">{tr("time.selectEmployeeFirst")}</div>
+            </div>
+          ) : loading ? (
             <div style={{ padding:32, textAlign:'center', color:'var(--text-muted)' }}>{tr("ui.ebbb1d1f265f")}</div>
           ) : entries.length === 0 ? (
             <div className="empty-state">

@@ -170,7 +170,7 @@ test('Zeitkorrektur: alle vier Zeitfelder 24 h (TimeInput24), Unvollständiges b
   assert.match(s, /clock_in_time:\s+berlinTime\(entry\.clock_in\)/, 'Bearbeiten lädt gespeicherte Werte als HH:MM (Berlin)')
   // Speichern mit unvollständigem Ausstempelfeld: Warnung, KEIN Serveraufruf (sonst würde als offene Schicht gespeichert)
   const calls = [], toast = { calls: [], warn: (...a) => toast.calls.push(['warn', ...a]), error: () => {}, success: () => {} }
-  const deps = { badTimes: { out: true }, toast, appMessage: k => k, form: { reason: 'x', clock_in_time: '08:00', clock_out_time: '', breaks: [] },
+  const deps = { badTimes: { out: true }, toast, appMessage: k => k, form: { employee_id: 'e1', reason: 'x', clock_in_time: '08:00', clock_out_time: '', breaks: [] },
     supabase: { rpc: (...a) => { calls.push(a); return { data: { success: true }, error: null } } }, setSaving: () => {}, correctionPlan: () => ({}), BREAK_ERROR_KEY: {} }
   await new Function(...Object.keys(deps), `return (${extractFn('src/pages/TimeManagement.jsx', 'doSave')})`)(...Object.values(deps))()
   assert.deepEqual(toast.calls.map(c => c.slice(0, 2)), [['warn', 'time.invalid24']])

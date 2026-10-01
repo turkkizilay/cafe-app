@@ -220,7 +220,7 @@ export default function MyHours() {
         {employee && (
           <div style={{ padding:'0 24px', display:'flex', alignItems:'center', gap:8 }}>
             <span className="badge badge-gray">{employee.first_name} {employee.last_name}</span>
-            <Link to={`/stundennachweis?monat=${year}-${String(month).padStart(2,'0')}`} className="btn btn-sm">{tr("ui.7e62fb83eeda")}</Link>
+            <Link to="/stundennachweis" className="btn btn-sm">{tr("ui.7e62fb83eeda")}</Link>
           </div>
         )}
       </div>

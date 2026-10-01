@@ -10,6 +10,7 @@ import { timesheetPdf } from '../lib/timesheetPdf'
 import { safeFileName } from '../lib/pdf'
 import { saveFile } from '../lib/download'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import { currentLocalYm, resolveTimesheetMonth, isValidYm as validYm } from '../lib/timesheetMonth'
 
 /**
  * Arbeitszeitnachweis pro Mitarbeiter und Monat (§ 17 MiLoG, § 16 Abs. 2 ArbZG).
@@ -36,15 +37,14 @@ function shiftMonth(ym, delta) {
   const d = new Date(y, m - 1 + delta, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
-const validYm = s => /^\d{4}-(0[1-9]|1[0-2])$/.test(s || '')
 
 export default function Timesheet() {
   useLocale()
   const { profile, isAdmin, isManager } = useProfile() || {}
   const canManage = isAdmin || isManager
   const [params, setParams] = useSearchParams()
-  const nowYm = toLocalDateStr().slice(0, 7)
-  const ym = validYm(params.get('monat')) ? params.get('monat') : nowYm
+  const nowYm = currentLocalYm()
+  const ym = resolveTimesheetMonth(params.get('monat'))   // ohne bewusste Auswahl: aktueller lokaler Monat
   const empParam = params.get('ma') || ''
   const selected = canManage ? (empParam || 'all') : (profile?.employee_id || '')
 
