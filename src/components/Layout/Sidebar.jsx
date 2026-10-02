@@ -106,7 +106,7 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
           {totalBadge > 0 && <span className="mobile-menu-dot" aria-hidden="true" />}
         </button>
         <div className="mobile-bar-title" style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <BrandMark size={26} /> Café Buur
+          <BrandMark size={26} /> <span className="mobile-bar-brand">Café Buur</span>
         </div>
       </header>
 
@@ -137,7 +137,7 @@ export default function Sidebar({ session, isAdmin, isManager, pendingCount, vac
           </>)}
 
           {isAdmin && (<>
-            <div className="sidebar-section-label">Administration</div>
+            <div className="sidebar-section-label">{tr('nav.administration')}</div>
             {adminWithBadge.map(item => <NavItem key={item.path} item={item} collapsed={collapsed} isManager={isManager} vacTotal={vacTotal} />)}
           </>)}
         </nav>

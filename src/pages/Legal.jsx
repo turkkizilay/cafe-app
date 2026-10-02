@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { BrandBadge } from '../components/UI/Brand.jsx'
-import { legalContent, LEGAL_PATHS, LEGAL_VERSION } from '../legal/legalContent.js'
+import { legalContent, legalLanguage, LEGAL_PATHS, LEGAL_VERSION } from '../legal/legalContent.js'
 
 // Öffentliche Rechtsseiten (ohne Login): Impressum und Datenschutzhinweise für Beschäftigte.
 // Normale Links (volle Seitenladung) – App.jsx entscheidet anhand des Pfads vor jeder Anmeldung.
@@ -15,10 +15,11 @@ function Block({ block, t }) {
 }
 
 export default function LegalPage({ kind }) {
-  const { locale, t } = useLocale()
+  const { locale, t, intlLocale } = useLocale()
   const content = legalContent(kind, locale)
+  const textLang = legalLanguage(locale)
   useEffect(() => { document.title = `${content.title} – Café Buur` }, [content.title])
-  const updated = new Date(`${LEGAL_VERSION}T12:00:00`).toLocaleDateString(locale === 'en' ? 'en-GB' : 'de-DE', { day: '2-digit', month: 'long', year: 'numeric' })
+  const updated = new Date(`${LEGAL_VERSION}T12:00:00`).toLocaleDateString(intlLocale, { day: '2-digit', month: 'long', year: 'numeric' })
   return (
     <div className="legal-page" lang={locale}>
       <header className="legal-header">
@@ -29,6 +30,8 @@ export default function LegalPage({ kind }) {
         </nav>
       </header>
       <main className="legal-card">
+        {textLang !== locale && <p className="alert alert-info" lang={locale}>{t('legal.translationNotice')}</p>}
+        <div lang={textLang}>
         <h1>{content.title}</h1>
         <p className="legal-intro">{content.intro}</p>
         {content.sections.map((section, i) => (
@@ -37,6 +40,7 @@ export default function LegalPage({ kind }) {
             {section.blocks.map((block, j) => <Block key={j} block={block} t={t} />)}
           </section>
         ))}
+        </div>
         <p className="legal-updated">{t('legal.updated', { date: updated })}</p>
       </main>
       <p className="legal-back"><a href="/">{t('legal.back')}</a></p>

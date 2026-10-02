@@ -123,12 +123,13 @@ test('leave calculations and validation outcomes match the interrupted task base
 test('sickness grouping and personal-data checks retain baseline business behavior', async () => {
   const os=await baseline('src/lib/sickLeaveLogic.js'),op=await baseline('src/lib/personalData.js')
   const leaves=[{id:'test-a',employee_id:'test-person',start_date:'2026-09-01',end_date:'2026-09-03'},{id:'test-b',employee_id:'test-person',start_date:'2026-09-04',end_date:'2026-09-05'}]
-  for(const locale of ['de','en']) {
+  for(const locale of ['de','en','bn']) {
     setRuntimeLocale(locale)
     assert.deepEqual(sick.groupSickLeavesIntoCases(leaves),os.groupSickLeavesIntoCases(leaves))
     for(const iban of ['', 'DE89370400440532013000','DE89370400440532013001']) assert.equal(personal.isValidIBAN(iban),op.isValidIBAN(iban))
-    assert.deepEqual(personal.REQUIRED_FIELDS,op.REQUIRED_FIELDS)
-    assert.equal(personal.FIELD_LABELS.first_name,locale==='de'?'Vorname':'First name')
+    // Einzige gewollte Abweichung von der Basislinie: Notfallkontakt ist freiwillig (Migration 32)
+    assert.deepEqual(personal.REQUIRED_FIELDS,op.REQUIRED_FIELDS.filter(f=>!/^emergency_contact_/.test(f)))
+    assert.equal(personal.FIELD_LABELS.first_name,{de:'Vorname',en:'First name',bn:'নামের প্রথম অংশ'}[locale])
   }
   setRuntimeLocale('de')
 })

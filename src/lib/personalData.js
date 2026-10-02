@@ -72,12 +72,15 @@ export const FIELD_LABELS = Object.defineProperties({}, Object.fromEntries(
   Object.entries(FIELD_MESSAGES).map(([field, value]) => [field, { enumerable: true, get: () => localizeMessage(value) }])
 ))
 
-// Pflichtfelder (identisch mit dem Server)
+// Pflichtfelder (identisch mit dem Server). Notfallkontakt ist freiwillig (Migration 32) – aber nur ganz oder gar nicht.
 export const REQUIRED_FIELDS = [
   'first_name', 'last_name', 'birth_date', 'street', 'house_number', 'postal_code', 'city', 'phone',
   'iban', 'account_holder', 'tax_id', 'social_security_number', 'health_insurance',
-  'other_employment', 'emergency_contact_name', 'emergency_contact_phone',
+  'other_employment',
 ]
+export const EMERGENCY_FIELDS = ['emergency_contact_name', 'emergency_contact_phone']
+// Telefonnummern bleiben Text (führendes +, internationale Formate); employees.phone ist varchar(50)
+export const PHONE_MAX = 50
 
 /** Prüft die angegebenen Felder; liefert { feld: Nachrichtendeskriptor } */
 export function validatePersonal(form, fields) {
@@ -92,7 +95,12 @@ export function validatePersonal(form, fields) {
     if (f === 'iban' && !isValidIBAN(v)) err[f] = appMessage("ui.60dfef793833")
     if (f === 'tax_id' && !isValidTaxIdFormat(v)) err[f] = appMessage("ui.b626330306ae")
     if (f === 'social_security_number' && !isValidSV(v)) err[f] = appMessage("ui.671552d6a9b8")
-    if ((f === 'phone' || f === 'emergency_contact_phone') && !/^[+0-9 ()/-]{6,}$/.test(String(v).trim())) err[f] = appMessage("ui.f64f6ea3e495")
+    if ((f === 'phone' || f === 'emergency_contact_phone') && (!/^[+0-9 ()/-]{6,}$/.test(String(v).trim()) || String(v).trim().length > PHONE_MAX)) err[f] = appMessage("ui.f64f6ea3e495")
+  }
+  // Notfallkontakt: leer lassen ist erlaubt; wer anfängt, gibt Name UND Telefonnummer an (kein unbrauchbarer Halb-Datensatz)
+  if (EMERGENCY_FIELDS.some(f => fields.includes(f))) {
+    const filled = EMERGENCY_FIELDS.filter(f => !empty(form[f]))
+    if (filled.length === 1) for (const f of EMERGENCY_FIELDS) if (empty(form[f])) err[f] = appMessage('onb.emergencyIncomplete')
   }
   if (fields.includes('other_employment_note') && form.other_employment === true && empty(form.other_employment_note)) {
     err.other_employment_note = appMessage("ui.6d3ee19a7bc7")

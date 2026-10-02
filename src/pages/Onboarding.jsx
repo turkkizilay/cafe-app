@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { formatDate, formatDateTime } from '../i18n/format.js'
 import { useToast } from '../components/UI/Toast'
 import {
-  validatePersonal, toPayload, formatIBAN, taxIdChecksumOk, cleanTaxId,
+  validatePersonal, toPayload, formatIBAN, taxIdChecksumOk, cleanTaxId, PHONE_MAX,
   FIELD_LABELS, FIELD_MESSAGES,
 } from '../lib/personalData'
 import { translateSupabaseError } from '../lib/errorHelper'
@@ -24,7 +24,7 @@ const STEPS = [
   { key:'contact', get title() { return tr("ui.3e05c8cee613") },   icon:'🏠', fields:STEP_FIELDS.contact },
   { key:'bank',    get title() { return tr("ui.551ef56c92ec") },      icon:'🏦', fields:STEP_FIELDS.bank },
   { key:'payroll', get title() { return tr("ui.9c7a0f9f2d3a") }, icon:'🧾', fields:STEP_FIELDS.payroll },
-  { key:'emerg',   get title() { return tr("ui.b285b3cd6355") },      icon:'🚑', fields:STEP_FIELDS.emerg },
+  { key:'emerg',   get title() { return tr('onb.emergencyOptional') }, icon:'🚑', fields:STEP_FIELDS.emerg },
   { key:'review',  get title() { return tr("ui.8b4f9d373e90") },   icon:'✅', fields:[] },
 ]
 
@@ -37,7 +37,7 @@ function signOut() {
 function Shell({ children, wide }) {
   useLocale()
   return (
-    <div style={{ minHeight:'100vh', background:'var(--bg)', padding:'calc(24px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom))' }}>
+    <div style={{ minHeight:'100vh', background:'var(--bg)', padding:'calc(64px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom))' }}>   {/* oben Platz für den Sprachumschalter (sonst verdeckt er „Abmelden“) */}
       <div style={{ maxWidth: wide ? 620 : 460, margin:'0 auto' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -386,7 +386,7 @@ export default function Onboarding({ session, fallback }) {
                 <input value={form.last_name} onChange={ev => set('last_name', ev.target.value)} autoComplete="family-name" style={inputStyle('last_name')} />
               </Field>
             </div>
-            <Field label={tr("ui.807b1204e06c")} error={e.birth_name} hint="Nur falls abweichend vom Nachnamen.">
+            <Field label={tr("ui.807b1204e06c")} error={e.birth_name} hint={tr('onb.hintBirthName')}>
               <input value={form.birth_name} onChange={ev => set('birth_name', ev.target.value)} />
             </Field>
             <div className="two-col">
@@ -420,13 +420,13 @@ export default function Onboarding({ session, fallback }) {
                 <input value={form.city} onChange={ev => set('city', ev.target.value)} autoComplete="address-level2" style={inputStyle('city')} />
               </Field>
             </div>
-            <Field label={tr("ui.c7a04759d645")} required error={e.phone}>
-              <input type="tel" value={form.phone} onChange={ev => set('phone', ev.target.value)} autoComplete="tel" placeholder="+49 170 1234567" style={inputStyle('phone')} />
+            <Field label={tr('onb.ownPhone')} required error={e.phone} hint={tr('onb.ownPhoneHint')}>
+              <input type="tel" inputMode="tel" value={form.phone} onChange={ev => set('phone', ev.target.value)} autoComplete="tel" maxLength={PHONE_MAX} placeholder="+49 170 1234567" style={inputStyle('phone')} />
             </Field>
           </>}
 
           {cur.key === 'bank' && <>
-            <Field label={tr("ui.7e345c3ba789")} required error={e.iban} hint="Konto, auf das dein Lohn überwiesen wird.">
+            <Field label={tr("ui.7e345c3ba789")} required error={e.iban} hint={tr('onb.hintIban')}>
               <input value={form.iban} inputMode="text" autoCapitalize="characters" spellCheck={false}
                 onChange={ev => set('iban', formatIBAN(ev.target.value.replace(/[^A-Za-z0-9]/g, '')))}
                 onFocus={() => { if (!form.account_holder) set('account_holder', `${form.first_name} ${form.last_name}`.trim()) }}
@@ -444,12 +444,12 @@ export default function Onboarding({ session, fallback }) {
                 style={{ fontFamily:'monospace', ...inputStyle('tax_id') }} />
             </Field>
             <Field label={tr("ui.5acdea3be6d5")} required error={e.social_security_number}
-              hint="Steht auf deinem Sozialversicherungsausweis. Format: 12 345678 A 123">
+              hint={tr('onb.hintSv')}>
               <input value={form.social_security_number} autoCapitalize="characters" spellCheck={false} maxLength={16}
                 onChange={ev => set('social_security_number', ev.target.value.replace(/[^A-Za-z0-9 ]/g, '').toUpperCase())}
                 placeholder={tr("ui.ac2e02feab3d")} style={{ fontFamily:'monospace', ...inputStyle('social_security_number') }} />
             </Field>
-            <Field label={tr("ui.500348e73c9e")} required error={e.health_insurance} hint="z. B. TK, AOK Hessen, Barmer, DAK">
+            <Field label={tr("ui.500348e73c9e")} required error={e.health_insurance} hint={tr('onb.hintHealth')}>
               <input value={form.health_insurance} onChange={ev => set('health_insurance', ev.target.value)} style={inputStyle('health_insurance')} />
             </Field>
             <Field label={tr("ui.3277c685d32a")} required error={e.other_employment}>
@@ -464,19 +464,19 @@ export default function Onboarding({ session, fallback }) {
               </div>
             </Field>
             {form.other_employment === true && (
-              <Field label={tr("ui.e55bff7f9626")} required error={e.other_employment_note} hint="Arbeitgeber, Art (Minijob/Teilzeit) und ungefährer Monatsverdienst.">
+              <Field label={tr("ui.e55bff7f9626")} required error={e.other_employment_note} hint={tr('onb.hintOtherEmployment')}>
                 <textarea rows={2} value={form.other_employment_note} onChange={ev => set('other_employment_note', ev.target.value)} style={inputStyle('other_employment_note')} />
               </Field>
             )}
           </>}
 
           {cur.key === 'emerg' && <>
-            <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:12, lineHeight:1.55 }}>{tr("ui.5686c0e747c3")}</div>
-            <Field label={tr("ui.f2fbb683da7e")} required error={e.emergency_contact_name}>
+            <div style={{ fontSize:13, color:'var(--text-muted)', marginBottom:12, lineHeight:1.55 }}>{tr("ui.5686c0e747c3")} {tr('onb.emergencyOptionalHint')}</div>
+            <Field label={tr("ui.f2fbb683da7e")} error={e.emergency_contact_name}>
               <input value={form.emergency_contact_name} onChange={ev => set('emergency_contact_name', ev.target.value)} placeholder={tr("ui.a0f7975ae8cc")} style={inputStyle('emergency_contact_name')} />
             </Field>
-            <Field label={tr("ui.fa6906d76ee9")} required error={e.emergency_contact_phone}>
-              <input type="tel" value={form.emergency_contact_phone} onChange={ev => set('emergency_contact_phone', ev.target.value)} style={inputStyle('emergency_contact_phone')} />
+            <Field label={tr('onb.emergencyPhone')} error={e.emergency_contact_phone}>
+              <input type="tel" inputMode="tel" maxLength={PHONE_MAX} value={form.emergency_contact_phone} onChange={ev => set('emergency_contact_phone', ev.target.value)} style={inputStyle('emergency_contact_phone')} />
             </Field>
           </>}
 
@@ -488,14 +488,14 @@ export default function Onboarding({ session, fallback }) {
             {form.birth_place && <Row label={tr("ui.590571d3da6b")} value={form.birth_place} />}
             {form.nationality && <Row label={tr("ui.3e3a47041a87")} value={form.nationality} />}
             <Row label={tr("ui.79e5cf20de0b")} value={`${form.street} ${form.house_number}, ${form.postal_code} ${form.city}`} />
-            <Row label={tr("ui.fa6906d76ee9")} value={form.phone} />
+            <Row label={tr('onb.ownPhone')} value={form.phone} />
             <Row label={tr("ui.7e345c3ba789")} value={formatIBAN(form.iban)} />
             <Row label={tr("ui.e2ddc853f6c8")} value={form.account_holder} />
             <Row label={tr("ui.45239f930c27")} value={cleanTaxId(form.tax_id)} />
             <Row label={tr("ui.019891f68f41")} value={form.social_security_number} />
             <Row label={tr("ui.500348e73c9e")} value={form.health_insurance} />
             <Row label={tr("ui.ec918980364d")} value={form.other_employment ? tr("ui.bedf0a2cefd6", { p1: (form.other_employment_note) }) : tr("ui.90ebc1bde6f3")} />
-            <Row label={tr("ui.b285b3cd6355")} value={`${form.emergency_contact_name}, ${form.emergency_contact_phone}`} />
+            <Row label={tr("ui.b285b3cd6355")} value={form.emergency_contact_name?.trim() ? `${form.emergency_contact_name}, ${form.emergency_contact_phone}` : tr('onb.emergencyNone')} />
 
             {/* Direkt zu einem Abschnitt, um etwas zu ändern (z. B. nach „Korrektur angefordert“) */}
             <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', marginTop:12, fontSize:12.5, color:'var(--text-muted)' }}>

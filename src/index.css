@@ -955,6 +955,8 @@ a:focus-visible {
     background: #C2793A; box-shadow: 0 0 0 2px var(--sidebar);
   }
   .mobile-bar-title { font-weight: 600; font-size: 15px; }
+  .mobile-bar-title { min-width: 0; }
+  .mobile-bar-brand { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Seitenleiste wird zur Schublade */
   .sidebar {
@@ -1066,6 +1068,7 @@ html.dark .brand-wm-on-dark  { display: block !important; }
 input[type="checkbox"], input[type="radio"] { width: auto !important; flex: 0 0 auto; margin: 0; padding: 0; }
 /* A single stable control is available on every public and authenticated route. */
 /* No toolbar of its own: public/auth pages float it top-right; the app shell places it in existing headers. */
+:root { --language-dock-w: 180px; }   /* gemessene Breite des Umschalters DE · EN · বাংলা (176 px) + Reserve */
 .language-dock {
   position:fixed; z-index:1100;
   top:calc(12px + env(safe-area-inset-top)); right:calc(16px + env(safe-area-inset-right));
@@ -1075,7 +1078,7 @@ input[type="checkbox"], input[type="radio"] { width: auto !important; flex: 0 0 
 .language-switcher-label { color:var(--text-muted); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; user-select:none; }
 .language-segment {
   --segment-pad: 3px;
-  position:relative; display:inline-grid; grid-template-columns:repeat(2, minmax(0, 1fr));
+  position:relative; display:inline-grid; grid-template-columns:repeat(3, minmax(0, 1fr));
   padding:var(--segment-pad); border-radius:999px;
   background:var(--bg); border:1px solid var(--border);
   box-shadow:inset 0 1px 2px rgba(28,25,23,0.05);
@@ -1083,12 +1086,14 @@ input[type="checkbox"], input[type="radio"] { width: auto !important; flex: 0 0 
 }
 .language-segment-indicator {
   position:absolute; z-index:0; top:var(--segment-pad); bottom:var(--segment-pad); left:var(--segment-pad);
-  width:calc(50% - var(--segment-pad)); border-radius:999px;
+  width:calc((100% - 2 * var(--segment-pad)) / 3); border-radius:999px;
   background:var(--bg-white); border:1px solid var(--border-strong);
   box-shadow:var(--shadow);
   transition:transform .28s cubic-bezier(.3,.7,.2,1), background .2s ease, border-color .2s ease;
 }
 .language-segment[data-active="1"] .language-segment-indicator { transform:translateX(100%); }
+.language-segment[data-active="2"] .language-segment-indicator { transform:translateX(200%); }
+.language-segment-option[lang="bn"] { letter-spacing:0; font-size:12.5px; }   /* Sperrung zerreißt Bangla-Ligaturen */
 .language-segment-option {
   position:relative; z-index:1; min-width:42px; min-height:30px; padding:0 12px;
   border:0; border-radius:999px; background:transparent; cursor:pointer;
@@ -1108,6 +1113,8 @@ html.dark .language-segment-indicator { background:var(--bg-hover); }
 @media (pointer:coarse) { .language-segment-option { min-height:34px; min-width:46px; } }
 @media (prefers-reduced-motion:reduce) { .language-segment-indicator, .language-segment-option { transition:none; } }
 @media print { .language-dock { display:none !important; } }
+/* Sehr schmale Telefone: Schriftzug ausblenden (Logo bleibt), damit Menü, ↻ und Sprachumschalter nebeneinander passen */
+@media (max-width:359px) { .mobile-bar-brand { display:none; } }
 
 /* Signed-in desktop: aligned inside the right end of each page's 52px topbar, below modals and drawers. */
 @media (min-width:769px) {
@@ -1116,8 +1123,8 @@ html.dark .language-segment-indicator { background:var(--bg-hover); }
     top:calc(env(safe-area-inset-top) + 26px); right:calc(24px + env(safe-area-inset-right));
     transform:translateY(-50%);
   }
-  .app-shell .topbar { padding-right:calc(24px + 104px + 44px); }
-  .refresh-dock { top:calc(env(safe-area-inset-top) + 26px); right:calc(24px + 104px + 8px + env(safe-area-inset-right)); }
+  .app-shell .topbar { padding-right:calc(24px + var(--language-dock-w) + 44px); }
+  .refresh-dock { top:calc(env(safe-area-inset-top) + 26px); right:calc(24px + var(--language-dock-w) + 8px + env(safe-area-inset-right)); }
 }
 /* Signed-in mobile: right end of the dark mobile header, same pill in dark-surface tones. */
 @media (max-width:768px) {
@@ -1126,8 +1133,8 @@ html.dark .language-segment-indicator { background:var(--bg-hover); }
     top:calc(env(safe-area-inset-top) + 25px); right:calc(10px + env(safe-area-inset-right));
     transform:translateY(-50%);
   }
-  .mobile-bar { padding-right:calc(8px + 104px + 42px); }
-  .refresh-dock { top:calc(env(safe-area-inset-top) + 25px); right:calc(10px + 104px + 6px + env(safe-area-inset-right)); }
+  .mobile-bar { padding-right:calc(8px + var(--language-dock-w) + 42px); }
+  .refresh-dock { top:calc(env(safe-area-inset-top) + 25px); right:calc(10px + var(--language-dock-w) + 6px + env(safe-area-inset-right)); }
   body:has(.app-shell) .language-segment { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.12); box-shadow:inset 0 1px 2px rgba(0,0,0,0.35); }
   body:has(.app-shell) .language-segment-indicator { background:rgba(255,255,255,0.14); border-color:rgba(255,255,255,0.18); box-shadow:0 1px 2px rgba(0,0,0,0.4); }
   body:has(.app-shell) .language-segment-option { color:rgba(250,250,249,0.62); }

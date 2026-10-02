@@ -325,7 +325,10 @@ export function legalKindForPath(pathname) {
   return p === LEGAL_PATHS.imprint ? 'imprint' : p === LEGAL_PATHS.privacy ? 'privacy' : null
 }
 
+// Rechtstexte gibt es verbindlich auf Deutsch und als Übersetzung auf Englisch. Für Bangla (noch) keine eigene Fassung:
+// eine ungeprüfte Übersetzung von Impressum/Datenschutzhinweisen wäre rechtlich riskant → Englisch + Hinweis auf Bangla.
+export const legalLanguage = locale => (locale === 'en' || locale === 'bn' ? 'en' : 'de')
 export function legalContent(kind, locale) {
   const source = kind === 'imprint' ? IMPRINT : PRIVACY
-  return source[locale === 'en' ? 'en' : 'de']
+  return source[legalLanguage(locale)]
 }

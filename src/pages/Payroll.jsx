@@ -477,7 +477,7 @@ export default function Payroll() {
                           <div>
                             <div style={{ fontWeight:500 }}>{r.first_name} {r.last_name}</div>
                             {r.employment_type === 'werkstudent' && (
-                              <div style={{ fontSize:11, color:'var(--text-muted)' }}>Max {WERKSTUDENT_LIMIT}{tr("ui.f0dd38020b95")}{r.hours_per_week}{tr("ui.0be41103d552")}</div>
+                              <div style={{ fontSize:11, color:'var(--text-muted)' }}>{tr('payroll.maxPrefix')} {WERKSTUDENT_LIMIT}{tr("ui.f0dd38020b95")}{r.hours_per_week}{tr("ui.0be41103d552")}</div>
                             )}
                             {r.employment_type === 'minijob' && (
                               <div style={{ fontSize:11, color:'var(--text-muted)' }}>{tr("ui.cded0737a8be")}{formatCurrency(MINIJOB_LIMIT)}{tr("ui.d81b0e9e1ccd")}</div>

@@ -34,6 +34,11 @@ Tests: App/Logik `node --test tests/*.test.mjs` · Server-Invarianten `npm --pre
 10. **i18n:** DE ist Default. Im State werden Nachrichten-Deskriptoren (`message`, `formatParam`) gehalten, nicht
     übersetzte Strings; Freitext/Namen/Audit-`summary` werden nie übersetzt; API-/Audit-Aufrufe bleiben sprachneutral.
     (VERIFIED, `I18N_IMPLEMENTATION_REPORT.md`, `tests/i18n`, `scripts/check-i18n-invariants.py`)
+    Drei Sprachen DE/EN/BN: jeder neue Key gehört in `catalogs.js` (de, en) UND `catalogBn.js`; `tests/bangla.test.mjs`
+    erzwingt gleiche Keys/Platzhalter, Bangla-Schrift wo DE≠EN, keine festen Texte in JSX-Attributen (`hint="…"`) oder
+    Übersetzungs-Parametern (`|| 'gleich'`). BN formatiert mit lateinischen Ziffern + 24 h (`bn-BD-u-hc-h23-nu-latn`).
+    Rechtstexte (Impressum/Datenschutz) gibt es nur DE (verbindlich) + EN; BN zeigt EN mit Hinweis – keine ungeprüfte
+    Übersetzung. Breite des Sprachumschalters nur über `--language-dock-w` (gemessen, sonst überlappt ↻). (VERIFIED)
 11. **Production ist keine Testumgebung.** Dort nur Read-only-Prüfungen; destruktive Tests lokal mit synthetischen Daten.
 12. **Mindestens ein freigeschalteter Admin** – per DB-Trigger `ensure_admin_remains` (Migration 27), nicht nur im UI.
     Sonst sperrt sich die App durch Selbst-Herabstufung/-Sperre dauerhaft aus. (VERIFIED, live 2026-09-29)
@@ -234,6 +239,9 @@ Fix: Migration 30 – Regel an `pay_type` gebunden (Tabellenregel `employees_hou
 (`_approve_onboarding_core`), App-Regel `validateHourlyRate`; kein Platzhalter bei Fixgehalt. (VERIFIED, 7 Gegenproben rot)
 Permanent Lesson: Fachregeln mit Bedingung (je Vergütungsart) auf ALLEN Ebenen gleich formulieren; `null < Zahl` ist in JS true
 (Mindestlohn-Warnung bei leerem Satz) – optionale Zahlen vor Vergleichen auf null prüfen.
+Gleiches Muster beim Notfallkontakt (Migration 32): „optional“ heißt Client-`REQUIRED_FIELDS` UND Pflichtliste in
+`save_onboarding` ändern; Paarregel (Name + Telefon oder nichts) auf beiden Ebenen. `employees.phone` ist varchar(50) –
+Längen im Onboarding vorher prüfen, sonst scheitert erst die Freischaltung. (VERIFIED, `tests/db/onboarding_emergency_optional.test.mjs`)
 
 ### Lange Dialoge auf dem iPhone nicht erreichbar
 Problem: Einladungs-Dialog auf dem iPhone nicht bis zum Bestätigungsbutton scrollbar (auch am Desktop bei sehr langen Dialogen).

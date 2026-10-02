@@ -268,7 +268,7 @@ test('Verdrahtung: Server als Quelle, kein Überspringen, Warnung beim Schließe
 
 test('i18n: neue Texte DE/EN vollständig, Platzhalter identisch', () => {
   const keys = Object.keys(de).filter(k => /^onb\.|^invite\.(checkUnavailable|offlineTitle|notCreatedRetry|unclear|usedHint|toApp)$/.test(k))
-  assert.equal(keys.length, 13)
+  assert.equal(keys.length, 25)   // 13 + 12 aus dem Onboarding-Batch (eigene Telefonnummer, Notfallkontakt optional, Hinweise)
   for (const k of keys) {
     assert.ok(en[k] && de[k] !== en[k], k)
     assert.deepEqual((en[k].match(/\{\w+\}/g) || []).sort(), (de[k].match(/\{\w+\}/g) || []).sort(), k)

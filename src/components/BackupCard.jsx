@@ -200,7 +200,7 @@ export default function BackupCard() {
                   <div style={{ flex:1, minWidth:180 }}>
                     <div style={{ fontWeight:600 }}>{formatDateTime(b.created_at)}{tr("ui.4e2866d1f2b9")}</div>
                     <div style={{ fontSize:12, color:'var(--text-muted)' }}>
-                      {b.kind === 'auto' ? 'automatisch' : 'manuell'} · {sizeLabel(b.size_bytes)} · {b.counts?.employees ?? 0}{tr("ui.84026e42c641")}{b.counts?.time_entries ?? 0}{tr("ui.14df65407928")}</div>
+                      {b.kind === 'auto' ? tr('backup.auto') : tr('backup.manual')} · {sizeLabel(b.size_bytes)} · {b.counts?.employees ?? 0}{tr("ui.84026e42c641")}{b.counts?.time_entries ?? 0}{tr("ui.14df65407928")}</div>
                   </div>
                   <button className="btn btn-sm" onClick={() => downloadOld(b.id)} disabled={busy}>{tr("ui.b193f6e02258")}</button>
                 </div>

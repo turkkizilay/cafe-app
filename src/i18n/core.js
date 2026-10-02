@@ -1,10 +1,13 @@
 import { de, en } from './catalogs.js'
+import { bn } from './catalogBn.js'
 
 export const LOCALE_KEY = 'cafe-buur-locale'
-export const LOCALES = Object.freeze(['de', 'en'])
+export const LOCALES = Object.freeze(['de', 'en', 'bn'])
 export const normalizeLocale = value => LOCALES.includes(value) ? value : 'de'
-export const intlLocale = locale => normalizeLocale(locale) === 'en' ? 'en-GB' : 'de-DE'
-export const catalogs = { de, en }
+// Bangla: Monats-/Wochentagsnamen auf Bangla, aber lateinische Ziffern und 24-h-Uhr – wie Zeitfelder, Lohnunterlagen, DATEV
+const INTL = { de: 'de-DE', en: 'en-GB', bn: 'bn-BD-u-hc-h23-nu-latn' }
+export const intlLocale = locale => INTL[normalizeLocale(locale)]
+export const catalogs = { de, en, bn }
 
 export function readLocale(storage) {
   try { return normalizeLocale((storage ?? globalThis.localStorage)?.getItem(LOCALE_KEY)) }

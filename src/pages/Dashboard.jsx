@@ -261,7 +261,7 @@ export default function Dashboard() {
   return (
     <div>
       <div className="topbar">
-        <div className="topbar-title">Dashboard</div>
+        <div className="topbar-title">{tr('dashboard.title')}</div>
         <div className="topbar-right">
           <LiveClock />
           <div style={{ fontSize:12, color:'var(--text-secondary)' }}>
@@ -343,7 +343,7 @@ export default function Dashboard() {
                   {isToday && clockedIn
                     ? tr("ui.721773fe1f69")
                     : isToday
-                    ? tr("ui.686825b73377", { p1: (until || 'gleich') })
+                    ? tr("ui.686825b73377", { p1: (until || tr('dashboard.soon')) })
                     : tr("ui.a0e4bf554be7", { p1: (formatShiftDay(nextShift.date)) })}
                 </div>
                 <div style={{ fontSize:14, opacity:0.9, marginTop:6, display:'flex', alignItems:'center', gap:12 }}>
@@ -478,7 +478,7 @@ export default function Dashboard() {
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:500, fontSize:13 }}>{e.employees?.first_name} {e.employees?.last_name}</div>
                           <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{tr("ui.ba03ce08ac40")}{formatTime(e.clock_in)}
-                            {' · '}{since > 0 ? `${since}h ` : ''}{mins}{tr("ui.1f6fa6f69d18")}
+                            {' · '}{since > 0 ? `${since}${tr("ui.17c76396f75d")}` : ''}{mins}{tr("ui.1f6fa6f69d18")}
                             {onBreak && <>{' · '}<span style={{ color:'var(--warn)', fontWeight:600 }}>{tr("dashboard.onBreakSince", { time: formatTime(onBreak.break_start) })}</span></>}</div>
                         </div>
                         {onBreak

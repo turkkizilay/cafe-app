@@ -4,6 +4,7 @@ import { useLocale } from '../../context/LocaleContext.jsx'
 const OPTIONS = [
   { value: 'de', short: 'DE', name: 'Deutsch' },
   { value: 'en', short: 'EN', name: 'English' },
+  { value: 'bn', short: 'বাংলা', name: 'বাংলা (Bangla)' },
 ]
 
 export default function LanguageSwitcher() {
