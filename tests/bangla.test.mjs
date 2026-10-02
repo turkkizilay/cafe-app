@@ -9,7 +9,8 @@ import { parse } from '@babel/parser'
 import { de, en } from '../src/i18n/catalogs.js'
 import { bn } from '../src/i18n/catalogBn.js'
 import { LOCALES, LOCALE_KEY, normalizeLocale, readLocale, writeLocale, localeFromStorageEvent, translate, createFormatters, intlLocale, catalogs } from '../src/i18n/core.js'
-import { setRuntimeLocale, localizeMessage, message, messageParts, formatParam } from '../src/i18n/runtime.js'
+import { setRuntimeLocale, localizeMessage, message, messageParts, formatParam, t as tr, sourceLabel } from '../src/i18n/runtime.js'
+import { translateSource } from '../src/i18n/messages.js'
 import { legalContent } from '../src/legal/legalContent.js'
 import { validatePersonal, REQUIRED_FIELDS, EMERGENCY_FIELDS, PHONE_MAX, toPayload, PERSONAL_FIELDS } from '../src/lib/personalData.js'
 import { resumeStep, STEP_KEYS, STEP_FIELDS, rowToForm } from '../src/lib/onboardingFlow.js'
@@ -20,7 +21,8 @@ const placeholders = s => [...String(s).matchAll(/\{([A-Za-z]\w*)\}/g)].map(m =>
 const BENGALI = /[ঀ-৿]/
 const variants = (cat, k) => typeof cat[k] === 'object' ? Object.entries(cat[k]) : [[null, cat[k]]]
 // Bewusst nicht übersetzt (Original-Beschriftungen fremder Oberflächen bzw. reine Zeichen)
-const KEEP_ORIGINAL = new Set(['ui.065b95578e10', 'ui.a2d5731477f0', 'ui.bff96c5bb84d', 'ui.ffa543c28fe3', 'ui.3050e581f294', 'ui.24db69445a9d'])
+const KEEP_ORIGINAL = new Set(['ui.065b95578e10', 'ui.a2d5731477f0', 'ui.bff96c5bb84d', 'ui.ffa543c28fe3', 'ui.3050e581f294', 'ui.24db69445a9d',
+  'ui.3757dcfb2130', 'ui.3cb2486e1691', 'ui.f197a950741e', 'clock.methodGpsWifi'])   // Beispiel-E-Mails, Fachkürzel
 
 test('Kataloge: DE, EN und BN haben exakt dieselben Keys, Pluralformen und Platzhalter; kein BN-Wert leer', () => {
   const kd = Object.keys(de).sort()
@@ -152,6 +154,66 @@ test('Übersetzungs-Parameter enthalten keine festen Wörter (z. B. früher „g
   }
   assert.deepEqual(found, [])
   assert.deepEqual([de['dashboard.soon'], en['dashboard.soon'], bn['dashboard.soon']], ['gleich', 'soon', 'শীঘ্রই'])
+})
+
+test('Runtime-Audit: „Dashboard“ & Co. – Navigation und Kopfzeilen nur über Übersetzungen', () => {
+  assert.equal(translate('bn', 'dashboard.title'), 'ড্যাশবোর্ড'); assert.notEqual(translate('bn', 'dashboard.title'), 'Dashboard')
+  const sb = read('src/components/Layout/Sidebar.jsx')
+  assert.match(sb, /\{ get label\(\) \{ return tr\('dashboard\.title'\) \}, icon: '📊', path: '\/'/)
+  assert.doesNotMatch(sb, /label: '[^']*[A-Za-z]{3,}/, 'kein fester Menütext')
+  assert.match(read('src/pages/Dashboard.jsx'), /<div className="topbar-title">\{tr\('dashboard\.title'\)\}<\/div>/)
+})
+
+test('Keine festen Texte in label/title/placeholder-Eigenschaften und in JSX-Template-Strings (z. B. „KW“, „min“, „WLAN“)', () => {
+  const PROP = /^(label|title|text|placeholder|hint|subtitle|description|heading)$/
+  const ALLOWED_TPL = new Set([' KB'])
+  const ALLOWED_TEXT = new Set(['IPv4', 'IPv6', 'Café Buur', '📍 GPS'])   // Fachbegriffe, Marke
+  const found = []
+  for (const f of files('src').filter(f => /\.(js|jsx)$/.test(f) && !f.includes('/i18n/') && !f.includes('/legal/'))) {
+    const ast = parse(read(f), { sourceType: 'module', plugins: ['jsx'] })
+    const walk = (n, inChild) => {
+      if (!n || typeof n.type !== 'string' || n.type === 'JSXAttribute') return
+      if (n.type === 'JSXElement' && n.openingElement.name.name === 'style') return   // CSS
+      if (n.type === 'JSXExpressionContainer') inChild = true
+      if (n.type === 'ObjectProperty' && PROP.test(n.key?.name) && n.value.type === 'StringLiteral' && /[A-Za-zÄÖÜäöüß]{3,}/.test(n.value.value) && !/^#/.test(n.value.value))
+        found.push(`${f}:${n.loc.start.line} ${n.key.name}=${n.value.value}`)
+      if (['CallExpression', 'ObjectExpression', 'BinaryExpression', 'MemberExpression'].includes(n.type)) inChild = false   // Keys, Vergleiche, Stilwerte
+      if (n.type === 'JSXElement') inChild = false
+      if (inChild && n.type === 'StringLiteral' && /[A-Za-zÄÖÜäöüß]{3,}/.test(n.value) && !ALLOWED_TEXT.has(n.value)) found.push(`${f}:${n.loc.start.line} '${n.value}'`)
+      if (inChild && n.type === 'TemplateLiteral') for (const q of n.quasis) if (/[A-Za-zÄÖÜäöüß]{2,}/.test(q.value.cooked) && !ALLOWED_TPL.has(q.value.cooked)) found.push(`${f}:${n.loc.start.line} \`${q.value.cooked}\``)
+      for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach(c => walk(c, inChild)); else if (v && typeof v.type === 'string') walk(v, inChild) }
+    }
+    walk(ast.program, false)
+  }
+  // Ausnahmen mit Begründung: Sprachnamen nennen sich selbst; Protokoll-Kategorien werden per sourceLabel übersetzt (unten geprüft)
+  const rest = found.filter(x => !/LanguageSwitcher\.jsx:\d+ name=/.test(x) && !/lib\/activityLog\.js:\d+ label=/.test(x))
+  assert.deepEqual(rest, [])
+  for (const c of ['Anmeldung', 'Urlaub', 'Krankmeldung', 'Lohn', 'Mitarbeiter', 'Zeiten', 'Einstellungen', 'Integration', 'Dokument'])
+    assert.match(translateSource('bn', c), BENGALI, c)
+  assert.equal(translate('bn', 'time.weekShort', { week: 40 }), 'সপ্তাহ 40'); assert.equal(translate('en', 'time.weekShort', { week: 40 }), 'Week 40')
+  assert.equal(translate('bn', 'clock.methodWifi'), '📶 Wi-Fi'); assert.equal(translate('bn', 'payroll.maxHours', { hours: 40 }), 'সর্বোচ্চ 40 ঘণ্টা')
+  for (const k of ['ui.3757dcfb2130', 'ui.3cb2486e1691', 'ui.f197a950741e']) for (const l of ['en', 'bn']) assert.match(translate(l, k), /@example\.com$/, `${l}:${k}`)
+  assert.match(read('src/integrations/lightspeed/hooks/useLightspeedSetup.js'), /includes\('non-2xx'\) \? appMessage\("ui\.3321889ff318"\)/, 'rohe englische Supabase-Meldung ersetzt')
+})
+
+test('Feiertagsnamen aus der DB (deutsch) werden in EN/BN übersetzt angezeigt – alle 10 Hessen-Feiertage', () => {
+  const names = [...read('supabase/migrations_onboarding/31_hessen_holidays.sql').matchAll(/make_date\([^)]*\),\s*'([^']+)'\)/g)].map(m => m[1])
+  for (const n of ['Neujahr', 'Karfreitag', 'Ostermontag', 'Christi Himmelfahrt', 'Pfingstmontag', 'Fronleichnam']) if (!names.includes(n)) names.push(n)
+  assert.ok(names.length >= 10, names.join())
+  for (const n of new Set(names)) {
+    assert.equal(translateSource('de', n), n, n)
+    assert.notEqual(translateSource('en', n), n, `EN ${n}`)
+    assert.match(translateSource('bn', n), BENGALI, `BN ${n}`)
+  }
+  // echter Stundenzettel-Code: Vermerk in der gewählten Sprache
+  const src = read('src/pages/Timesheet.jsx')
+  const grab = name => { const s = src.indexOf(`function ${name}(`); let i = src.indexOf('{', src.indexOf(')', s)) + 1, d = 1; while (d) { const c = src[i++]; if (c === '{') d++; else if (c === '}') d-- } return src.slice(s, i) }
+  const toLocalDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const { monthBounds, computeSheet } = new Function('tr', 'toLocalDateStr', 'sourceLabel', `${grab('monthBounds')}; ${grab('computeSheet')}; return { monthBounds, computeSheet }`)(tr, toLocalDateStr, sourceLabel)
+  setRuntimeLocale('bn')
+  const oct = computeSheet({ id: 'e1' }, { te: [], vac: [], sick: [], hol: { '2026-10-03': 'Tag der Deutschen Einheit' } }, monthBounds('2026-10'))
+  assert.equal(oct.rows.find(r => r.d === '2026-10-03').note, 'সরকারি ছুটির দিন (জার্মান ঐক্য দিবস)')
+  setRuntimeLocale('de')
 })
 
 test('Rechtstexte: BN zeigt die englische Fassung mit Hinweis (keine ungeprüfte Übersetzung des Rechtstexts)', () => {

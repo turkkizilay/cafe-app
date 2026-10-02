@@ -385,7 +385,7 @@ export default function TimeManagement() {
                           }
                         </td>
                         <td style={{ color:'var(--text-secondary)' }}>
-                          {e.break_minutes ? `${e.break_minutes} min` : '–'}
+                          {e.break_minutes ? tr("ui.f6c1459ae2f9", { p1: e.break_minutes }) : '–'}
                           {bRows.length > 1 && <span className="break-hint"> · {bRows.length}×</span>}
                           {bOpen && <div className="break-hint break-hint-open">{tr("time.breakRunning")}</div>}
                           {bAuto && <div className="break-hint break-hint-warn">⚠️ {tr("time.breakAutoClosed")}</div>}
@@ -403,7 +403,7 @@ export default function TimeManagement() {
                           )}
                           {!isKorr && (e.gps_ok_in || e.clock_in_method === 'wlan') && (
                             <span style={{ background:'#DCFCE7', color:'#16A34A', fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:20 }}>
-                              {e.clock_in_method === 'wlan' ? '📶 WLAN' : e.clock_in_method === 'gps+wlan' ? '📍📶 GPS+WLAN' : '📍 GPS'}
+                              {e.clock_in_method === 'wlan' ? tr('clock.methodWifi') : e.clock_in_method === 'gps+wlan' ? tr('clock.methodGpsWifi') : '📍 GPS'}
                             </span>
                           )}
                           {(e.clock_in_method === 'remote' || e.clock_out_method === 'remote') && (
@@ -481,7 +481,7 @@ export default function TimeManagement() {
                 <label>{tr("ui.858e4ba7a29f")}</label>
                 {form.breaks.length === 0 ? (
                 <select value={form.break_minutes} onChange={e => f('break_minutes', e.target.value)}>
-                  {[0,15,30,45,60].map(m => <option key={m} value={m}>{m ? `${m} min` : tr("ui.fbf22ce00e55")}</option>)}
+                  {[0,15,30,45,60].map(m => <option key={m} value={m}>{m ? tr("ui.f6c1459ae2f9", { p1: m }) : tr("ui.fbf22ce00e55")}</option>)}
                 </select>
                 ) : (
                   <div className="break-rows">

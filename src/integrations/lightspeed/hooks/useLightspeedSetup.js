@@ -56,7 +56,7 @@ export function useLightspeedSetup() {
     } catch (err) {
       // Function nicht erreichbar → als Blocker anzeigen, nicht crashen
       setError(
-        err.message?.includes('Failed to fetch') || err.message?.includes('not found') ? (appMessage("ui.a519a2697d1a")) : ((errorMessage(err) || appMessage("ui.3321889ff318")))
+        err.message?.includes('Failed to fetch') || err.message?.includes('not found') ? (appMessage("ui.a519a2697d1a")) : err.message?.includes('non-2xx') ? appMessage("ui.3321889ff318") : ((errorMessage(err) || appMessage("ui.3321889ff318")))
       )
       setStatus(null)
     } finally {

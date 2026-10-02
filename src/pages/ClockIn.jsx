@@ -312,7 +312,7 @@ export default function ClockIn({ session }) {
   const netHNow      = openEntry ? netWorkedHours(openEntry.clock_in, null, breaks, tick) : 0
   const breakSec     = runningBreak ? Math.max(0, Math.floor((tick - new Date(runningBreak.break_start)) / 1000)) : 0
   const breakTimer   = `${Math.floor(breakSec / 3600)}:${String(Math.floor(breakSec / 60) % 60).padStart(2, '0')}:${String(breakSec % 60).padStart(2, '0')}`
-  const METHOD_LABEL = { gps: '📍 GPS', wlan: '📶 WLAN', 'gps+wlan': '📍📶', 'ohne Prüfung': '–', remote: tr("clock.remote.method") }
+  const METHOD_LABEL = { gps: '📍 GPS', wlan: tr('clock.methodWifi'), 'gps+wlan': '📍📶', 'ohne Prüfung': '–', remote: tr("clock.remote.method") }
 
   const today = localDateStr()
   if (loading) return <div style={{ padding:24, color:'var(--text-secondary)' }}>{tr("ui.ebbb1d1f265f")}</div>
@@ -464,7 +464,7 @@ export default function ClockIn({ session }) {
                       <tr key={e.id}>
                         <td>{e.date !== today && <span style={{ fontSize:11.5, color:'var(--text-muted)' }}>{new Date(e.date + 'T00:00:00').toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit'})} · </span>}{formatTime(e.clock_in)}</td>
                         <td>{e.clock_out ? formatTime(e.clock_out) : <span className="badge badge-green">{tr("ui.8163454f378f")}</span>}</td>
-                        <td>{brkMin ? `${brkMin} min` : '–'}</td>
+                        <td>{brkMin ? tr("ui.f6c1459ae2f9", { p1: brkMin }) : '–'}</td>
                         <td>{e.hours_worked ? <strong>{e.hours_worked.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</strong> : '–'}</td>
                         <td>{e.clock_in_method ? (METHOD_LABEL[e.clock_in_method] || '–') : (e.gps_ok_in ? '📍 GPS' : '–')}</td>
                       </tr>

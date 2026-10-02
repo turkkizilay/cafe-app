@@ -1,4 +1,4 @@
-import { t as tr, getIntlLocale, localizeMessage, message as appMessage } from '../i18n/runtime.js'
+import { t as tr, getIntlLocale, localizeMessage, message as appMessage, sourceLabel } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
@@ -209,7 +209,7 @@ function computeSheet(emp, data, b) {
     const hol = data.hol[d]
     const isVac = vac.some(v => inRange(d, v.start_date, v.end_date))
     const isSick = sick.some(s => inSick(d, s.start_date, s.end_date))
-    const absence = isSick ? tr("ui.be1600b499c6") : isVac ? tr("ui.35d3a889824d") : hol ? tr("ui.7da052b999c6", { p1: (hol) }) : ''
+    const absence = isSick ? tr("ui.be1600b499c6") : isVac ? tr("ui.35d3a889824d") : hol ? tr("ui.7da052b999c6", { p1: sourceLabel(hol) }) : ''   // Feiertagsname aus der DB (deutsch) → Anzeige in der gewählten Sprache
     if (isSick) sickDays++
     else if (isVac && !weekend && !hol) vacDays++
     const list = byDay[d] || []

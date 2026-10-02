@@ -10,7 +10,7 @@ import LegalLinks from '../UI/LegalLinks.jsx'
 
 const SECTIONS = [
   { get label() { return tr("ui.824543888534") }, items: [
-    { label: 'Dashboard',             icon: '📊', path: '/',            end: true },
+    { get label() { return tr('dashboard.title') }, icon: '📊', path: '/',            end: true },
     { get label() { return tr("ui.23f6c8674993") },            icon: '⏱️', path: '/einclocken'  },
     { get label() { return tr("ui.77ecaf5660bb") },           icon: '📅', path: '/schichten'   },
     { get label() { return tr("ui.37beb63c4e2b") },        icon: '🌴', path: '/urlaub',     vacBadge: true },

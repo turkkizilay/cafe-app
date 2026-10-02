@@ -53,7 +53,9 @@ export default function CafeNetworkCard({ gpsConfigured, requireNetwork = false,
   useEffect(() => { load() }, [])
 
   function openModal() {
-    setLabel(info?.networks?.length ? `Café-WLAN ${info.networks.length + 1}` : 'Café-WLAN')
+    // Vorbelegter Name für den neuen Eintrag = künftige Daten (frei änderbar), kein angezeigter Meldungstext → bewusst als String
+    const base = tr("ui.415e8f8d56e9")
+    setLabel(info?.networks?.length ? `${base} ${info.networks.length + 1}` : base)
     setCheck1(false); setCheck2(false); setModalErr(''); setModal(true)
   }
 

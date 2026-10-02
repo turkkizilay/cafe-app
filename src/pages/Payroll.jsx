@@ -490,7 +490,7 @@ export default function Payroll() {
                         {r.employment_type === 'werkstudent'
                           ? `${WERKSTUDENT_LIMIT.toLocaleString(getIntlLocale(), {minimumFractionDigits:2, maximumFractionDigits:2})} h`
                           : r.employment_type === 'minijob'
-                            ? `max ${(MINIJOB_LIMIT/r.hourly_rate).toFixed(0)} h`
+                            ? tr('payroll.maxHours', { hours: (MINIJOB_LIMIT/r.hourly_rate).toFixed(0) })
                             : `${r.monthTarget.toLocaleString(getIntlLocale(), {minimumFractionDigits:2, maximumFractionDigits:2})} h`}
                       </td>
                       <td>

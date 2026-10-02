@@ -245,8 +245,8 @@ export default function MyHours() {
               {isCurrentWeek
                 ? tr("ui.7d9c5f759a7d")
                 : isFutureWeek
-                  ? `📆 KW ${weekNum} · ${selectedMonday.getFullYear()}`
-                  : `KW ${weekNum} · ${selectedMonday.getFullYear()}`
+                  ? `📆 ${tr('time.weekShort', { week: weekNum })} · ${selectedMonday.getFullYear()}`
+                  : `${tr('time.weekShort', { week: weekNum })} · ${selectedMonday.getFullYear()}`
               }
             </div>
             <div style={{ fontSize:13, color:'var(--text-secondary)', marginTop:2 }}>
@@ -302,7 +302,7 @@ export default function MyHours() {
             <div className="stats-grid mb-5">
               <div className="stat-card">
                 <div className="stat-label">
-                  {isCurrentWeek ? tr("ui.f9ef5e928e9b") : `KW ${weekNum}`}
+                  {isCurrentWeek ? tr("ui.f9ef5e928e9b") : tr('time.weekShort', { week: weekNum })}
                 </div>
                 <div className="stat-value">{weeklyHours.toLocaleString(getIntlLocale(),{minimumFractionDigits:2,maximumFractionDigits:2})}{tr("ui.2155eeffb339")}</div>
                 <div className="stat-sub">{tr("ui.16b4d3e5ce3d")}{employee.employment_type==='werkstudent'
@@ -371,7 +371,7 @@ export default function MyHours() {
             <div className="card mb-5">
               <div className="card-header">
                 <div className="card-title">
-                  {isCurrentWeek ? tr("ui.7d9c5f759a7d") : isFutureWeek ? tr("ui.3cf77aa55e18") : `📅 KW ${weekNum}`}
+                  {isCurrentWeek ? tr("ui.7d9c5f759a7d") : isFutureWeek ? tr("ui.3cf77aa55e18") : `📅 ${tr('time.weekShort', { week: weekNum })}`}
                   <span style={{ fontSize:12, fontWeight:400, color:'var(--text-muted)', marginLeft:8 }}>
                     {formatWeekRange(selectedMonday, selectedSunday)}
                   </span>
@@ -416,7 +416,7 @@ export default function MyHours() {
                           </td>
                           <td>{entry ? formatTime(entry.clock_in) : <span className="text-muted">–</span>}</td>
                           <td>{entry ? formatTime(entry.clock_out) : <span className="text-muted">–</span>}</td>
-                          <td>{entry?.break_minutes ? `${entry.break_minutes}min` : '–'}</td>
+                          <td>{entry?.break_minutes ? tr("ui.f6c1459ae2f9", { p1: entry.break_minutes }) : '–'}</td>
                           <td>
                             {entry?.hours_worked
                               ? <strong style={{ color: entry.hours_worked > dailyHours*1.25 ? 'var(--warn)' : 'inherit' }}>
@@ -483,7 +483,7 @@ export default function MyHours() {
                           <td>{formatDate(e.date)}</td>
                           <td>{formatTime(e.clock_in)}</td>
                           <td>{formatTime(e.clock_out)}</td>
-                          <td>{e.break_minutes ? `${e.break_minutes}min` : '–'}</td>
+                          <td>{e.break_minutes ? tr("ui.f6c1459ae2f9", { p1: e.break_minutes }) : '–'}</td>
                           <td>
                             <strong style={{ color: e.hours_worked>dailyHours+2 ? 'var(--warn)' : 'inherit' }}>
                               {e.hours_worked}{tr("ui.aaa9402664f1")}</strong>

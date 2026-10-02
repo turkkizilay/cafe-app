@@ -36,7 +36,8 @@ Tests: App/Logik `node --test tests/*.test.mjs` · Server-Invarianten `npm --pre
     (VERIFIED, `I18N_IMPLEMENTATION_REPORT.md`, `tests/i18n`, `scripts/check-i18n-invariants.py`)
     Drei Sprachen DE/EN/BN: jeder neue Key gehört in `catalogs.js` (de, en) UND `catalogBn.js`; `tests/bangla.test.mjs`
     erzwingt gleiche Keys/Platzhalter, Bangla-Schrift wo DE≠EN, keine festen Texte in JSX-Attributen (`hint="…"`) oder
-    Übersetzungs-Parametern (`|| 'gleich'`). BN formatiert mit lateinischen Ziffern + 24 h (`bn-BD-u-hc-h23-nu-latn`).
+    Übersetzungs-Parametern (`|| 'gleich'`), `label:`-Eigenschaften (Menü „Dashboard“) oder JSX-Template-Strings (`${n}min`, „KW“).
+    DB-Texte mit festem Wertebereich (Feiertagsnamen) per `sourceLabel` übersetzen; Freitext (Positionen) und Protokolltexte nie. BN formatiert mit lateinischen Ziffern + 24 h (`bn-BD-u-hc-h23-nu-latn`).
     Rechtstexte (Impressum/Datenschutz) gibt es nur DE (verbindlich) + EN; BN zeigt EN mit Hinweis – keine ungeprüfte
     Übersetzung. Breite des Sprachumschalters nur über `--language-dock-w` (gemessen, sonst überlappt ↻). (VERIFIED)
 11. **Production ist keine Testumgebung.** Dort nur Read-only-Prüfungen; destruktive Tests lokal mit synthetischen Daten.
