@@ -194,13 +194,20 @@ export default function Vacation() {
     refetch()
   }
 
+  // Sperre wird in JEDEM Pfad freigegeben – vorher blieb „Speichern“ nach einer Hinweismeldung (z. B. Resturlaub,
+  // Enddatum vor Beginn, Serverfehler) bis zum Neuladen ohne Reaktion
   async function saveVacation() {
     if (savingRef.current) return  // Verhindert Doppel-Submit
     savingRef.current = true
+    try { await doSaveVacation() } finally { savingRef.current = false }
+  }
+
+  async function doSaveVacation() {
     setFormError('')
     const empId = canManage ? form.employee_id : profile?.employee_id
+    if (canManage && !employees.some(e => e.id === empId)) { setFormError(appMessage("time.selectEmployeeFirst")); savingRef.current = false; return }
     if (!empId || !form.start_date || !form.end_date) {
-      setFormError(appMessage("ui.e356cf56fb30")); return
+      setFormError(appMessage("ui.e356cf56fb30")); savingRef.current = false; return
     }
     if (form.start_date > form.end_date) {
       setFormError(appMessage("ui.5630c0b15b57")); return
@@ -296,6 +303,7 @@ export default function Vacation() {
     sickSavingRef.current = true
     setFormError('')
     const empId = canManage ? form.employee_id : profile?.employee_id
+    if (canManage && !employees.some(e => e.id === empId)) { setFormError(appMessage("time.selectEmployeeFirst")); sickSavingRef.current = false; return }
     if (!empId || !form.start_date) { setFormError(appMessage("ui.649ee731c344")); sickSavingRef.current = false; return }
     // ── Zentrale Input-Validierung (Zukunft/Vergangenheit/Rolle) ──────────
     const validation = validateSickLeaveInput({
@@ -555,14 +563,14 @@ export default function Vacation() {
           {tab === 'urlaub' && (
             <button className="btn btn-primary" onClick={() => {
               setFormError(''); setVacConflict(null)
-              setForm({ employee_id: canManage ? (employees[0]?.id||'') : profile?.employee_id, start_date:'', end_date:'', reason:'' })
+              setForm({ employee_id: canManage ? '' : profile?.employee_id, start_date:'', end_date:'', reason:'' })
               setModal('vacation')
             }}>{tr("ui.6d2092656740")}</button>
           )}
           {tab === 'krank' && (
             <button className="btn btn-primary" onClick={() => {
               setFormError('')
-              setForm({ employee_id: canManage ? (employees[0]?.id||'') : profile?.employee_id, start_date: toLocalDateStr(new Date()), notes:'' })
+              setForm({ employee_id: canManage ? '' : profile?.employee_id, start_date: toLocalDateStr(new Date()), notes:'' })
               setModal('sick')
             }}>{tr("ui.d3ee11d0960b")}</button>
           )}
@@ -1005,7 +1013,7 @@ export default function Vacation() {
                 <div className="form-group">
                   <label>{tr("ui.f4cb6891b9e5")}</label>
                   <select value={form.employee_id||''} onChange={e => f('employee_id', e.target.value)}>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name} ({e.vacation_days_per_year}{tr("ui.9d50ab8d134f")}</option>)}
+                    {[{ id: '', placeholder: true }, ...employees].map(e => <option key={e.id || 'none'} value={e.id}>{e.placeholder ? tr("time.selectEmployee") : <>{e.first_name} {e.last_name} ({e.vacation_days_per_year}{tr("ui.9d50ab8d134f")}</>}</option>)}
                   </select>
                 </div>
               ) : myBalance && (
@@ -1073,7 +1081,7 @@ export default function Vacation() {
                 <div className="form-group">
                   <label>{tr("ui.f4cb6891b9e5")}</label>
                   <select value={form.employee_id||''} onChange={e => f('employee_id', e.target.value)}>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+                    {[{ id: '', placeholder: true }, ...employees].map(e => <option key={e.id || 'none'} value={e.id}>{e.placeholder ? tr("time.selectEmployee") : `${e.first_name} ${e.last_name}`}</option>)}
                   </select>
                 </div>
               ) : myEmployee && (

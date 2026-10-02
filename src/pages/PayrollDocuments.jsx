@@ -49,7 +49,7 @@ export default function PayrollDocuments() {
       ])
       setEmployees(emps || [])
       setDocuments(docs || [])
-      if (emps?.length && !selEmp) setSelEmp(emps[0].id)
+      // keine automatische Auswahl: Upload ordnet ein Dokument einer Person zu → nur nach bewusster Auswahl
     } else {
       // Mitarbeiter sieht nur eigene Dokumente
       const myEmpId = profile.employee_id
@@ -70,9 +70,10 @@ export default function PayrollDocuments() {
 
   async function handleUpload() {
     const file = fileRef.current?.files?.[0]
+    // zuerst die Person: nie ohne bewusste Auswahl, nie mit einer ID, die nicht (mehr) in der geladenen Liste steht
+    if (!selEmp || !employees.some(e => e.id === selEmp)) { toast.warn(appMessage("ui.c0f1345f6930")); return }
     if (!file) { toast.warn(appMessage("ui.16a70098ba1c")); return }
     if (file.type !== 'application/pdf') { toast.warn(appMessage("ui.8d29dfe2c4fb")); return }
-    if (!selEmp) { toast.warn(appMessage("ui.c0f1345f6930")); return }
     if (file.size > 10 * 1024 * 1024) { toast.warn(appMessage("ui.045a756f65c5")); return }
 
     setUploading(true)
@@ -208,7 +209,7 @@ export default function PayrollDocuments() {
                 <div className="form-group" style={{ marginBottom:0, flex:2, minWidth:180 }}>
                   <label>{tr("ui.f4cb6891b9e5")}</label>
                   <select value={selEmp} onChange={e => setSelEmp(e.target.value)}>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
+                    {[{ id: '', placeholder: true }, ...employees].map(e => <option key={e.id || 'none'} value={e.id}>{e.placeholder ? tr("time.selectEmployee") : `${e.first_name} ${e.last_name}`}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                   </select>
                 </div>
                 <div className="form-group" style={{ marginBottom:0 }}>
@@ -233,7 +234,7 @@ export default function PayrollDocuments() {
                   <label>{tr("ui.337da4d81ab6")}</label>
                   <input value={selNotes} onChange={e => setSelNotes(e.target.value)} placeholder={tr("ui.18ff0b7672f3")} />
                 </div>
-                <button className="btn btn-primary" onClick={handleUpload} disabled={uploading} style={{ height:38 }}>
+                <button className="btn btn-primary" onClick={handleUpload} disabled={uploading || !selEmp} style={{ height:38 }}>
                   {uploading ? tr("ui.d3a1f56371cf") : tr("ui.d9658baabf2e")}
                 </button>
               </div>

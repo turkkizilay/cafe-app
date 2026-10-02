@@ -299,6 +299,12 @@ den Stundennachweis mit dem Monat des Wochen-Montags (01.10. → September).
 Fix: Personenbezogene Admin-Ansichten starten ohne Auswahl (Platzhalter, keine Abfrage, Aktionen gesperrt); beim Wechsel
 gilt nur die zuletzt angeforderte Antwort (Sequenz-Ref). Links auf Monatsansichten ohne Monat → Seite nimmt den lokalen
 aktuellen Monat (`src/lib/timesheetMonth.js`, nie `toISOString()`). (VERIFIED, `tests/uxDefaults.test.mjs`, 5 Gegenproben rot)
+Regel für jede Personenauswahl vor einer Mutation (Upload, Anlage, Korrektur): Platzhalter `[{ id: '', placeholder: true }, ...employees]`
+(hält die i18n-Option-Baseline stabil), Aktion gesperrt, und im Handler VOR jedem Serveraufruf `employees.some(e => e.id === sel)`
+– auch eine veraltete/manipulierte ID scheitert. Server: `employee_id` NOT NULL ohne Default + FK. Mehrere Wege führten
+zur selben Lücke (Lohnabrechnung, Urlaub/Krank für andere, neue Schicht) → `tests/employeeSelect.test.mjs` sucht in ALLEN Seiten
+nach `employees[0]`-Defaults. Test-Falle: React unterdrückt Klicks auf Buttons mit `disabled`-Prop auch nach DOM-Manipulation –
+Handler-Guards daher mit der echten Funktion testen, nicht über den Browser-Klick.
 
 ## Project Anti-Patterns
 

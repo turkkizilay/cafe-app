@@ -134,6 +134,7 @@ export default function Shifts() {
   }
 
   async function doAddShift() {
+    if (!employees.some(e => e.id === form.employee_id)) { toast.warn(appMessage("time.selectEmployeeFirst")); return }   // nie ohne bewusste Auswahl
     if (!form.employee_id || !form.date || !form.start_time || !form.end_time) {
       toast.warn(appMessage("ui.41fb834a7568")); return
     }
@@ -339,7 +340,7 @@ export default function Shifts() {
           <button className="btn btn-sm" onClick={() => setOffset(o => o+1)}>{tr("ui.e582eb775b7e")}</button>
           {canEdit && (
             <button className="btn btn-primary btn-sm" onClick={() => {
-              setForm({ employee_id: employees[0]?.id||'', date: today, start_time:'08:00', end_time:'16:00', position:'', notes:'' })
+              setForm({ employee_id: '', date: today, start_time:'08:00', end_time:'16:00', position:'', notes:'' })
               setModal(true)
             }}>{tr("ui.e49f352db8bf")}</button>
           )}
@@ -646,7 +647,7 @@ export default function Shifts() {
               <div className="form-group">
                 <label>{tr("ui.f4cb6891b9e5")}</label>
                 <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)}>
-                  {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
+                  {[{ id: '', placeholder: true }, ...employees].map(e => <option key={e.id || 'none'} value={e.id}>{e.placeholder ? tr("time.selectEmployee") : `${e.first_name} ${e.last_name}`}</option>)}
                 </select>
               </div>
               <div className="form-group"><label>{tr("ui.9135882d323c")}</label><input type="date" value={form.date} onChange={e => f('date', e.target.value)} /></div>

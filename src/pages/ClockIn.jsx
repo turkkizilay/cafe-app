@@ -7,6 +7,7 @@ import { translateSupabaseError } from '../lib/errorHelper'
 import { calcWorkedHours, openBreak, sumBreakMinutes, isBreakTooLong, netWorkedHours, breakElapsedMinutes, breakUiState, BREAK_WARNING_MINUTES } from '../lib/workHours'
 import { fetchBreaks, startBreak, endBreak, isBreakFeatureMissing } from '../lib/breaks'
 import { remoteClockState, remoteErrorKind, clockInRemote, clockOutRemote } from '../lib/remoteClock'
+import { createClockRevalidator, bindClockRevalidationEvents, locationSatisfied, withTimeout } from '../lib/clockRevalidation'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
@@ -30,32 +31,60 @@ export default function ClockIn({ session }) {
   const [breakLoad, setBreakLoad] = useState('ok') // 'loading' | 'ok' | 'error' – unbekannt ist nie „keine Pause“
   const [remoteAsk, setRemoteAsk] = useState(null) // 'in' | 'out' – Bestätigungsdialog „außerhalb des Cafés“
   const remoteBusy = useRef(false)                 // synchroner Schutz gegen Doppeltipp (State ist asynchron)
+  // Live-Nachprüfung der Standortvoraussetzungen (WLAN/GPS), solange die Seite offen ist – siehe lib/clockRevalidation
+  const cafeRef = useRef(null), gpsRef = useRef(gps), netRef = useRef(net), revalidator = useRef(null)
+  gpsRef.current = gps; netRef.current = net
 
   useEffect(() => {
     const t = setInterval(() => setTick(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
 
+  // Nach WLAN-Wechsel, Rückkehr in die App, online/offline, Fokus: automatisch neu prüfen (ohne Neuladen/Schließen).
+  // Höchstens eine Prüfung gleichzeitig, ältere Antworten überschreiben nie neuere, nach Verlassen der Seite nichts mehr.
+  useEffect(() => {
+    const rv = createClockRevalidator({
+      checkNetwork,
+      onNetwork: r => setNet(r),
+      checkGps,
+      onGps: r => setGps(r),
+      onChecking: kind => kind === 'network' ? setNet(n => ({ ...n, status: 'checking' })) : setGps({ status: 'checking' }),
+      isSatisfied: () => locationSatisfied(gpsRef.current, netRef.current),
+      isVisible: () => document.visibilityState === 'visible',
+    })
+    revalidator.current = rv
+    const unbind = bindClockRevalidationEvents(rv)
+    return () => { unbind(); rv.dispose(); revalidator.current = null }
+  }, [])
+
   useEffect(() => { fetchData() }, [profile?.employee_id])
   useRefreshHandler(() => fetchData())   // Aktualisieren-Button
 
-  // Nach WLAN-Wechsel / Rückkehr in die App automatisch neu prüfen
-  useEffect(() => {
-    function recheck() { if (document.visibilityState === 'visible') checkNetwork() }
-    document.addEventListener('visibilitychange', recheck)
-    window.addEventListener('online', recheck)
-    return () => { document.removeEventListener('visibilitychange', recheck); window.removeEventListener('online', recheck) }
-  }, [])
-
+  // Café-WLAN: der Server vergleicht die Client-IP mit den Café-Netzen. Offline/keine Antwort ist nie „erfüllt“.
   async function checkNetwork() {
-    setNet(n => ({ ...n, status: 'checking' }))
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return { status: 'offline' }
     try {
-      const { data, error } = await supabase.rpc('clock_network_status')
-      if (error || !data) { setNet({ status: 'error' }); return }
-      setNet({ status: !data.configured ? 'unconfigured' : data.net_ok ? 'ok' : 'no', netOnly: !!data.net_only })
+      const { data, error } = await withTimeout(supabase.rpc('clock_network_status'), 10000)
+      if (error || !data) return { status: 'error' }
+      return { status: !data.configured ? 'unconfigured' : data.net_ok ? 'ok' : 'no', netOnly: !!data.net_only }
     } catch {
-      setNet({ status: 'error' })
+      return { status: 'error' }
     }
+  }
+
+  // GPS im Browser: verweigert / nicht verfügbar / Zeitüberschreitung getrennt; nie „erfüllt“ ohne Position im Radius
+  function checkGps() {
+    const c = cafeRef.current
+    if (!c?.gps_lat || !c?.gps_lng) return Promise.resolve({ status: 'no-config' })
+    if (!navigator.geolocation) return Promise.resolve({ status: 'unavailable' })
+    return withTimeout(new Promise(resolve => navigator.geolocation.getCurrentPosition(
+      pos => {
+        const dist = getDistanceMeters(pos.coords.latitude, pos.coords.longitude, c.gps_lat, c.gps_lng)
+        resolve({ status: dist <= c.gps_radius_m ? 'ok' : 'too-far', dist: Math.round(dist), lat: pos.coords.latitude, lng: pos.coords.longitude })
+      },
+      err => resolve({ status: err?.code === 1 ? 'denied' : err?.code === 3 ? 'timeout' : 'unavailable' }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    )), 20000, { status: 'timeout' })
   }
 
   // Pausen der offenen Schicht laden – auch als „Erneut laden“ nach einem Fehler
@@ -115,23 +144,9 @@ export default function ClockIn({ session }) {
       }
     }
 
-    checkNetwork()
-    if (cafeData?.gps_lat && cafeData?.gps_lng) doGpsCheck(cafeData)
-    else setGps({ status: 'no-config' })
+    cafeRef.current = cafeData || null
+    revalidator.current?.trigger('initial')   // WLAN + GPS (auch nach „Aktualisieren“)
     setLoading(false)
-  }
-
-  function doGpsCheck(cafeData) {
-    setGps({ status: 'checking' })
-    if (!navigator.geolocation) { setGps({ status: 'unavailable' }); return }
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        const dist = getDistanceMeters(pos.coords.latitude, pos.coords.longitude, cafeData.gps_lat, cafeData.gps_lng)
-        setGps({ status: dist <= cafeData.gps_radius_m ? 'ok' : 'too-far', dist: Math.round(dist), lat: pos.coords.latitude, lng: pos.coords.longitude })
-      },
-      err => setGps({ status: err?.code === 1 ? 'denied' : 'unavailable' }),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
-    )
   }
 
   async function clockIn() {
@@ -268,12 +283,14 @@ export default function ClockIn({ session }) {
     'too-far':   tr("clock.distance", { distance: gps.dist, max: cafe?.gps_radius_m || 50 }),
     denied:      tr("ui.f1767e169c69"),
     unavailable: tr("ui.604e820cb914"),
+    timeout:     tr("clock.gpsTimeout"),
   }
   const NET_TEXT = {
     checking: tr("ui.801490cdd516"),
     ok:       tr("ui.b382e57ffe1e"),
     no:       tr("ui.bf798ef87ca0"),
     error:    tr("ui.0bf594519ebf"),
+    offline:  tr("clock.netOffline"),
   }
   const netOnly = !!net.netOnly   // Admin hat „nur Café-WLAN“ eingestellt
   const gpsConfigured = gps.status !== 'no-config' && !netOnly
@@ -282,8 +299,9 @@ export default function ClockIn({ session }) {
   const located = net.status === 'ok' || (!netOnly && gps.status === 'ok')
   const stillChecking = (gpsConfigured && gps.status === 'checking') || (netConfigured && net.status === 'checking')
   // Bei Prüf-Fehler ohne GPS entscheidet der Server (er prüft ohnehin selbst)
-  const canClock = located || (!netOnly && !gpsConfigured && (net.status === 'unconfigured' || net.status === 'error'))
-  const blockReason = stillChecking ? tr("ui.75c87c02a7f2") : tr("ui.f2ecba2c057d")
+  const offline = net.status === 'offline'   // ohne Verbindung kann der Server nicht stempeln → nie freigeben
+  const canClock = !offline && (located || (!netOnly && !gpsConfigured && (net.status === 'unconfigured' || net.status === 'error')))
+  const blockReason = offline ? tr("clock.offlineBlocked") : stillChecking ? tr("ui.75c87c02a7f2") : tr("ui.f2ecba2c057d")
   // Manager/Admin: außerhalb nur nach Bestätigung; Standort unbekannt ≠ außerhalb (kein Angebot)
   const remote = canClock ? 'none' : remoteClockState({ canManage: !!isManager, located, anyConfigured, stillChecking, netOnly, gpsConfigured, gpsStatus: gps.status, netStatus: net.status })
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
@@ -303,7 +321,7 @@ export default function ClockIn({ session }) {
     <>
       <div className="topbar">
         <div className="topbar-title">{tr("ui.d31430ba7ba3")}</div>
-        {anyConfigured && <button className="btn btn-sm" onClick={() => { checkNetwork(); if (cafe?.gps_lat && cafe?.gps_lng) doGpsCheck(cafe) }}>{tr("ui.d557ceae7443")}</button>}
+        {anyConfigured && <button className="btn btn-sm" onClick={() => revalidator.current?.trigger('manual')}>{tr("ui.d557ceae7443")}</button>}
       </div>
 
       <div className="content">
@@ -356,7 +374,7 @@ export default function ClockIn({ session }) {
 
             {employee && !openEntry && (
               remote === 'outside' ? (
-                <button className="clock-btn btn-clock-remote" onClick={() => setRemoteAsk('in')} disabled={working}>
+                <button className="clock-btn btn-clock-remote" onClick={() => setRemoteAsk('in')} disabled={working || offline}>
                   {working ? '…' : tr("clock.remote.button")}
                 </button>
               ) : (
@@ -406,7 +424,7 @@ export default function ClockIn({ session }) {
                     <button className="clock-btn btn-clock-break" disabled aria-busy="true">…</button>
                   )}
                   {remote === 'outside' ? (
-                    <button className="clock-btn btn-clock-remote" onClick={() => setRemoteAsk('out')} disabled={working}>
+                    <button className="clock-btn btn-clock-remote" onClick={() => setRemoteAsk('out')} disabled={working || offline}>
                       {working ? '…' : tr("clock.remote.buttonOut")}
                     </button>
                   ) : (
