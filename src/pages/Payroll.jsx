@@ -38,13 +38,13 @@ function toLocalDateStr(d) {
  * Überschneiden sich Urlaub und Krankheit an einem Tag, hat Krankheit Vorrang
  * (konsistent mit §9 BUrlG-Logik in vacationLogic.js).
  *
- * Attest-Pflicht (konsistent mit §9 BUrlG-Logik in vacationLogic.js): eine
- * Krankmeldung zählt hier nur dann als bezahlter Lohnfortzahlungstag, wenn
- * ein Attest vorliegt (certificate_received === true ODER certificate_file_path
- * gesetzt). Es gibt serverseitig KEINE Datumsbereichs-Prüfung für sick_leave-
- * INSERTs (nur clientseitig in validateSickLeaveInput()) — ohne dieses Gate
- * würde eine unbestätigte, selbst gemeldete Krankmeldung sofort und in voller
- * Höhe ins Bruttogehalt einfließen.
+ * Nachweis ≠ Bezahlung: Ob eine AU-Datei in der App hochgeladen wurde, entscheidet NICHT über die Bezahlung.
+ * Gesetzlich Versicherte legen seit 2023 keine Bescheinigung mehr vor (§ 5 Abs. 1a EFZG, eAU-Abruf durch den
+ * Arbeitgeber), Kurzerkrankungen ≤ 3 Kalendertage brauchen meist gar keinen Nachweis. Eine erfasste Krankmeldung
+ * zählt daher als Lohnfortzahlungstag – mit oder ohne Datei. Ein fehlender Nachweis bleibt ein Hinweis für die
+ * Verwaltung (Dashboard / Krankmeldungen); ein Zurückbehalten nach § 7 EFZG ist eine bewusste Entscheidung, keine
+ * automatische Folge. Unverändert (offene Fachentscheidungen): 42-Tage-Grenze je Datensatz (continued_pay_end),
+ * Urlaub + Krankheit (siehe unten), Tage nach § 2 EFZG, Wartezeit.
  */
 function getPaidAbsenceDays(empVacations, empSickLeaves, workedDatesSet, rangeStart, rangeEnd) {
   let vacationDays = 0, sickDays = 0
@@ -56,18 +56,19 @@ function getPaidAbsenceDays(empVacations, empSickLeaves, workedDatesSet, rangeSt
     if (dow !== 0 && dow !== 6) {
       const ds = toLocalDateStr(d)
       if (!workedDatesSet.has(ds)) {
-        const sick = (empSickLeaves || []).find(s => {
+        const covering = (empSickLeaves || []).filter(s => {
           if (!s.continued_pay_end) return false   // ohne Trigger-Wert kein Lohnfortzahlungs-Tag (defensiv)
-          const hasAttest = s.certificate_received === true || !!s.certificate_file_path
-          if (!hasAttest) return false   // ohne Attest kein bezahlter Lohnfortzahlungstag (siehe vacationLogic.js-Konvention)
           const sickEnd = s.end_date || today
           return ds >= s.start_date && ds <= sickEnd && ds <= s.continued_pay_end
         })
-        if (sick) {
+        const vac = (empVacations || []).find(v => ds >= v.start_date && ds <= v.end_date)
+        // Urlaub + Krankheit unverändert (offene Entscheidung, §9 BUrlG): mit Nachweis Krankheitstag, sonst bleibt es
+        // ein (bezahlter) Urlaubstag. Ohne Urlaub zählt jede erfasste Krankheit – eine fehlende Datei ist kein Grund für 0.
+        const evidenced = covering.some(s => s.certificate_received === true || !!s.certificate_file_path)
+        if (covering.length && (!vac || evidenced)) {
           sickDays++
-        } else {
-          const vac = (empVacations || []).find(v => ds >= v.start_date && ds <= v.end_date)
-          if (vac) vacationDays++
+        } else if (vac) {
+          vacationDays++
         }
       }
     }
@@ -194,7 +195,7 @@ export default function Payroll() {
       // §11 BUrlG Urlaubsentgelt: genehmigte Urlaube, die (teilweise) in den Monat fallen.
       supabase.from('vacation_requests').select('employee_id, start_date, end_date, status').eq('status', 'approved').lte('start_date', end).gte('end_date', start),
       // §3 EFZG Lohnfortzahlung: Krankmeldungen, die (teilweise) in den Monat fallen (end_date=null → andauernd).
-      // certificate_received/certificate_file_path: Attest-Pflicht, siehe getPaidAbsenceDays().
+      // certificate_received/certificate_file_path: nur noch für Urlaub + Krankheit (§9 BUrlG), siehe getPaidAbsenceDays().
       supabase.from('sick_leave').select('employee_id, start_date, end_date, continued_pay_end, certificate_received, certificate_file_path').lte('start_date', end).or(`end_date.is.null,end_date.gte.${start}`),
     ])
 
