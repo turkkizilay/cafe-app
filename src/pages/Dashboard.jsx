@@ -1,4 +1,4 @@
-import { t as tr, getIntlLocale, sourceLabel } from '../i18n/runtime.js'
+import { t as tr, getIntlLocale, sourceLabel, message as appMessage, formatParam } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useCallback } from 'react'
 import { groupSickLeavesIntoCases, getSickCaseWarnings } from '../lib/sickLeaveLogic'
@@ -16,6 +16,14 @@ import { fetchStaffOperational, mergeStaffRows, fillEmbeddedEmployees } from '..
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import { useLiveLaborCost } from '../lib/useLiveLaborCost'
 import LiveLaborCostCard from '../components/LiveLaborCostCard'
+import LiveTimeControl from '../components/LiveTimeControl'
+import { liveStateOf, runLiveAction } from '../lib/liveTimeControl'
+import { notifyTimeDataChanged } from '../lib/laborCost'
+import { showToast } from '../components/UI/Toast'
+
+// Stellvertretende Live-Buchung (Manager/Admin): Rückmeldungen je Aktion bzw. Fehlerart
+const LIVE_DONE_KEY = { clock_in: 'live.doneClockIn', break_start: 'live.doneBreakStart', break_end: 'live.doneBreakEnd', clock_out: 'live.doneClockOut' }
+const LIVE_ERROR_KEY = { stale: 'live.stale', invalid: 'live.stale', notAllowed: 'live.notAllowed', self: 'live.self', inactive: 'live.inactive', network: 'live.network', failed: 'live.failed' }
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 function greeting() {
@@ -88,6 +96,9 @@ export default function Dashboard() {
   // Live-Personalkosten: Serverbasis labor_cost_today() (nur Admin, Migration 35) + lokales Fortschreiben
   const laborCosts = useLiveLaborCost(!!isAdmin)
   const [pendingReqs,  setPendingReqs]  = useState({ vac:[], sick:[], sickReviews:[] })
+  const [staffList,   setStaffList]   = useState([])     // aktive Mitarbeiter für „+ Einstempeln“ (Manager/Admin)
+  const [liveTarget,  setLiveTarget]  = useState(null)   // { employeeId, name } – Live-Steuerung geöffnet
+  const [livePicker,  setLivePicker]  = useState(false)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -117,6 +128,7 @@ export default function Dashboard() {
       setMyEmployee(empRes.data || null)
       // Manager: fremde Mitarbeiter nur operativ (Migration 19) – Namen aus get_staff_operational()
       const staff = canManage ? await fetchStaffOperational() : null
+      setStaffList(staff || [])
       setLiveClockIns(fillEmbeddedEmployees(liveRes.data || [], staff))
       // Pausen der offenen Schichten (ohne Migration 17 → leer, Anzeige wie bisher)
       const { byEntry: liveBreakMap } = await fetchBreaksForEntries((liveRes.data || []).map(e => e.id))
@@ -218,6 +230,27 @@ export default function Dashboard() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
   useRefreshHandler(fetchAll)   // Aktualisieren-Button
+
+  // Stellvertretend JETZT buchen (Serverzeit, Bestätigung im Dialog); danach Serverstand + Live-Kosten neu laden
+  async function runLive({ employeeId, name, action, expected }) {
+    const r = await runLiveAction({ employeeId, action, expected }, supabase)
+    if (r.ok) {
+      showToast(appMessage(LIVE_DONE_KEY[action], { name, time: formatParam('time', new Date(r.serverTime), { hour:'2-digit', minute:'2-digit', second:'2-digit' }) }), 'success')
+      setLiveTarget(null); setLivePicker(false)
+      notifyTimeDataChanged()
+    } else {
+      const outdated = r.kind === 'stale' || r.kind === 'invalid'
+      showToast(appMessage(LIVE_ERROR_KEY[r.kind] || 'live.failed'), outdated ? 'warn' : 'error', 7000)
+      if (outdated) { setLiveTarget(null); setLivePicker(false) }
+    }
+    await fetchAll()
+  }
+  const openLive = (employeeId, emp) => setLiveTarget({ employeeId, name: `${emp?.first_name || ''} ${emp?.last_name || ''}`.trim() })
+  const rowButton = (employeeId, emp) => canManage ? {
+    role: 'button', tabIndex: 0, 'data-live-row': employeeId,
+    onClick: () => openLive(employeeId, emp),
+    onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLive(employeeId, emp) } },
+  } : {}
 
   const firstName = myEmployee?.first_name
     || profile?.first_name   // Name aus Registrierung
@@ -371,7 +404,7 @@ export default function Dashboard() {
 
 
         {/* ── Tagesübersicht ── */}
-        <div style={{ display:'grid', gridTemplateColumns: canManage ? '1fr 1fr' : '1fr', gap:16, marginTop:8 }}>
+        <div style={{ display:'grid', gridTemplateColumns: canManage ? 'repeat(auto-fit, minmax(300px, 1fr))' : '1fr', gap:16, marginTop:8 }}>
 
           {/* ── Heute im Café (Admin) ─────────────── */}
           {canManage && (
@@ -398,7 +431,7 @@ export default function Dashboard() {
                     const emp      = s.employees
                     const isClockedIn = liveClockIns.some(l => l.employee_id === s.employee_id)
                     return (
-                      <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderBottom:'1px solid var(--border)' }}>
+                      <div key={s.id} {...rowButton(s.employee_id, emp)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderBottom:'1px solid var(--border)', cursor: canManage ? 'pointer' : undefined }}>
                         <Avatar src={emp?.avatar_url} firstName={emp?.first_name} lastName={emp?.last_name} color={emp?.avatar_color} size={32} />
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontWeight:500, fontSize:13 }}>{emp?.first_name} {emp?.last_name}</div>
@@ -429,6 +462,9 @@ export default function Dashboard() {
                   <span style={{ fontSize:12, fontWeight:600, color:'#059669' }}>{liveClockIns.length}{tr("ui.7b682d412afe")}</span>
                 )}
               </div>
+              {canManage && (
+                <button type="button" className="btn btn-sm" data-testid="live-clockin-someone" style={{ minHeight:36 }} onClick={() => setLivePicker(true)}>{tr("live.clockInSomeone")}</button>
+              )}
             </div>
             {canManage ? (
               liveClockIns.length === 0 ? (
@@ -442,7 +478,7 @@ export default function Dashboard() {
                     const mins  = Math.floor(((Date.now() - new Date(e.clock_in)) % 3600000) / 60000)
                     const onBreak = openBreak(liveBreaks[e.id])
                     return (
-                      <div key={e.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderBottom:'1px solid var(--border)' }}>
+                      <div key={e.id} {...rowButton(e.employee_id, e.employees)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
                         <Avatar src={e.employees?.avatar_url} firstName={e.employees?.first_name} lastName={e.employees?.last_name} color={e.employees?.avatar_color} size={32} />
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:500, fontSize:13 }}>{e.employees?.first_name} {e.employees?.last_name}</div>
@@ -518,6 +554,16 @@ export default function Dashboard() {
         {/* ── Live Personalkosten (Admin/Manager) ── */}
         {isAdmin && laborCosts && (
           <LiveLaborCostCard labor={laborCosts} />
+        )}
+
+        {/* ── Live-Steuerung (Manager/Admin): stellvertretend JETZT stempeln ── */}
+        {canManage && liveTarget && (
+          <LiveTimeControl target={liveTarget} state={liveStateOf(liveTarget.employeeId, liveClockIns, liveBreaks)}
+            isSelf={liveTarget.employeeId === profile?.employee_id} onClose={() => setLiveTarget(null)} onRun={runLive} />
+        )}
+        {canManage && livePicker && (
+          <LiveTimeControl staff={staffList.filter(e => e.is_active && e.id !== profile?.employee_id && liveStateOf(e.id, liveClockIns, liveBreaks) === 'OFF_CLOCK')}
+            onClose={() => setLivePicker(false)} onRun={runLive} />
         )}
 
         {/* ── Offene Anträge (Admin/Manager) ── */}

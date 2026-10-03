@@ -351,6 +351,17 @@ Do Not: Löhne einzelner Personen an den Client geben; Dashboard-Kennzahlen an B
 oder DATEV auf diese Funktion umstellen. Regression Protection: `tests/db/labor_cost.test.mjs`, `tests/laborCost.test.mjs`.
 Hinweis: API-Änderungen in Dateien der i18n-Baseline erfordern ein bewusstes Re-Baseline genau dieser Datei (wie cadbeb2).
 
+### Stellvertretende Live-Buchung ≠ Zeitkorrektur (Migration 36)
+Decision: Manager/Admin buchen für ANDERE nur JETZT über `staff_live_action` (kein Zeit-Parameter, Pflichtbestätigung,
+erwarteter Zustand OFF_CLOCK/WORKING/ON_BREAK → sonst `stale`). Kein zweiter Stempel-Weg: Ein-/Ausstempeln laufen über
+dieselben Trigger (Flag `cafe.live_action` + Rolle live + nie die eigene Person → nur der Standort entfällt, Methode
+`live_action`), Pausen über `_break_start_for/_break_end_for` (auch von start_break/end_break genutzt). Serialisierung:
+Advisory-Lock je Person (gleicher Schlüssel wie Remote) + Zeilensperre + Unique-Index. Audit in `time_live_actions`
+(keine Schreibrechte für App-Rollen, nur die Funktion); Aktivitätsprotokoll nur als Anzeige (über log_activity fälschbar).
+Do Not: Uhrzeit-Eingabe in diesem Ablauf; Standort-Ausnahme für die eigene Person; Vergangenes hier statt in der
+Zeitkorrektur. Test-Falle: Vorher/Nachher-Tests einer Migration mit `MIGRATIONS.slice(0, indexOf(...))` aufbauen, nicht
+mit `filter` – sonst laufen spätere Migrationen ohne ihre Vorgänger. Regression: `tests/db/staff_live_action.test.mjs`.
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

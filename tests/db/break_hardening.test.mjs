@@ -336,7 +336,7 @@ test('Offene Pause / Ausstempeln während Pause / keine automatische Pause', asy
 })
 
 test('Lohn-/DATEV-Grundlage: Migration 34 ändert keine bestehenden Daten (vorher = nachher)', async () => {
-  const db0 = await startDb({ migrations: MIGRATIONS.filter(m => m !== '34_break_hardening.sql') })
+  const db0 = await startDb({ migrations: MIGRATIONS.slice(0, MIGRATIONS.indexOf('34_break_hardening.sql')) })   // Stand vor 34 (ohne spätere Migrationen)
   try {
     await db0.sys.query(`ALTER DATABASE cafe_test SET timezone TO 'UTC'`)
     await addPeople(db0.sys, [[1, 'admin'], [3, 'employee'], [4, 'employee', { employment_type: 'werkstudent', hours_per_week: 20 }]])

@@ -186,7 +186,7 @@ test('Rollen: nur Admin; nur Summen (keine IDs, Namen, Einzelsätze); interne Fu
 })
 
 test('Migration 35 ändert keine Daten (Zeit, Pausen, Lohn, Krankheit vorher = nachher)', async () => {
-  const db0 = await startDb({ migrations: MIGRATIONS.filter(m => m !== '35_labor_cost_today.sql') })
+  const db0 = await startDb({ migrations: MIGRATIONS.slice(0, MIGRATIONS.indexOf('35_labor_cost_today.sql')) })   // Stand vor 35
   try {
     await addPeople(db0.sys, [[1, 'admin'], [3, 'employee']])
     await db0.sys.query(`INSERT INTO time_entries (employee_id, date, clock_in, clock_out, hours_worked, break_minutes) VALUES ($1, '2026-09-15', '2026-09-15T08:00:00Z', '2026-09-15T12:00:00Z', 3.75, 15)`, [EMP(3)])
