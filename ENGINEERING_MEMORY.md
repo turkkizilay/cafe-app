@@ -20,6 +20,8 @@ Tests: App/Logik `node --test tests/*.test.mjs` · Server-Invarianten `npm --pre
 5. **Arbeitszeit:** Netto = Anwesenheit − tatsächlich erfasste Pausen. Nie automatische 30/45-Min.-Pausen,
    nie Stunden kappen (220 h / 80 h Werkstudent sind nur Warnungen). > 12 h offen → Stunden 0 + Markierung,
    bezahlt erst nach Admin-Korrektur. (VERIFIED, Migrationen 07/16/17, `tests/workHours`, `workTimeModels`)
+   Neue Pausen nur als Intervalle (Beginn + Ende); pauschale `break_minutes` ohne Pausenzeilen nur für unveränderten
+   Altbestand. `hours_worked` entsteht nur serverseitig und wird am Transaktionsende gegen Zeiten/Pausen geprüft. (VERIFIED, Migration 34)
 6. **Vergütung:** Fixgehalt = Brutto-Monatsgehalt, keine Teilmonatskürzung, keine Erhöhung durch Überstunden;
    Fixgehalt nur Vollzeit/Teilzeit (DB-Constraint). Quelle der Wahrheit ist `pay_type`: Stundenlohn → `hourly_rate` Pflicht,
    Fixgehalt → `monthly_salary` Pflicht, `hourly_rate` optional (NULL, nie ein Ersatzwert; Migration 30). (VERIFIED, Migrationen 18/30,
@@ -227,8 +229,8 @@ müssen wiederholt ausführbar sein); der erste Test der Suite prüft, dass wirk
 ### Rollen-Ausnahme bei Server-Guards (Stempeln außerhalb, Migration 29)
 Decision: Ausnahmen von einem Trigger-Guard nur über eine eigene SECURITY-DEFINER-RPC, die Rolle/Person/Bestätigung prüft
 und ein transaktionslokales Flag setzt; der Trigger prüft Flag UND Rolle erneut live (`is_manager_or_admin()`), Protokoll
-in derselben Transaktion. Admins umgehen die Zeit-Trigger komplett → die RPC muss Serverzeit, Methode und Stunden für
-Admins selbst setzen. „Standort unbekannt“ ist nie „außerhalb“. (VERIFIED, `tests/db/remote_clock.test.mjs`, 13 Mutationen rot)
+in derselben Transaktion. (Seit Migration 34 gelten die Zeit-Trigger auch für Admins; nur `admin_save_time_entry`
+setzt das Flag `cafe.time_correction`.) „Standort unbekannt“ ist nie „außerhalb“. (VERIFIED, `tests/db/remote_clock.test.mjs`, 13 Mutationen rot)
 Test-Falle: Rollen/Status per Systemverbindung (`db.sys`) zu ändern wird vom Eskalationsschutz STILL zurückgesetzt
 (auth.uid() NULL → kein Admin) – im Test über eine Admin-Sitzung ändern und den Zustand prüfen.
 
@@ -267,6 +269,19 @@ Root Cause: Der Haupt-Scroller ist verschachtelt (`.content`, nicht das Dokument
 `scrollTop`), Momentum und nicht abbrechbare `touchmove` machen den Zustand „oben in Ruhe“ unzuverlässig. (VERIFIED im Code; Ursache teils ASSUMPTION, nur simuliert getestet)
 Fix: Geste entfernt, ↻-Button + zentrale `refreshData()` (68876a4). → siehe Decisions.
 Permanent Lesson: Gerätegesten nur mit Gerätetest ausliefern; Simulation belegt keine echte Scrollphysik.
+
+### Admin-Sonderpolicy umging alle Zeit-Prüfungen (Migration 34)
+Problem: `time_admin`/`breaks_admin` (FOR ALL) erlaubten Admins direkte Tabellenänderungen: Stunden frei setzen, Pausen
+ohne Neuberechnung/Protokoll, Pause vor Arbeitsbeginn; eine Pause in der Zukunft blockierte das Ausstempeln; Korrekturen
+in abgeschlossenen Lohnmonaten. Die App nutzte den Weg nicht mehr – die Rechte bestanden trotzdem.
+Fix: Schreibrechte entzogen (Pausen, Löschen, Protokoll), Admins stempeln über denselben Trigger-Weg wie alle, Korrektur
+nur per RPC (Flag + `is_admin()`), Lohnmonat-Sperre, CHECKs (Pause/Stunden ≤ Schichtdauer) und eine VERZÖGERTE
+Konsistenzprüfung (Constraint-Trigger) am Transaktionsende. Ausstempeln/Pausen mit `clock_timestamp()` (nach der Sperre).
+Permanent Lesson: Wenn eine RPC eine Invariante garantiert, die direkten Tabellenrechte für dieselbe Rolle entziehen –
+sonst ist die RPC nur ein Komfortweg. SECURITY-DEFINER-Funktionen (Besitzer) brauchen keine Policy.
+Test-Falle: Ein entzogenes Recht liefert „permission denied“ statt „0 Zeilen“ – bestehende Tests darauf umstellen.
+Lohn-/Lesepfade unverändert lassen (workHours.js ist Payroll-Import → neue Regeln in `breakRules.js`).
+Regression Protection: `tests/db/break_hardening.test.mjs` (C1–C7, vorher = nachher), `tests/breakHardening.test.mjs`.
 
 ## Important Engineering Decisions
 

@@ -7,7 +7,8 @@ import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
-import { breakElapsedMinutes, BREAK_WARNING_MINUTES, formerStaffCutoff, correctionPlan, endsNextDay, timeEntryState, berlinTime } from '../lib/workHours'
+import { breakElapsedMinutes, BREAK_WARNING_MINUTES, formerStaffCutoff, endsNextDay, timeEntryState, berlinTime } from '../lib/workHours'
+import { correctionCheck, legacyBreakMinutes } from '../lib/breakRules'
 import { fetchBreaksForEntries, isBreakFeatureMissing } from '../lib/breaks'
 import Avatar from '../components/UI/Avatar'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
@@ -18,6 +19,7 @@ const EMPTY_FORM = {
   clock_in_time: '08:00', clock_out_time: '16:00',
   break_minutes: 0, notes: '', reason: '',
   breaks: [], breaksOrig: [],   // erfasste Pausen { id?, key, start:'HH:MM', end:'HH:MM' }
+  legacyBreak: 0,               // Altbestand: pauschale Minuten ohne Pausenzeilen (nur unverändert/entfernen, Migration 34)
 }
 
 function toTime(iso) {
@@ -123,17 +125,20 @@ export default function TimeManagement() {
 
   function openEdit(entry) {
     const breakRows = (breaksByEntry[entry.id] || []).map(b => ({ id: b.id, key: b.id, start: berlinTime(b.break_start), end: berlinTime(b.break_end) }))
+    // Neue Korrekturen: Pausen nur als Intervalle. Pauschale Minuten bleiben nur für Altbestand ohne Pausenzeilen.
+    const legacyBreak = legacyBreakMinutes(entry, breaksByEntry[entry.id] || [])
     setForm({
       id:             entry.id,
       employee_id:    entry.employee_id,
       date:           entry.date,
       clock_in_time:  berlinTime(entry.clock_in),   // Formularwerte: Europe/Berlin, 24 h (wie die DB rechnet)
       clock_out_time: berlinTime(entry.clock_out),
-      break_minutes:  entry.break_minutes || 0,
+      break_minutes:  legacyBreak,
       notes:          entry.notes?.replace('[ADMIN-KORREKTUR]','').replace(/⚠️ AUSSTEMPELN VERGESSEN[^)]*\)/, '').trim() || '',
       reason:         '',
       breaks:         breakRows,
       breaksOrig:     breakRows,
+      legacyBreak,
     })
     setBadTimes({})
     setModal('edit')
@@ -151,7 +156,7 @@ export default function TimeManagement() {
     if (Object.values(badTimes).some(Boolean)) { toast.warn(appMessage("time.invalid24")); return }
     if (!form.reason.trim()) { toast.warn(appMessage("ui.9631f4375e40")); return }
     // Mitternacht: Uhrzeiten vor der Einstempelzeit gehören zum Folgetag (wie die DB) – keine „gleicher Tag“-Annahme
-    const plan = correctionPlan({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
+    const plan = correctionCheck({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
     if (plan.error) { toast.warn(appMessage(BREAK_ERROR_KEY[plan.error.code], { n: (plan.error.index ?? 0) + 1 })); return }
     setSaving(true)
     const orig = modal === 'edit' ? entries.find(e => e.id === form.id) : null
@@ -217,10 +222,10 @@ export default function TimeManagement() {
   function removeBreak(i) {
     const key = form.breaks[i]?.key
     setBadTimes(t => ({ ...t, [`bs:${key}`]: false, [`be:${key}`]: false }))
-    setForm(x => ({ ...x, breaks: x.breaks.filter((_, j) => j !== i), break_minutes: x.breaks.length === 1 ? 0 : x.break_minutes }))
+    setForm(x => ({ ...x, breaks: x.breaks.filter((_, j) => j !== i) }))   // Altbestand-Pauschale kommt ggf. unverändert zurück
   }
   const timeChange = (key, apply) => (v, meta) => { setBadTimes(t => ({ ...t, [key]: !!meta?.incomplete })); apply(v) }
-  const formPlan     = correctionPlan({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
+  const formPlan     = correctionCheck({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
   const formBreakMin = form.breaks.length ? (formPlan.breakMin ?? 0) : (Number(form.break_minutes) || 0)
   const nextDayHint  = t => endsNextDay(form.clock_in_time, t) ? <span className="badge badge-amber" style={{ marginLeft:6 }}>{tr('time.nextDay')}</span> : null
 
@@ -458,9 +463,11 @@ export default function TimeManagement() {
               <div style={{ background:'var(--warn-bg)', borderRadius:8, padding:'10px 12px', marginBottom:14, fontSize:12, color:'var(--warn)' }}>{tr("ui.cf92b4aac09b")}</div>
               <div className="form-group">
                 <label>{tr("ui.f4cb6891b9e5")}</label>
-                <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)}>
+                {/* Bestehender Eintrag: Person nicht wechselbar (Server lehnt es ebenfalls ab) */}
+                <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)} disabled={modal === 'edit'}>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                 </select>
+                {modal === 'edit' && <div className="break-hint">{tr("time.employeeLocked")}</div>}
               </div>
               <div className="form-group">
                 <label>{tr("ui.9135882d323c")}</label>
@@ -479,11 +486,17 @@ export default function TimeManagement() {
               </div>
               <div className="form-group">
                 <label>{tr("ui.858e4ba7a29f")}</label>
-                {form.breaks.length === 0 ? (
-                <select value={form.break_minutes} onChange={e => f('break_minutes', e.target.value)}>
-                  {[0,15,30,45,60].map(m => <option key={m} value={m}>{m ? tr("ui.f6c1459ae2f9", { p1: m }) : tr("ui.fbf22ce00e55")}</option>)}
-                </select>
+                {form.breaks.length === 0 ? (form.legacyBreak > 0 ? (
+                  <>
+                    {/* Altbestand: Pauschale nur beibehalten oder entfernen; ändern = Pausenzeiten erfassen */}
+                    <select value={form.break_minutes} onChange={e => f('break_minutes', e.target.value)}>
+                      {[0, form.legacyBreak].map(m => <option key={m} value={m}>{m ? tr("ui.f6c1459ae2f9", { p1: m }) : tr("ui.fbf22ce00e55")}</option>)}
+                    </select>
+                    <div className="break-hint">{tr("time.legacyBreakHint")}</div>
+                  </>
                 ) : (
+                  <div className="break-hint">{tr("ui.fbf22ce00e55")}</div>
+                )) : (
                   <div className="break-rows">
                     {form.breaks.map((b, i) => (
                       <div className="break-row" key={b.key}>

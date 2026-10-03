@@ -45,7 +45,7 @@ test('Zeitkorrektur-UI: Werte in Berlin-Zeit, „+1 Tag“ sichtbar, Vorschau au
   assert.match(t, /clock_in_time:\s+berlinTime\(entry\.clock_in\)/)
   assert.match(t, /start: berlinTime\(b\.break_start\), end: berlinTime\(b\.break_end\)/)
   assert.match(t, /\{nextDayHint\(form\.clock_out_time\)\}/)
-  assert.match(t, /const formPlan\s+= correctionPlan\(/)
+  assert.match(t, /const formPlan\s+= correctionCheck\(/)   // correctionCheck = correctionPlan + DB-Reihenfolge „außerhalb“ (Migration 34)
   assert.doesNotMatch(t, /new Date\(`2000-01-01T\$\{form\.clock_out_time\}`\)/, 'keine Vorschau mit Gleicher-Tag-Annahme')
 })
 

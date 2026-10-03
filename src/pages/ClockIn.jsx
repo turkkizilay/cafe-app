@@ -226,10 +226,10 @@ export default function ClockIn({ session }) {
       toast.warn(appMessage("ui.ce394dbf8d29"), 12000)
       await fetchData(); setWorking(false); return
     }
-    // Pausenstatus unbekannt → Server-Ergebnis anzeigen statt einer lokal ohne Pausen gerechneten Zahl
+    // Netto immer vom Server (Serverzeit, erfasste Pausen – Migration 34: für alle Rollen derselbe Weg)
     const known = breakLoad === 'ok' || !breaksOn
     const announce = (netH, breakMin) => toast.success(appMessage("ui.974c5412d6ec", { p1: (formatParam("number", netH, {minimumFractionDigits:2,maximumFractionDigits:2})), p2: (breakMin ? (appMessage("ui.b90bda0a43ef", { p1: (breakMin) })) : ('')) }))
-    announce(known ? netH : Number(saved?.hours_worked ?? netH), known ? breakMin : 0)
+    announce(Number(saved?.hours_worked ?? netH), known ? breakMin : 0)
     await fetchData()
     setWorking(false)
   }

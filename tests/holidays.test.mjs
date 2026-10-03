@@ -51,7 +51,8 @@ function sheetFns() {
   const grab = name => { const s = src.indexOf(`function ${name}(`); let i = src.indexOf('{', src.indexOf(')', s)) + 1, d = 1; while (d) { const c = src[i++]; if (c === '{') d++; else if (c === '}') d-- } return src.slice(s, i) }
   const toLocalDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const tr = (k, p) => (p ? `${k}:${JSON.stringify(p)}` : k)
-  return new Function('tr', 'toLocalDateStr', 'sourceLabel', `${grab('monthBounds')}; ${grab('computeSheet')}; return { monthBounds, computeSheet }`)(tr, toLocalDateStr, x => x)
+  const breakTimesLabel = (brks, fmt) => (brks || []).map(b => `${fmt(b.break_start)}–${fmt(b.break_end)}`).join(', ')
+  return new Function('tr', 'toLocalDateStr', 'sourceLabel', 'breakTimesLabel', 'fmtTime', `${grab('monthBounds')}; ${grab('computeSheet')}; return { monthBounds, computeSheet }`)(tr, toLocalDateStr, x => x, breakTimesLabel, x => x)
 }
 
 test('Stundenzettel: Feiertagsvermerk nur an echten Feiertagen (kein Allerheiligen), Monatswechsel korrekt', () => {

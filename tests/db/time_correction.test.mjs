@@ -44,9 +44,8 @@ test('Normale Schicht: Stunden = Anwesenheit − Pausen (serverseitig), Protokol
   const log = await one(db.sys, `SELECT field_changed, corrected_by, reason, new_value FROM time_corrections WHERE time_entry_id = $1`, [r.id])
   assert.deepEqual([log.field_changed, log.corrected_by, log.reason], ['new_entry', U(ADMIN), 'Stempeluhr defekt'])
   assert.match(log.new_value, /08:00 – 16:30 \| Pausen: 12:00–12:30/)
-  // Altbestand ohne Pausenzeilen: Minuten-Feld zählt
-  const r2 = await save(a, { date: day(-4), inT: '09:00', outT: '13:00', breakMin: 15 })
-  assert.deepEqual([(await entry(r2.id)).h, (await entry(r2.id)).break_minutes], [3.75, 15])
+  // Neue Einträge: keine pauschalen Pausenminuten mehr (Migration 34) – Altbestand: tests/db/break_hardening
+  assert.match(await err(async () => save(a, { date: day(-4), inT: '09:00', outT: '13:00', breakMin: 15 })), /Pauschale Pausenminuten/)
 })
 
 test('Über Mitternacht: Zeiten vor der Einstempelzeit gehören zum Folgetag – Ende, Pausen, Stunden, Datum eindeutig', async () => {
@@ -65,7 +64,7 @@ test('Über Mitternacht: Zeiten vor der Einstempelzeit gehören zum Folgetag –
   // Gleiche Zeit ist keine 24-h-Schicht, sondern ein Fehler
   assert.match(await err(async () => save(a, { date: day(-7), inT: '08:00', outT: '08:00' })), /nicht gleich/)
   // Pause außerhalb der Schicht (nach Schichtende am Folgetag)
-  assert.match(await err(async () => save(a, { date: day(-7), inT: '22:00', outT: '02:00', breaks: [{ start: '02:30', end: '03:00' }] })), /innerhalb der Schicht/)
+  assert.match(await err(async () => save(a, { date: day(-7), inT: '22:00', outT: '02:00', breaks: [{ start: '02:30', end: '03:00' }] })), /außerhalb der Arbeitszeit/)
 })
 
 test('Sommer-/Winterzeit: Nachtschichten über die Umstellung zählen echte Stunden (Europe/Berlin)', async () => {
@@ -120,6 +119,9 @@ test('Laufende Schicht der Person stört nicht: vergangenen Eintrag anlegen/korr
   assert.equal((await entry(past.id)).h, 5, 'korrigieren trotz laufender Schicht')
   // offene Schicht nur Einstempelzeit korrigieren (Pause der Person ist inzwischen Teil des Stands)
   await (await db.session(E2)).query(`SELECT end_break()`)
+  // Pause in die Vergangenheit legen (Ende + 1 Min. darf nicht in der Zukunft liegen – Migration 34)
+  await db.sys.query(`UPDATE time_entries SET clock_in = clock_in - interval '2 hours' WHERE id = $1`, [open])
+  await db.sys.query(`UPDATE time_entry_breaks SET break_start = now() - interval '90 minutes', break_end = now() - interval '80 minutes' WHERE time_entry_id = $1`, [open])
   const s = await state(open)
   const brk = s.breaks[0]
   const hhmm = async sec => (await one(db.sys, `SELECT to_char(to_timestamp($1) AT TIME ZONE 'Europe/Berlin', 'HH24:MI') t`, [sec])).t

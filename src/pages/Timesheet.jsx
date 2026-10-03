@@ -11,6 +11,8 @@ import { safeFileName } from '../lib/pdf'
 import { saveFile } from '../lib/download'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import { currentLocalYm, resolveTimesheetMonth, isValidYm as validYm } from '../lib/timesheetMonth'
+import { fetchBreaksInRange } from '../lib/breaks'
+import { breakTimesLabel } from '../lib/breakRules'
 
 /**
  * Arbeitszeitnachweis pro Mitarbeiter und Monat (§ 17 MiLoG, § 16 Abs. 2 ArbZG).
@@ -92,10 +94,17 @@ export default function Timesheet() {
         setCafe(cafeRes.data || null)
         // Manager: fremde Mitarbeiter nur operativ (Migration 19)
         const staff = onlyMe ? null : await fetchStaffOperational()
+        // Pausenzeiten nur zur Anzeige (Minuten/Stunden kommen unverändert aus dem Zeiteintrag); Fehler → ohne Zeiten
+        const dayMs = 86400000
+        const { byEntry: brk, error: brkErr } = await fetchBreaksInRange(
+          new Date(Date.parse(`${b.first}T00:00:00Z`) - dayMs).toISOString(),
+          new Date(Date.parse(`${b.last}T00:00:00Z`) + 2 * dayMs).toISOString(),
+          onlyMe ? profile.employee_id : null)
         if (cancelled) return
         setEmps(mergeStaffRows(empRes.data, staff))
         setData({
           te: teRes.data || [],
+          brk: brkErr ? {} : brk,
           vac: vacRes.data || [],
           sick: (sickRes.data || []).filter(s => !s.end_date || s.end_date >= b.first),
           hol: Object.fromEntries((holRes.data || []).filter(h => !h.bundesland || h.bundesland === (cafeRes.data?.bundesland || 'Hessen')).map(h => [h.date, h.name])),
@@ -223,7 +232,8 @@ function computeSheet(emp, data, b) {
         if (!t.clock_out) openCount++
         if (forgotten) forgotCount++
         if (t.clock_out && !forgotten) sumH += Number(t.hours_worked || 0)
-        const notes = [absence && i === 0 ? absence : '', !t.clock_out ? tr("ui.53ae2084444b") : '',
+        const times = breakTimesLabel(data.brk?.[t.id], fmtTime)
+        const notes = [absence && i === 0 ? absence : '', times ? tr("timesheet.breakTimes", { times }) : '', !t.clock_out ? tr("ui.53ae2084444b") : '',
           forgotten ? tr("ui.bfcdfe902d8c") : '', corrected ? tr("ui.f685c14a2d0d") : ''].filter(Boolean)
         rows.push({ key: t.id, d, wd, weekend, first: i === 0, t, forgotten, note: notes.join(' · ') })
       })
