@@ -6,6 +6,7 @@ import { formatTime } from '../i18n/format.js'
 import { translateSupabaseError } from '../lib/errorHelper'
 import { calcWorkedHours, openBreak, sumBreakMinutes, isBreakTooLong, netWorkedHours, breakElapsedMinutes, breakUiState, BREAK_WARNING_MINUTES } from '../lib/workHours'
 import { fetchBreaks, startBreak, endBreak, isBreakFeatureMissing } from '../lib/breaks'
+import { notifyTimeDataChanged } from '../lib/laborCost'
 import { remoteClockState, remoteErrorKind, clockInRemote, clockOutRemote } from '../lib/remoteClock'
 import { createClockRevalidator, bindClockRevalidationEvents, locationSatisfied, withTimeout } from '../lib/clockRevalidation'
 import { useProfile } from '../context/ProfileContext'
@@ -168,6 +169,7 @@ export default function ClockIn({ session }) {
     // Z. B. Antwort verloren und erneut getippt („bereits eingeclockt“): echten Zustand vom Server zeigen
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); await fetchData(); setWorking(false); return }
     toast.success(appMessage("ui.28f97c874d34", { p1: (formatParam("time", now, { hour:'2-digit', minute:'2-digit' })) }))
+    notifyTimeDataChanged()   // Live-Personalkosten (anderer Tab/Dashboard) neu abgleichen
     await fetchData()
     setWorking(false)
   }
@@ -188,6 +190,7 @@ export default function ClockIn({ session }) {
     const { error } = await startBreak()
     if (error) { toast.error(breakError(error)); await fetchData(); setWorking(false); return }
     toast.success(appMessage("clock.breakStarted", { time: formatParam("time", new Date(), { hour:'2-digit', minute:'2-digit' }) }))
+    notifyTimeDataChanged()   // Live-Personalkosten (anderer Tab/Dashboard) neu abgleichen
     await fetchData()
     setWorking(false)
   }
@@ -199,6 +202,7 @@ export default function ClockIn({ session }) {
     if (error) { toast.error(breakError(error)); await fetchData(); setWorking(false); return }
     const ended = Array.isArray(data) ? data[0] : data
     toast.success(appMessage("clock.breakEnded", { minutes: breakElapsedMinutes(ended) }))
+    notifyTimeDataChanged()   // Live-Personalkosten (anderer Tab/Dashboard) neu abgleichen
     await fetchData()
     setWorking(false)
   }
@@ -230,6 +234,7 @@ export default function ClockIn({ session }) {
     const known = breakLoad === 'ok' || !breaksOn
     const announce = (netH, breakMin) => toast.success(appMessage("ui.974c5412d6ec", { p1: (formatParam("number", netH, {minimumFractionDigits:2,maximumFractionDigits:2})), p2: (breakMin ? (appMessage("ui.b90bda0a43ef", { p1: (breakMin) })) : ('')) }))
     announce(Number(saved?.hours_worked ?? netH), known ? breakMin : 0)
+    notifyTimeDataChanged()   // Live-Personalkosten (anderer Tab/Dashboard) neu abgleichen
     await fetchData()
     setWorking(false)
   }
@@ -271,6 +276,7 @@ export default function ClockIn({ session }) {
       }
     } finally {
       await fetchData()   // Serverzustand ist maßgeblich – auch nach Fehler/Zeitüberschreitung
+      notifyTimeDataChanged()   // Live-Personalkosten (anderer Tab/Dashboard) neu abgleichen
       setWorking(false)
       remoteBusy.current = false
     }

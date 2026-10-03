@@ -11,6 +11,7 @@ import { useSavingGuard } from '../lib/savingGuard'
 import { useDarkMode } from '../context/DarkModeContext'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import TimeInput24 from '../components/UI/TimeInput24'
+import { notifyTimeDataChanged } from '../lib/laborCost'
 
 const DAY_NAMES  = () => [tr("ui.d23e867e38e8"), tr("ui.16ab72874809"), tr("ui.d8f33a13ae6e"), tr("ui.30094e0bec00"), tr("ui.eed8f901692d"), tr("ui.a951efc79deb"), tr("ui.fb1df1a24e3f")]
 const DAY_FULL   = () => [tr("ui.b703fc6aeb9c"),tr("ui.c2e102ca1f11"),tr("ui.76c93ad154a5"),tr("ui.b15c4daa80ba"),tr("ui.5815ddf1ffb1"),tr("ui.7c22aad82322"),tr("ui.a5984592501e")]
@@ -154,6 +155,7 @@ export default function Shifts() {
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.e83d6389c102"))); return }
     toast.success(appMessage("ui.c435cfa6d137"))
     setModal(false); fetchData()
+    notifyTimeDataChanged()   // Live-Personalkosten (Plan) neu abgleichen
   }
 
   async function openEditModal(shift) {
@@ -187,6 +189,7 @@ export default function Shifts() {
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.e83d6389c102"))); return }
     toast.success(appMessage("ui.fde9ec277b18"))
     setEditModal(null); fetchData()
+    notifyTimeDataChanged()   // Live-Personalkosten (Plan) neu abgleichen
   }
 
   async function deleteShift(id) {
@@ -197,6 +200,7 @@ export default function Shifts() {
       if (error) { toast.error(translateSupabaseError(error)); return }
       toast.success(appMessage("ui.aefcd8cefdd7"))
       setEditModal(null); setDelConfirm(false); fetchData()
+      notifyTimeDataChanged()   // Live-Personalkosten (Plan) neu abgleichen
     } finally { setSaving(false) }   // vorher blieb „Speichern/Hinzufügen“ nach dem Löschen gesperrt
   }
 
@@ -252,6 +256,7 @@ export default function Shifts() {
       return
     }
     toast.success(appMessage("ui.12bd389abab3"))
+    notifyTimeDataChanged()   // Live-Personalkosten (Plan) neu abgleichen
     fetchSwaps(); fetchData()
   }
 

@@ -15,7 +15,8 @@ const walk = d => readdirSync(d).flatMap(n => { const p = join(d, n); return sta
 
 test('LOHN/DATEV-SICHERHEIT: Lohnberechnung, DATEV und alle Netto-Leser byte-gleich zum Stand vor der Härtung', () => {
   for (const f of ['src/pages/Payroll.jsx', 'src/lib/compensation.js', 'src/lib/workTimeModels.js', 'src/lib/workHours.js',
-                   'src/lib/sickLeaveLogic.js', 'src/lib/vacationLogic.js', 'src/pages/MyHours.jsx', 'src/pages/Dashboard.jsx', 'src/lib/timesheetPdf.js'])
+                   'src/lib/sickLeaveLogic.js', 'src/lib/vacationLogic.js', 'src/pages/MyHours.jsx', 'src/lib/timesheetPdf.js'])
+    // Dashboard.jsx ab Live-Personalkosten (Migration 35) bewusst geändert – eigene Absicherung in tests/laborCost.test.mjs
     assert.equal(read(f), atBefore(f), f)
 })
 

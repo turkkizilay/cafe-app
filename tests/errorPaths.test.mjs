@@ -25,7 +25,7 @@ const fakeSupabase = results => ({
   storage: { from: b => chain(results[`storage:${b}`] ?? { error: null }) },
 })
 function spyToast() { const calls = []; const f = kind => (...a) => calls.push([kind, ...a]); return { calls, success: f('success'), error: f('error'), warn: f('warn'), info: f('info') } }
-const common = { appMessage: (k, v) => ({ k, v }), translateSupabaseError: () => 'ERR', errorMessage: e => e?.message, messageParts: a => a, logActivity: () => {} }
+const common = { appMessage: (k, v) => ({ k, v }), translateSupabaseError: () => 'ERR', errorMessage: e => e?.message, messageParts: a => a, logActivity: () => {}, notifyTimeDataChanged: () => {} }
 const guard = () => { const g = { locked: false, begin: () => (g.locked ? false : (g.locked = true)), end: () => { g.locked = false } }; return g }
 const ERR = { error: { message: 'boom' } }
 

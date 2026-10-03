@@ -137,7 +137,7 @@ test('Schicht anlegen: Start ohne Person; ohne gültige Auswahl kein Insert (ech
     const calls = [], warns = []
     const deps = { form: { employee_id, date: '2026-11-02', start_time: '08:00', end_time: '16:00', position: '', notes: '' }, employees: [A, B],
       toast: { warn: m => warns.push(m), error: m => warns.push(m), success: () => {} }, appMessage: k => k, translateSupabaseError: x => x,
-      setSaving: () => {}, setModal: () => {}, fetchData: () => {},
+      setSaving: () => {}, setModal: () => {}, fetchData: () => {}, notifyTimeDataChanged: () => {},
       supabase: { from: t => ({ insert: async rows => { calls.push({ t, rows }); return { error: null } } }) } }
     await new Function(...Object.keys(deps), `return (${grab(s, 'doAddShift')})`)(...Object.values(deps))()
     return { calls, warns }

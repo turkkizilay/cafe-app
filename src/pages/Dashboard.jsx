@@ -10,10 +10,12 @@ import { missingPersonalFields } from '../components/PersonalDataCard'
 import { BACKUP_REMIND_DAYS } from '../lib/backup'
 import AppSetupCard from '../components/AppSetupCard'
 import { useProfile } from '../context/ProfileContext'
-import { openBreak, netWorkedHours } from '../lib/workHours'
+import { openBreak } from '../lib/workHours'
 import { fetchBreaksForEntries } from '../lib/breaks'
 import { fetchStaffOperational, mergeStaffRows, fillEmbeddedEmployees } from '../lib/staffDirectory'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import { useLiveLaborCost } from '../lib/useLiveLaborCost'
+import LiveLaborCostCard from '../components/LiveLaborCostCard'
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 function greeting() {
@@ -83,7 +85,8 @@ export default function Dashboard() {
   const [birthdays,   setBirthdays]   = useState([])
   const [loading,     setLoading]     = useState(true)
   const [clockedIn,   setClockedIn]   = useState(false)
-  const [laborCosts,  setLaborCosts]  = useState(null)
+  // Live-Personalkosten: Serverbasis labor_cost_today() (nur Admin, Migration 35) + lokales Fortschreiben
+  const laborCosts = useLiveLaborCost(!!isAdmin)
   const [pendingReqs,  setPendingReqs]  = useState({ vac:[], sick:[], sickReviews:[] })
 
   const fetchAll = useCallback(async () => {
@@ -118,7 +121,6 @@ export default function Dashboard() {
       // Pausen der offenen Schichten (ohne Migration 17 → leer, Anzeige wie bisher)
       const { byEntry: liveBreakMap } = await fetchBreaksForEntries((liveRes.data || []).map(e => e.id))
       setLiveBreaks(liveBreakMap || {})
-      const openBreaksByEmp = Object.fromEntries((liveRes.data || []).map(e => [e.employee_id, liveBreakMap?.[e.id] || []]))
       setClockedIn(!!myClockRes.data)
 
       if (canManage) {
@@ -154,41 +156,8 @@ export default function Dashboard() {
 
         // Live-Personalkosten berechnen – nur Admin (Löhne sind für Manager nicht lesbar)
         if (isAdmin) {
-        const nowMs = Date.now()
-        const { data: empRates }  = await supabase.from('employees').select('id, hourly_rate, hours_per_week').eq('is_active', true)
-        const { data: todayTE }   = await supabase.from('time_entries').select('employee_id, clock_in, clock_out, hours_worked').gte('date', todayISO).lte('date', todayISO)
-
-        // Heute: bereits geleistete Stunden × Stundenlohn
-        const empMap = Object.fromEntries((empRates||[]).map(e => [e.id, e]))
-        let costToday = 0, hoursToday = 0
-        ;(todayTE || []).forEach(te => {
-          const emp = empMap[te.employee_id]
-          if (!emp) return
-          // Offene Schicht: bisherige Zeit abzüglich erfasster Pausen (keine automatische Pause)
-          const h = te.hours_worked || (te.clock_out ? 0 : netWorkedHours(te.clock_in, null, openBreaksByEmp[te.employee_id], nowMs))
-          hoursToday += h
-          costToday  += h * emp.hourly_rate
-        })
-
-        // Geplant heute (Schichten × Stundenlohn)
-        let plannedToday = 0
-        ;(todayShiftRes.data || []).forEach(s => {
-          const emp = empMap[s.employee_id]
-          if (!emp || !s.start_time || !s.end_time) return
-          const h = (new Date('2000-01-01T' + s.end_time) - new Date('2000-01-01T' + s.start_time)) / 3600000
-          plannedToday += h * emp.hourly_rate
-        })
-
-        // Diese Woche
-        const weekStart = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay()||7) + 1); return localDateStr(d) })()
-        const { data: weekTE } = await supabase.from('time_entries').select('employee_id, hours_worked').gte('date', weekStart).lte('date', todayISO)
-        let costWeek = 0
-        ;(weekTE || []).forEach(te => {
-          const emp = empMap[te.employee_id]
-          if (emp && te.hours_worked) costWeek += te.hours_worked * emp.hourly_rate
-        })
-
-        setLaborCosts({ today: costToday, hoursToday, plannedToday, week: costWeek })
+          // Berechnung serverseitig (Berliner Kalendertag, nur Stundenlohn, nur Summen) – hier nur neu abgleichen
+          laborCosts.revalidate('load')
         }
 
         // Offene Anträge laden (Admin/Manager)
@@ -548,36 +517,7 @@ export default function Dashboard() {
         )}
         {/* ── Live Personalkosten (Admin/Manager) ── */}
         {isAdmin && laborCosts && (
-          <div className="card" style={{ marginBottom:16 }}>
-            <div className="card-header">
-              <div className="card-title">{tr("ui.9236588794e4")}</div>
-              <div style={{ fontSize:11, color:'var(--text-secondary)' }}>{tr("ui.05f79a49591d")}</div>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:0 }}>
-              {[
-                { label:tr("ui.af6b12601f96"),  value:laborCosts.today.toLocaleString(getIntlLocale(), { style: 'currency', currency: 'EUR' }),    sub:tr("time.worked", { hours: laborCosts.hoursToday.toLocaleString(getIntlLocale(), { minimumFractionDigits:2, maximumFractionDigits:2 }) }),    color:'var(--text-primary)' },
-                { label:tr("ui.0f71bd36b6c8"),    value:laborCosts.plannedToday.toLocaleString(getIntlLocale(), { style: 'currency', currency: 'EUR' }), sub:tr("ui.654a6d5f8310"),               color:'var(--text-secondary)' },
-                { label:tr("ui.f9ef5e928e9b"),      value:laborCosts.week.toLocaleString(getIntlLocale(), { style: 'currency', currency: 'EUR' }),     sub:tr("ui.4bb66b525604"),                color: laborCosts.week > 2000 ? 'var(--warn)' : 'var(--text-primary)' },
-              ].map((item, labelIndex) => (
-                <div key={labelIndex} style={{ padding:'14px 20px', borderRight:'1px solid var(--border)' }}>
-                  <div style={{ fontSize:11, color:'var(--text-secondary)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.04em' }}>{item.label}</div>
-                  <div style={{ fontSize:22, fontWeight:700, color: item.color }}>{item.value}</div>
-                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{item.sub}</div>
-                </div>
-              ))}
-              <div style={{ padding:'14px 20px', background:'var(--accent-light)' }}>
-                <div style={{ fontSize:11, color:'var(--accent)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.04em', fontWeight:600 }}>{tr("ui.6a949d20384a")}</div>
-                <div style={{ fontSize:18, fontWeight:700, color:'var(--accent)' }}>
-                  {laborCosts.plannedToday > 0
-                    ? `${((laborCosts.today / laborCosts.plannedToday) * 100).toFixed(0)}%`
-                    : '–'
-                  }
-                </div>
-                <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{tr("ui.627acdac3c1d")}</div>
-              </div>
-            </div>
-            <div style={{ padding:'8px 16px', fontSize:11, color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>{tr("ui.3455e09bcd65")}</div>
-          </div>
+          <LiveLaborCostCard labor={laborCosts} />
         )}
 
         {/* ── Offene Anträge (Admin/Manager) ── */}

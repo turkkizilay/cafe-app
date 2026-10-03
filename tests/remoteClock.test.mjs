@@ -55,7 +55,7 @@ function harness(serverResults) {
     gps: { lat: 50.2, lng: 8.7 },
     toast: { success: m => h.toasts.push(['success', m]), error: m => h.toasts.push(['error', m]), warn: m => h.toasts.push(['warn', m]) },
     appMessage: (k, p) => ({ k, p }), translateSupabaseError: () => ({ k: 'generic' }),
-    formatParam: (_t, v) => String(v), fetchData: async () => { h.fetches++ },
+    formatParam: (_t, v) => String(v), fetchData: async () => { h.fetches++ }, notifyTimeDataChanged: () => { h.notified = (h.notified || 0) + 1 },
   }
   const fn = new Function(...Object.keys(deps).filter(k => k !== 'remoteAsk' && k !== 'working'), 'getAsk', 'getWorking',
     `return (${extractFn('confirmRemote').replace(/\bremoteAsk\b/g, 'getAsk()').replace(/\|\| working\)/, '|| getWorking())')})`)

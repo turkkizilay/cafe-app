@@ -9,6 +9,7 @@ import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
 import { breakElapsedMinutes, BREAK_WARNING_MINUTES, formerStaffCutoff, endsNextDay, timeEntryState, berlinTime } from '../lib/workHours'
 import { correctionCheck, legacyBreakMinutes } from '../lib/breakRules'
+import { notifyTimeDataChanged } from '../lib/laborCost'
 import { fetchBreaksForEntries, isBreakFeatureMissing } from '../lib/breaks'
 import Avatar from '../components/UI/Avatar'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
@@ -190,6 +191,7 @@ export default function TimeManagement() {
     })
 
     setModal(null); fetchEntries()
+    notifyTimeDataChanged()   // Live-Personalkosten (anderer Tab/Dashboard) neu abgleichen
   }
 
   async function confirmDelete() {
@@ -214,6 +216,7 @@ export default function TimeManagement() {
     })
 
     deleteGuard.end(); fetchEntries()
+    notifyTimeDataChanged()   // Live-Personalkosten (anderer Tab/Dashboard) neu abgleichen
   }
 
   function f(k, v) { setForm(x => ({ ...x, [k]: v })) }

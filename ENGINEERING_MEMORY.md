@@ -339,6 +339,18 @@ Phase A hat KEINE Lohnwirkung: Payroll liest weder case_id noch sick_cases (Test
 Lohn/DATEV vorher = nachher in `tests/db/sick_cases.test.mjs`). Do Not: Vorschläge automatisch speichern, eAU-Merkmal oder
 zeitliche Nähe als „gleiche Krankheit“ werten, Begründungstext ins Protokoll kopieren.
 
+### Live-Personalkosten: Serverbasis + lokales Fortschreiben (Migration 35)
+Decision: `labor_cost_today()` (nur Admin, nur Summen) liefert die Tagesbasis für den Berliner Kalendertag
+(Mitternacht/DST geteilt, Netto = Intervall − Pausen; beendete Einträge über `hours_worked`, über Mitternacht anteilig).
+Kosten nur Stundenlohn – Fixgehalt wird nie in einen Stundenlohn umgerechnet und ist sichtbar „nicht enthalten“.
+Geplant = Schichten des Tages ohne genehmigten Urlaub/Krankmeldung/Ausgeschiedene. Der Client schreibt zwischen Abfragen
+mit `running_rate` (Summe der Sätze gerade Arbeitender) fort, gleicht bei Fokus/Sichtbarkeit/pageshow/online/Zeitdaten-
+Ereignis und minütlich ab; ältere Antworten werden verworfen, Fehler zeigen den letzten Stand statt 0 €.
+„Lohnquote“ heißt jetzt „Planverbrauch“ (Live ÷ geplant) – eine echte Lohnquote braucht Umsatz.
+Do Not: Löhne einzelner Personen an den Client geben; Dashboard-Kennzahlen an Browser-Datum/-Zeitzone hängen; Payroll
+oder DATEV auf diese Funktion umstellen. Regression Protection: `tests/db/labor_cost.test.mjs`, `tests/laborCost.test.mjs`.
+Hinweis: API-Änderungen in Dateien der i18n-Baseline erfordern ein bewusstes Re-Baseline genau dieser Datei (wie cadbeb2).
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.
