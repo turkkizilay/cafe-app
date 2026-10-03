@@ -315,6 +315,15 @@ zur selben Lücke (Lohnabrechnung, Urlaub/Krank für andere, neue Schicht) → `
 nach `employees[0]`-Defaults. Test-Falle: React unterdrückt Klicks auf Buttons mit `disabled`-Prop auch nach DOM-Manipulation –
 Handler-Guards daher mit der echten Funktion testen, nicht über den Browser-Klick.
 
+### Krankheitsfälle: Zusammenhang ≠ dieselbe Krankheit (Migration 33, Phase A)
+Decision: Drei Ebenen getrennt – (1) zeitlicher Zusammenhang wird nur im Client vorgeschlagen (`src/lib/sickCases.js`,
+Schichtplan vor Kalender, Sa/So nie pauschal frei, Urlaub/Arbeitstag ohne Buchung = „prüfen“), (2) Fall = bestätigte
+durchgehende Arbeitsunfähigkeit (`sick_cases` + `sick_leave.case_id`, nur Admin-RPC), (3) Beziehung neue Erkrankung /
+Fortsetzung nur Admin mit Quelle + Begründung, ohne Diagnose, Manager sehen sie nicht. eAU-Erst/Folge ist nur informativ.
+Phase A hat KEINE Lohnwirkung: Payroll liest weder case_id noch sick_cases (Tests: Payroll.jsx byte-gleich zu ecae13b,
+Lohn/DATEV vorher = nachher in `tests/db/sick_cases.test.mjs`). Do Not: Vorschläge automatisch speichern, eAU-Merkmal oder
+zeitliche Nähe als „gleiche Krankheit“ werten, Begründungstext ins Protokoll kopieren.
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

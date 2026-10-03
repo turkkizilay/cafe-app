@@ -13,6 +13,7 @@ import { useToast } from '../components/UI/Toast'
 import { LOHNFORTZAHLUNG_TAGE } from '../lib/constants'
 import { logActivity } from '../lib/activityLog'
 import { groupSickLeavesIntoCases, calculateContinuedPayStatus, getSickCaseWarnings, getContinuedPayEnd, SICK_STATUS_LABELS, validateSickLeaveInput } from '../lib/sickLeaveLogic'
+import SickCasesPanel from '../components/SickCasesPanel'
 import {
   getVacationBalance,
   calculateRequestedDays,
@@ -997,6 +998,8 @@ export default function Vacation() {
             </div>
             <div style={{ padding:'8px 16px', fontSize:11, color:'var(--text-secondary)', borderTop:'1px solid var(--border)' }}>{tr("ui.3111897089e2")}{LOHNFORTZAHLUNG_TAGE}{tr("ui.cb6fec7d7880")}</div>
           </div>
+          {/* Krankheitsfälle Phase A (Migration 33): Zuordnung/Vorschläge – ohne Lohnwirkung; bestätigen nur Admin */}
+          {canManage && <SickCasesPanel sick={sick} vacations={vacations} isAdmin={isAdmin} onChanged={fetchAll} />}
           </div>
         )}
       </div>
@@ -1206,6 +1209,7 @@ export default function Vacation() {
               <div className="form-group">
                 <label>{tr("ui.115aef1019b4")}</label>
                 <textarea rows="2" value={form.notes||''} onChange={e => f('notes', e.target.value)} placeholder={tr("ui.63bb086386d4")} />
+                <div style={{ fontSize:11.5, color:'var(--warn)', marginTop:4 }}>{tr('sickCase.noDiagnosis')}</div>
               </div>
             </div>
             <div className="modal-footer">

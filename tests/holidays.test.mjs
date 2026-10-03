@@ -27,7 +27,7 @@ test('Eine Quelle: das Frontend enthält keine eigene Feiertagsliste und keine O
     assert.doesNotMatch(s, /public_holidays_manual/, `${f}: alte Handliste`)
   }
   const readers = SRC.filter(f => /from\('public_holidays'\)/.test(read(f))).map(f => f.replace(/\\/g, '/')).sort()
-  assert.deepEqual(readers, ['src/pages/Account.jsx', 'src/pages/MyHours.jsx', 'src/pages/Timesheet.jsx', 'src/pages/Vacation.jsx'])
+  assert.deepEqual(readers, ['src/lib/sickCasesApi.js', 'src/pages/Account.jsx', 'src/pages/MyHours.jsx', 'src/pages/Timesheet.jsx', 'src/pages/Vacation.jsx'])   // sickCasesApi: Fall-Vorschläge (Migration 33)
 })
 
 test('Lohn/DATEV und Arbeitszeitmodelle lesen keine Feiertage (Fix berührt keine Vergütungsregel)', () => {
