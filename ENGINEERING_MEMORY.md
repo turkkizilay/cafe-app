@@ -373,7 +373,7 @@ Test-Falle: Tests, die Einstempelzeiten per Systemverbindung zurückdrehen („Z
 Überschneidungen – vorher frühere synthetische Einträge der Person entfernen; Korrektur-Testdaten immer in der
 Vergangenheit (keine festen Zukunftsdaten). Regression: `tests/db/time_correction_past_only.test.mjs`.
 
-### Zugang zurücksetzen: Server-Sperre statt Browser-Redirect (Migration 38, lokal – noch nicht live)
+### Zugang zurücksetzen: Server-Sperre statt Browser-Redirect (Migration 38)
 Supabase widerruft Access-Tokens nicht vor `exp`; `auth.admin.signOut` braucht den JWT der Person; ob eine
 Passwortänderung Sitzungen beendet, ist Konfiguration. Daher: Reset löscht `auth.sessions` (Refresh-Tokens per
 CASCADE) UND `access_gate()` als `pgrst.db_pre_request` weist jede Data-API-Anfrage aus einer Sitzung vor

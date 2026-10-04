@@ -20,6 +20,9 @@
 -- DATEV, Onboarding, Registrierungs-Reset (Migration 26). Keine Datenänderung an Bestandszeilen.
 -- Rückbau: ALTER ROLE authenticator RESET pgrst.db_pre_request; NOTIFY pgrst, 'reload config';
 --          DROP POLICY access_gate_restrictive ON storage.objects;
+-- Bereits live eingespielt (Migration admin_access_reset, Version 20261004090916, 2026-10-04; angewendet mit dem
+-- byte-gleichen Inhalt dieser Datei vor diesem Vermerk, sha256 04c2f786…a6028f; 12 Funktionen, 2 Tabellen, Policies,
+-- Rechte und pgrst.db_pre_request verifiziert; Edge Functions admin-reset-access/complete-password-change v2) — NICHT erneut ausführen.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS public.account_security (
