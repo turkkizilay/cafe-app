@@ -386,6 +386,13 @@ Temporäres Passwort nur in der Antwort der Edge Function, nie in DB/Log/Storage
 Edge Functions bekommen den Pre-Request nicht automatisch für Service-Aufrufe – eigene Rechte prüfen (JWT + DB).
 Regression: `tests/db/admin_access_reset.test.mjs`, `tests/accessReset.test.mjs`.
 
+### Fristen aus den Datenschutzhinweisen serverseitig durchsetzen (Migration 39)
+Die Protokoll-Frist (12 Monate) hing an einem Browser-Aufruf einer SECURITY-DEFINER-Funktion ohne Rollenprüfung; deren
+EXECUTE war (richtig) nur für den Server → jeder Aufruf 403, die Frist lief nie (fiel nicht auf: `supabase.rpc` wirft
+nicht, `try/catch` griff nie). Löschfristen gehören in einen pg_cron-Job (läuft als postgres), nie in den Browser und
+nie per GRANT an `authenticated`. Zugesagte Fristen (`src/legal/legalContent.js`) bei neuen Datenarten gegen Jobs prüfen.
+Regression: `tests/db/activity_log_retention.test.mjs` (Harness hat dafür eine pg_cron-Nachbildung).
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

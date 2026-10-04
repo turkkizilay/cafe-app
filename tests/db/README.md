@@ -10,7 +10,7 @@ npm --prefix tests/db test    # ca. 10–20 s
 ```
 
 Aufbau: `fixtures/schema_before_17.sql` (Production-Struktur vor Migration 17, nur Schema, keine Daten/Secrets)
-+ die Repository-Migrationen 17–31 in Reihenfolge (`harness.mjs`); `fixtures/lifecycle_functions.sql` enthält die
++ die Repository-Migrationen 17–39 in Reihenfolge (`harness.mjs`); `fixtures/lifecycle_functions.sql` enthält die
 Invite-/Auth-/Onboarding-Funktionen wie in Production VOR Migration 28, `fixtures/prod_functions.sql` weitere go-live-relevante Production-Funktionen. Nur synthetische Personen.
 Migrationen, die Funktionen aus `lifecycle_functions.sql` ersetzen, stehen zusätzlich in `LIFECYCLE_MIGRATIONS` und werden
 von `loadLifecycle()` nach der Vorlage erneut eingespielt (sonst testete man den alten Stand) – solche Migrationen
@@ -34,6 +34,7 @@ müssen wiederholt ausführbar sein.
 | `holidays.test.mjs` | Hessen-Feiertage berechnet: genau 10 je Jahr (2026–2030 fest geprüft, 1990–2100 gegen unabhängige Osterformel), kein Allerheiligen/Reformationstag, View wie bisherige Tabelle (nur lesen), Server-Zählung über Monats-/Jahreswechsel in jeder Sitzungs-Zeitzone, App = Server, Vorher/Nachher: Daten + Lohn/DATEV identisch (Migration 31) |
 | `admin_access_reset.test.mjs` | Zugang zurücksetzen nur Admin (Rolle live), Ziel-Regeln, Pre-Request sperrt alles außer `my_access_state` bei Pflicht zur Passwortänderung, beendete Sitzungen/alte Access-Tokens abgewiesen, Storage-Sperre, Server-Funktionen nur `service_role`, Generation/Sperre gegen Doppelklick und zwei Admins, Protokoll ohne Geheimnisse, keine Datenänderung (Migration 38) |
 | `open_time_correction.test.mjs` | Zeitkorrektur mit leerem Arbeitsende = offener Eintrag: Beginn Pflicht, Zukunft/zweiter offener Eintrag (auch parallel)/Überschneidung/Lohnmonat abgelehnt, Pausen im Intervall; danach wie normal offen: Einstempeln gesperrt, Pause, Ausstempeln, Live-Steuerung, Live-Personalkosten, spätere Korrektur mit Protokoll |
+| `activity_log_retention.test.mjs` | Aktivitätsprotokoll-Frist 12 Monate per pg_cron (Job genau einmal, als postgres, wiederholt ausführbar), löscht nur Älteres, Funktion nur für den Server (Browser-Rollen verweigert), Migration ohne Datenänderung (Migration 39) |
 | `prod_functions.test.mjs` | Production-Funktionen außerhalb der Schema-Vorlage (`fixtures/prod_functions.sql`): Konto selbst löschen + Datenschutz-Nachweise an der Personalakte, Onboarding-Korrektur, `approve_user`, Aufbewahrungs-Löschung, Protokoll |
 
 Neue Migration `NN_*.sql`: in `harness.mjs` → `MIGRATIONS` ergänzen und hier einen Test dafür anlegen.

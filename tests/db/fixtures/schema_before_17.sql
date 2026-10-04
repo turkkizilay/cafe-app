@@ -1502,3 +1502,20 @@ CREATE POLICY vac_manage ON public.vacation_requests TO authenticated USING (pub
 
 -- POLICY: vacation_requests vac_read
 CREATE POLICY vac_read ON public.vacation_requests FOR SELECT TO authenticated USING (((employee_id = public.my_employee_id()) OR public.is_manager_or_admin()));
+
+-- FUNCTION: cleanup_old_activity_logs (Production, unverändert; EXECUTE nur postgres/service_role)
+CREATE FUNCTION public.cleanup_old_activity_logs() RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_deleted INTEGER;
+BEGIN
+  DELETE FROM activity_log
+    WHERE created_at < NOW() - INTERVAL '12 months';
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.cleanup_old_activity_logs() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cleanup_old_activity_logs() TO service_role;

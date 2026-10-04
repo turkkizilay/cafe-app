@@ -8,9 +8,9 @@ import { useLocale } from '../context/LocaleContext.jsx'
  * Filter nach Kategorie, Zeitraum und Freitext. "Mehr laden" für Performance.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { LOG_CATEGORIES, triggerLogCleanup } from '../lib/activityLog'
+import { LOG_CATEGORIES } from '../lib/activityLog'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 
 const PAGE_SIZE = 50
@@ -47,8 +47,6 @@ export default function ActivityLog() {
   const [fromDate, setFromDate] = useState('')
   const [toDate,   setToDate]   = useState('')
   const [search,   setSearch]   = useState('')
-
-  const cleanupDone = useRef(false)
 
   // Ungültiger Zeitraum: Von nach Bis
   const invalidRange = fromDate && toDate && fromDate > toDate
@@ -91,13 +89,9 @@ export default function ActivityLog() {
     }
   }, [category, fromDate, toDate, search, entries.length])
 
-  // Erstes Laden + Cleanup-Trigger (12-Monats-Frist, nicht-blockierend)
+  // Erstes Laden. Die 12-Monats-Frist setzt der Server durch (pg_cron, Migration 39) – nicht der Browser.
   useRefreshHandler(() => loadEntries(true))   // Aktualisieren-Button
   useEffect(() => {
-    if (!cleanupDone.current) {
-      cleanupDone.current = true
-      triggerLogCleanup()  // läuft im Hintergrund, blockiert nicht
-    }
     loadEntries(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, fromDate, toDate])
