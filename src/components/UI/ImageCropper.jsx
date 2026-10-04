@@ -92,7 +92,7 @@ export default function ImageCropper({ src, onDone, onCancel }) {
       <div className="modal" style={{ maxWidth:340 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">{tr("ui.4828cecd3f27")}</div>
-          <button className="btn btn-sm" onClick={onCancel}>✕</button>
+          <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={onCancel}>✕</button>
         </div>
         <div className="modal-body" style={{ textAlign:'center' }}>
           <p style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:12 }}>{tr("ui.2085f6d8f054")}</p>

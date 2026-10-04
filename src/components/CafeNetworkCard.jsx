@@ -184,11 +184,11 @@ export default function CafeNetworkCard({ gpsConfigured, requireNetwork = false,
       {modal && (
         <div className="modal-overlay" onClick={() => !busy && setModal(false)}>
           <div className="modal" style={{ maxWidth:440 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><div className="modal-title">{tr("ui.27b1de1cdc7e")}</div><button className="btn btn-sm" onClick={() => setModal(false)} disabled={busy}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.27b1de1cdc7e")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setModal(false)} disabled={busy}>✕</button></div>
             <div className="modal-body">
               <div className="form-group">
                 <label>{tr("ui.97d1e68526b8")}</label>
-                <input value={label} maxLength={60} onChange={e => setLabel(e.target.value)} placeholder={tr("ui.415e8f8d56e9")} />
+                <input aria-label={tr("ui.97d1e68526b8")} value={label} maxLength={60} onChange={e => setLabel(e.target.value)} placeholder={tr("ui.415e8f8d56e9")} />
               </div>
               <label style={{ display:'flex', gap:10, alignItems:'flex-start', fontSize:13.5, marginBottom:10, cursor:'pointer' }}>
                 <input type="checkbox" checked={check1} onChange={e => setCheck1(e.target.checked)} style={{ marginTop:3 }} />
@@ -212,7 +212,7 @@ export default function CafeNetworkCard({ gpsConfigured, requireNetwork = false,
       {removeItem && (
         <div className="modal-overlay" onClick={() => !busy && setRemoveItem(null)}>
           <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><div className="modal-title">{tr("ui.706a152ebfca")}</div><button className="btn btn-sm" onClick={() => setRemoveItem(null)} disabled={busy}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.706a152ebfca")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setRemoveItem(null)} disabled={busy}>✕</button></div>
             <div className="modal-body" style={{ fontSize:13.5 }}>
               „{removeItem.label}{tr("ui.05b0b5265561")}</div>
             <div className="modal-footer">

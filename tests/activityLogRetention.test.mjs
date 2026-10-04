@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { pinView } from './pinView.mjs'   // Pin-Ausnahme Production-Polish (nur a11y + Schichttausch-Fix; Lohn/Stundennachweis ohne Ausnahme)
 
 const read = f => readFileSync(f, 'utf8')
 const walk = d => readdirSync(d).flatMap(n => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p] })
@@ -34,5 +35,5 @@ test('REGRESSION: activityLog.js (geschützt), Protokoll-Schreiben, Account-Rese
   for (const f of ['src/lib/activityLog.js', 'src/legal/legalContent.js', 'src/App.jsx', 'src/lib/accessReset.js', 'src/pages/TimeManagement.jsx',
     'src/components/UI/TimeInput24.jsx', 'src/pages/Payroll.jsx', 'src/pages/Dashboard.jsx', 'supabase/functions/_shared/access-reset.js',
     ...readdirSync('supabase/migrations_onboarding').filter(f => f < '39').map(f => `supabase/migrations_onboarding/${f}`)])
-    assert.equal(read(f), atBefore(f), f)
+    assert.equal(pinView(f, read(f)), pinView(f, atBefore(f)), f)
 })

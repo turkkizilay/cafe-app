@@ -159,7 +159,7 @@ export default function RetentionCard() {
       {confirm && (
         <div className="modal-overlay" onClick={() => !busy && setConfirm(null)}>
           <div className="modal" style={{ maxWidth:520 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><div className="modal-title">{tr("ui.be9632b5a2ad")}</div><button className="btn btn-sm" onClick={() => setConfirm(null)} disabled={busy}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.be9632b5a2ad")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setConfirm(null)} disabled={busy}>✕</button></div>
             <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
               <div><strong>{sourceLabel(confirm.title)}</strong> – {confirm.due} {unitLabel(confirm)}</div>
               <div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:4 }}>{tr("ui.8446867dbbc4")}{confirm.rule}.</div>

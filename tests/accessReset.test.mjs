@@ -10,6 +10,7 @@ import * as core from '../supabase/functions/_shared/access-reset.js'
 import { passwordPolicyProblem as clientPolicy, invokeAccessFn, loadMyAccessState, resetReasonKey, changeReasonKey, maskPassword } from '../src/lib/accessReset.js'
 import { de, en } from '../src/i18n/catalogs.js'
 import { bn as catalogBn } from '../src/i18n/catalogBn.js'
+import { pinView } from './pinView.mjs'   // Pin-Ausnahme Production-Polish (nur a11y + Schichttausch-Fix; Lohn/Stundennachweis ohne Ausnahme)
 const catalogs = { de, en }
 
 const read = f => readFileSync(f, 'utf8')
@@ -279,5 +280,5 @@ test('REGRESSION: Anmeldung, Passwort-vergessen, Konto, Registrierungs-Reset, Lo
     'src/lib/sickLeaveLogic.js', 'src/lib/vacationLogic.js', 'src/pages/ClockIn.jsx', 'src/pages/TimeManagement.jsx', 'src/pages/Dashboard.jsx',
     'src/components/LiveTimeControl.jsx', 'src/lib/liveTimeControl.js', 'src/pages/PayrollDocuments.jsx',
     ...readdirSync('supabase/migrations_onboarding').filter(f => f < '38').map(f => `supabase/migrations_onboarding/${f}`)]
-  for (const f of files) assert.equal(read(f), atBefore(f), f)
+  for (const f of files) assert.equal(pinView(f, read(f)), pinView(f, atBefore(f)), f)
 })

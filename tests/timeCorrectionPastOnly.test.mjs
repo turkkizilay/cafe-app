@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { wallTimeToMs, correctionFutureProblem } from '../src/lib/timeCorrectionRules.js'
 import { liveErrorKind } from '../src/lib/liveTimeControl.js'
+import { pinView } from './pinView.mjs'   // Pin-Ausnahme Production-Polish (nur a11y + Schichttausch-Fix; Lohn/Stundennachweis ohne Ausnahme)
 
 const read = f => readFileSync(f, 'utf8')
 const BEFORE = 'cccbfd8'   // Stand vor dem H1/M1-Fix
@@ -18,7 +19,7 @@ test('REGRESSION: Lohn/DATEV, Timesheet, Pausenregeln, Live-Kosten, Stempeln, Mi
                    'src/pages/ClockIn.jsx', 'src/lib/remoteClock.js', 'src/lib/breaks.js', 'src/pages/Shifts.jsx',
                    'supabase/migrations_onboarding/34_break_hardening.sql', 'supabase/migrations_onboarding/35_labor_cost_today.sql',
                    'supabase/migrations_onboarding/36_staff_live_action.sql'])
-    assert.equal(read(f), atBefore(f), f)
+    assert.equal(pinView(f, read(f)), pinView(f, atBefore(f)), f)
 })
 
 test('Berliner Wanduhrzeit → Zeitpunkt, unabhängig vom Gerät; Sommer/Winter und Umstellungstage', () => {

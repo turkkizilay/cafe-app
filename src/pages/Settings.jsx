@@ -153,11 +153,11 @@ export default function Settings() {
                 <div className="card-body">
                   <div className="form-group">
                     <label>{tr("ui.b65ac7a41e09")}</label>
-                    <input value={cfg.cafe_name || ''} onChange={e => f('cafe_name', e.target.value)} placeholder={tr("ui.3e8ae3d66b5d")} />
+                    <input aria-label={tr("ui.b65ac7a41e09")} value={cfg.cafe_name || ''} onChange={e => f('cafe_name', e.target.value)} placeholder={tr("ui.3e8ae3d66b5d")} />
                   </div>
                   <div className="form-group">
                     <label>{tr("ui.79e5cf20de0b")}</label>
-                    <textarea rows="3" value={cfg.address || ''} onChange={e => f('address', e.target.value)} placeholder={tr("ui.288fd718439f")} />
+                    <textarea aria-label={tr("ui.79e5cf20de0b")} rows="3" value={cfg.address || ''} onChange={e => f('address', e.target.value)} placeholder={tr("ui.288fd718439f")} />
                   </div>
                 </div>
               </div>
@@ -174,16 +174,16 @@ export default function Settings() {
                   <div className="two-col">
                     <div className="form-group">
                       <label>{tr("ui.08280023e451")}</label>
-                      <input type="number" step="0.0000001" value={cfg.gps_lat || ''} onChange={e => f('gps_lat', e.target.value)} placeholder="50.1109221" />
+                      <input aria-label={tr("ui.08280023e451")} type="number" step="0.0000001" value={cfg.gps_lat || ''} onChange={e => f('gps_lat', e.target.value)} placeholder="50.1109221" />
                     </div>
                     <div className="form-group">
                       <label>{tr("ui.9479267b0a7c")}</label>
-                      <input type="number" step="0.0000001" value={cfg.gps_lng || ''} onChange={e => f('gps_lng', e.target.value)} placeholder="8.6821267" />
+                      <input aria-label={tr("ui.9479267b0a7c")} type="number" step="0.0000001" value={cfg.gps_lng || ''} onChange={e => f('gps_lng', e.target.value)} placeholder="8.6821267" />
                     </div>
                   </div>
                   <div className="form-group">
                     <label>{tr("ui.f430da80cd59")}<strong>{cfg.gps_radius_m || 50}{tr("ui.62c66a7a5dd7")}</strong></label>
-                    <input type="range" min="10" max="300" step="5" value={cfg.gps_radius_m || 50} onChange={e => f('gps_radius_m', e.target.value)} />
+                    <input aria-label={tr("ui.f430da80cd59")} type="range" min="10" max="300" step="5" value={cfg.gps_radius_m || 50} onChange={e => f('gps_radius_m', e.target.value)} />
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text-muted)' }}>
                       <span>{tr("ui.6ef04fc2d275")}</span><span>{tr("ui.4c3e48ed2d09")}</span>
                     </div>

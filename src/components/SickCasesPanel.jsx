@@ -135,7 +135,7 @@ export default function SickCasesPanel({ sick, vacations, isAdmin, onChanged }) 
       {dialog && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !busy && setDialog(null)}>
           <div className="modal" role="dialog" aria-modal="true" aria-label={tr('sickCase.setRelation')}>
-            <div className="modal-header"><div className="modal-title">{tr('sickCase.setRelation')}</div><button className="btn btn-sm" onClick={() => setDialog(null)} disabled={busy}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr('sickCase.setRelation')}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setDialog(null)} disabled={busy}>✕</button></div>
             <div className="modal-body">
               <div className="form-group">
                 <label>{tr('sickCase.relation')}</label>

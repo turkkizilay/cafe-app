@@ -111,9 +111,9 @@ export default function AbsenceCalendar() {
       <div className="topbar">
         <div className="topbar-title">{tr("ui.15e5ec97be8c")}</div>
         <div className="topbar-right">
-          <button className="btn btn-sm" onClick={() => navMonth(-1)}>←</button>
+          <button aria-label={tr("a11y.previous")} className="btn btn-sm" onClick={() => navMonth(-1)}>←</button>
           <span style={{ padding:'0 12px', fontSize:14, fontWeight:500 }}>{monthLabel}</span>
-          <button className="btn btn-sm" onClick={() => navMonth(1)}>→</button>
+          <button aria-label={tr("a11y.next")} className="btn btn-sm" onClick={() => navMonth(1)}>→</button>
           <button className="btn btn-sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()) }}>{tr("ui.46ea2fff7a5b")}</button>
         </div>
       </div>

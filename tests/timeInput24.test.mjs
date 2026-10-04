@@ -48,7 +48,10 @@ test('Schichtplan: kein natives Zeitfeld mehr; Anlegen + Bearbeiten nutzen TimeI
 // ── Echter Browser ──
 const CANDIDATES = [process.env.CHROME_BIN, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean)
 const CHROME = CANDIDATES.find(p => existsSync(p))
-let R = null, SKIP = CHROME ? null : 'kein Chrome/Chromium gefunden (CHROME_BIN setzen)'
+let R = null, HARNESS_ERR = null
+const SKIP = CHROME ? null : 'kein Chrome/Chromium gefunden (CHROME_BIN setzen)'
+// Chrome vorhanden, aber kein Ergebnis (Seite abgestürzt/Timeout) = Fehler, nicht „übersprungen“ – sonst verdeckt ein Absturz eine Regression
+const result = () => { assert.ok(R, `Browser-Harness ohne Ergebnis: ${HARNESS_ERR}`); return R }
 
 const ENTRY = `
 import React, { useState } from 'react'
@@ -120,48 +123,48 @@ before(async () => {
       ch.stdout.on('data', c => { buf += c; const m = buf.match(/<pre id="out">([\s\S]*?)<\/pre>/); if (m && m[1]) done(res, JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'))) })
       ch.on('error', e => done(rej, e))
     })
-  } catch (e) { SKIP = `Browser-Test nicht ausführbar: ${e.message}` }
+  } catch (e) { HARNESS_ERR = e.message }
   finally { try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch { /* Temp-Ordner */ } }
 })
 
 test('Browser (Chrome, englische Browsersprache): 24 h ohne AM/PM; Löschen/Teillöschen nie kaputt; jederzeit wieder gültig eingebbar', t => {
   if (SKIP) return t.skip(SKIP)
-  assert.deepEqual(R.initial, { shown: '08:00', form: '08:00', type: 'text', invalid: null, hint: false }, '24-h-Anzeige, kein AM/PM')
-  assert.deepEqual([R.partial.shown, R.partial.form], ['08:3', ''], 'Teilwert bleibt editierbar, Formular erhält keinen halben Wert')
-  assert.deepEqual([R.cleared.shown, R.cleared.form, R.clearedBlur.invalid], ['', '', null], 'leer ist erlaubt (Speichern blockiert per Pflichtprüfung)')
-  assert.deepEqual([R.amPmTyped.shown, R.amPmTyped.form], ['18:30', '18:30'], 'AM/PM-Reste ignoriert, 24 h')
-  assert.deepEqual([R.invalid.shown, R.invalid.form, R.invalid.invalid, R.invalid.hint], ['25:00', '', 'true', true], 'ungültig sichtbar markiert')
-  assert.deepEqual([R.recovered.form, R.recoveredBlur.shown, R.recoveredBlur.invalid, R.recoveredBlur.hint], ['23:15', '23:15', null, false], 'nach Fehler wieder gültig')
-  assert.deepEqual([R.single.shown, R.single.form, R.single.invalid, R.single.hint, R.single.blurEmits], ['8', '', 'true', true, 0], 'Kurzform „8“ bleibt unvollständig – kein 08:00 durch Verlassen')
-  assert.deepEqual([R.dot.shown, R.dot.form, R.dot.blurEmits], ['18:30', '18:30', 0], 'vollständige Schreibweise „18.30“: Wert beim Tippen, Blur formatiert nur')
-  assert.deepEqual([R.external.shown, R.external.form], ['22:00', '22:00'], 'geladener Wert (Bearbeiten) wird übernommen')
+  assert.deepEqual(result().initial, { shown: '08:00', form: '08:00', type: 'text', invalid: null, hint: false }, '24-h-Anzeige, kein AM/PM')
+  assert.deepEqual([result().partial.shown, result().partial.form], ['08:3', ''], 'Teilwert bleibt editierbar, Formular erhält keinen halben Wert')
+  assert.deepEqual([result().cleared.shown, result().cleared.form, result().clearedBlur.invalid], ['', '', null], 'leer ist erlaubt (Speichern blockiert per Pflichtprüfung)')
+  assert.deepEqual([result().amPmTyped.shown, result().amPmTyped.form], ['18:30', '18:30'], 'AM/PM-Reste ignoriert, 24 h')
+  assert.deepEqual([result().invalid.shown, result().invalid.form, result().invalid.invalid, result().invalid.hint], ['25:00', '', 'true', true], 'ungültig sichtbar markiert')
+  assert.deepEqual([result().recovered.form, result().recoveredBlur.shown, result().recoveredBlur.invalid, result().recoveredBlur.hint], ['23:15', '23:15', null, false], 'nach Fehler wieder gültig')
+  assert.deepEqual([result().single.shown, result().single.form, result().single.invalid, result().single.hint, result().single.blurEmits], ['8', '', 'true', true, 0], 'Kurzform „8“ bleibt unvollständig – kein 08:00 durch Verlassen')
+  assert.deepEqual([result().dot.shown, result().dot.form, result().dot.blurEmits], ['18:30', '18:30', 0], 'vollständige Schreibweise „18.30“: Wert beim Tippen, Blur formatiert nur')
+  assert.deepEqual([result().external.shown, result().external.form], ['22:00', '22:00'], 'geladener Wert (Bearbeiten) wird übernommen')
 })
 
 test('Browser: „18“ ist Zwischenzustand – nie „01:00“ o. ä. ans Formular; erst „18:00“ liefert 18:00; Verlassen ändert nichts; Löschen + Neueingabe', t => {
   if (SKIP) return t.skip(SKIP)
-  const { steps, log } = R.typing18
+  const { steps, log } = result().typing18
   assert.deepEqual(steps.map(x => x.shown), ['', '1', '18', '18:', '18:0'], 'Eingabe springt nicht zurück')
   assert.ok(steps.every(x => x.form === ''), 'Formular sieht während des Tippens keinen Wert')
   assert.ok(log.every(([v]) => v === ''), `keine Zwischenwerte wie 01:00: ${JSON.stringify(log)}`)
   assert.ok(log.every(([v, incomplete], i) => i === 0 ? true : incomplete), 'als unvollständig gemeldet')
-  assert.deepEqual([R.typed1800.snap.shown, R.typed1800.snap.form, R.typed1800.log.at(-1)], ['18:00', '18:00', ['18:00', false]])
-  assert.ok(!R.typed1800.log.some(([v]) => v && v !== '18:00'), 'nur der Endwert')
-  assert.deepEqual([R.short18.before.shown, R.short18.before.form], ['18', ''], '„18“ ohne Verlassen: lokal, kein Formularwert')
-  assert.ok(!R.short18.log.some(([v]) => v), `kein Wert vor dem Verlassen: ${JSON.stringify(R.short18.log)}`)
-  assert.deepEqual([R.short18.after.shown, R.short18.after.form, R.short18.after.invalid, R.short18.after.hint], ['18', '', 'true', true], '„18“ + Verlassen: bleibt unvollständig, rot + Hinweis')
-  assert.equal(R.short18.logAfter.length, R.short18.log.length, 'Verlassen meldet keinen Wert ans Formular')
-  assert.deepEqual([R.retype.snap.shown, R.retype.snap.form], ['07:45', '07:45'])
-  assert.deepEqual(R.retype.log.filter(([v]) => v), [['07:45', false]], `nach Löschen nur der vollständige Wert: ${JSON.stringify(R.retype.log)}`)
-  assert.deepEqual([R.flag.snap.form, R.flag.snap.invalid, R.flag.log.at(-1)], ['', 'true', ['', true]], 'ungültig → leer + „unvollständig“')
+  assert.deepEqual([result().typed1800.snap.shown, result().typed1800.snap.form, result().typed1800.log.at(-1)], ['18:00', '18:00', ['18:00', false]])
+  assert.ok(!result().typed1800.log.some(([v]) => v && v !== '18:00'), 'nur der Endwert')
+  assert.deepEqual([result().short18.before.shown, result().short18.before.form], ['18', ''], '„18“ ohne Verlassen: lokal, kein Formularwert')
+  assert.ok(!result().short18.log.some(([v]) => v), `kein Wert vor dem Verlassen: ${JSON.stringify(result().short18.log)}`)
+  assert.deepEqual([result().short18.after.shown, result().short18.after.form, result().short18.after.invalid, result().short18.after.hint], ['18', '', 'true', true], '„18“ + Verlassen: bleibt unvollständig, rot + Hinweis')
+  assert.equal(result().short18.logAfter.length, result().short18.log.length, 'Verlassen meldet keinen Wert ans Formular')
+  assert.deepEqual([result().retype.snap.shown, result().retype.snap.form], ['07:45', '07:45'])
+  assert.deepEqual(result().retype.log.filter(([v]) => v), [['07:45', false]], `nach Löschen nur der vollständige Wert: ${JSON.stringify(result().retype.log)}`)
+  assert.deepEqual([result().flag.snap.form, result().flag.snap.invalid, result().flag.log.at(-1)], ['', 'true', ['', true]], 'ungültig → leer + „unvollständig“')
 })
 
 test('Browser: vorbelegtes „16:00“ mit Rücktaste ganz gelöscht → zuletzt „leer, vollständig“ gemeldet (leer = offen erlaubt)', t => {
   if (SKIP) return t.skip(SKIP)
-  const { snap, log } = R.backspace
+  const { snap, log } = result().backspace
   assert.deepEqual([snap.shown, snap.form, snap.invalid, snap.hint], ['', '', null, false], 'Feld leer, nicht markiert')
   assert.deepEqual(log.at(-1), ['', false], `letzte Meldung „leer, vollständig“: ${JSON.stringify(log)}`)
   assert.ok(log.slice(0, -1).every(([v, inc]) => v === '' && inc), 'Zwischenstände unvollständig, nie ein halber Wert')
-  assert.deepEqual([R.clearAll.snap.form, R.clearAll.log], ['', [['', false]]], 'auf einmal gelöscht: ebenfalls „leer, vollständig“')
+  assert.deepEqual([result().clearAll.snap.form, result().clearAll.log], ['', [['', false]]], 'auf einmal gelöscht: ebenfalls „leer, vollständig“')
 })
 
 // ── Admin-Zeitkorrektur (TimeManagement) ──

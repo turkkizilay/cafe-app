@@ -263,7 +263,7 @@ export default function TimeManagement() {
                 <label style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4, display:'block' }}>{tr("ui.11e2057afa0a")}</label>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   {emp && <Avatar src={emp.avatar_url} firstName={emp.first_name} lastName={emp.last_name} color={emp.avatar_color} size={28} />}
-                  <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} style={{ flex:1 }}>
+                  <select aria-label={tr("ui.11e2057afa0a")} value={filterEmp} onChange={e => setFilterEmp(e.target.value)} style={{ flex:1 }}>
                     {/* Erster Eintrag = Platzhalter (leere Auswahl); kein Mitarbeiter ist vorausgewählt */}
                     {[{ id: '', placeholder: true }, ...employees].map(e => <option key={e.id || 'none'} value={e.id}>{e.placeholder ? tr("time.selectEmployee") : `${e.first_name} ${e.last_name}`}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                   </select>
@@ -287,13 +287,13 @@ export default function TimeManagement() {
               {filterMode === 'month' && (<>
                 <div style={{ marginBottom:0 }}>
                   <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>{tr("ui.6777913d1812")}</div>
-                  <select value={filterMonth} onChange={e => setFilterMonth(+e.target.value)}>
+                  <select aria-label={tr("ui.2933070469a2")} value={filterMonth} onChange={e => setFilterMonth(+e.target.value)}>
                     {MONTHS().map((m,i) => <option key={i} value={i+1}>{m}</option>)}
                   </select>
                 </div>
                 <div style={{ marginBottom:0 }}>
                   <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>{tr("ui.5e01a9cc2f7d")}</div>
-                  <select value={filterYear} onChange={e => setFilterYear(+e.target.value)}>
+                  <select aria-label={tr("ui.ed1ad93b8967")} value={filterYear} onChange={e => setFilterYear(+e.target.value)}>
                     {[now.getFullYear()-1, now.getFullYear()].map(y => <option key={y}>{y}</option>)}
                   </select>
                 </div>
@@ -301,7 +301,7 @@ export default function TimeManagement() {
               {(filterMode === 'day' || filterMode === 'week') && (
                 <div style={{ marginBottom:0 }}>
                   <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>{tr("ui.c9ca6e51f4b7")}</div>
-                  <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
+                  <input aria-label={tr("ui.9135882d323c")} type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
                 </div>
               )}
 
@@ -466,21 +466,21 @@ export default function TimeManagement() {
               <div className="modal-title">
                 {modal === 'add' ? tr("ui.2d8939a4920c") : tr("ui.bb0fc617733f")}
               </div>
-              <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ background:'var(--warn-bg)', borderRadius:8, padding:'10px 12px', marginBottom:14, fontSize:12, color:'var(--warn)' }}>{tr("ui.cf92b4aac09b")}</div>
               <div className="form-group">
                 <label>{tr("ui.f4cb6891b9e5")}</label>
                 {/* Bestehender Eintrag: Person nicht wechselbar (Server lehnt es ebenfalls ab) */}
-                <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)} disabled={modal === 'edit'}>
+                <select aria-label={tr("ui.f4cb6891b9e5")} value={form.employee_id} onChange={e => f('employee_id', e.target.value)} disabled={modal === 'edit'}>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                 </select>
                 {modal === 'edit' && <div className="break-hint">{tr("time.employeeLocked")}</div>}
               </div>
               <div className="form-group">
                 <label>{tr("ui.9135882d323c")}</label>
-                <input type="date" value={form.date} onChange={e => f('date', e.target.value)} />
+                <input aria-label={tr("ui.9135882d323c")} type="date" value={form.date} onChange={e => f('date', e.target.value)} />
               </div>
               <div className="two-col">
                 <div className="form-group">
@@ -498,7 +498,7 @@ export default function TimeManagement() {
                 {form.breaks.length === 0 ? (form.legacyBreak > 0 ? (
                   <>
                     {/* Altbestand: Pauschale nur beibehalten oder entfernen; ändern = Pausenzeiten erfassen */}
-                    <select value={form.break_minutes} onChange={e => f('break_minutes', e.target.value)}>
+                    <select aria-label={tr("ui.858e4ba7a29f")} value={form.break_minutes} onChange={e => f('break_minutes', e.target.value)}>
                       {[0, form.legacyBreak].map(m => <option key={m} value={m}>{m ? tr("ui.f6c1459ae2f9", { p1: m }) : tr("ui.fbf22ce00e55")}</option>)}
                     </select>
                     <div className="break-hint">{tr("time.legacyBreakHint")}</div>
@@ -530,11 +530,11 @@ export default function TimeManagement() {
               )}
               <div className="form-group">
                 <label>{tr("ui.df7efab02cb2")}<span style={{ fontSize:10, fontWeight:400, color:'var(--text-muted)' }}>{tr("ui.0059798b7f70")}</span></label>
-                <input value={form.notes} onChange={e => f('notes', e.target.value)} placeholder={tr("ui.918824a84e2f")} />
+                <input aria-label={tr("ui.df7efab02cb2")} value={form.notes} onChange={e => f('notes', e.target.value)} placeholder={tr("ui.918824a84e2f")} />
               </div>
               <div className="form-group">
                 <label>{tr("ui.d12d9e3308c9")}<span style={{ color:'var(--danger)' }}>*</span></label>
-                <textarea rows="2" value={form.reason} onChange={e => f('reason', e.target.value)}
+                <textarea aria-label={tr("ui.d12d9e3308c9")} rows="2" value={form.reason} onChange={e => f('reason', e.target.value)}
                   placeholder={tr("ui.fda440ff39d6")}
                   style={{ borderColor: !form.reason ? 'var(--danger)' : undefined }} />
               </div>
@@ -555,7 +555,7 @@ export default function TimeManagement() {
           <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">{tr("ui.afd2099fb2c5")}</div>
-              <button className="btn btn-sm" onClick={() => setDeleteModal(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setDeleteModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ background:'#FEF2F2', borderRadius:8, padding:'12px', marginBottom:14, fontSize:13 }}>
@@ -566,7 +566,7 @@ export default function TimeManagement() {
               </div>
               <div className="form-group">
                 <label>{tr("ui.cc7074ca86ce")}<span style={{ color:'var(--danger)' }}>*</span></label>
-                <textarea rows="2" value={deleteReason} onChange={e => setDeleteReason(e.target.value)}
+                <textarea aria-label={tr("ui.cc7074ca86ce")} rows="2" value={deleteReason} onChange={e => setDeleteReason(e.target.value)}
                   placeholder={tr("ui.ce69cde66a25")}
                   style={{ borderColor: !deleteReason ? 'var(--danger)' : undefined }} />
               </div>

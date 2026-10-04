@@ -771,8 +771,8 @@ export default function Vacation() {
                             <td>
                               {v.status==='pending' && (
                                 <div className="flex gap-2">
-                                  <button className="btn btn-sm btn-success" onClick={() => vacAction(v.id,'approved')}>✓</button>
-                                  <button className="btn btn-sm btn-danger"  onClick={() => vacAction(v.id,'rejected')}>✗</button>
+                                  <button aria-label={tr("a11y.approve")} className="btn btn-sm btn-success" onClick={() => vacAction(v.id,'approved')}>✓</button>
+                                  <button aria-label={tr("a11y.reject")} className="btn btn-sm btn-danger"  onClick={() => vacAction(v.id,'rejected')}>✗</button>
                                 </div>
                               )}
                               {/* Überlappender genehmigter Urlaub: direkt ablehnen */}
@@ -924,7 +924,7 @@ export default function Vacation() {
                                         Bei mehreren Meldungen im Fall: individuelle Buttons im Warn-Bereich unten. */}
                                     {sc.leaves.length === 1 &&
                                      (isAdmin || (sc.employee_id === profile?.employee_id && canSelfDeleteSick(sc.leaves[0]))) && (
-                                      <button
+                                      <button aria-label={tr("a11y.delete")}
                                         className="btn btn-sm"
                                         disabled={!!deletingSickId}
                                         style={{ background:'#FEF2F2', color:'#DC2626', border:'1px solid #FECACA' }}
@@ -973,7 +973,7 @@ export default function Vacation() {
                                                     : <span style={{ fontSize:11, color:'#DC2626' }}>{tr("ui.24e80f20f406")}</span>
                                                 }
                                                 {(isAdmin || (lv.employee_id === profile?.employee_id && canSelfDeleteSick(lv))) && (
-                                                  <button
+                                                  <button aria-label={tr("a11y.delete")}
                                                     className="btn btn-sm"
                                                     style={{ background:'#FEF2F2', color:'#DC2626', border:'1px solid #FECACA', padding:'1px 6px', fontSize:11 }}
                                                     disabled={!!deletingSickId}
@@ -1008,7 +1008,7 @@ export default function Vacation() {
       {modal === 'vacation' && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
           <div className="modal" style={{ maxWidth:500 }}>
-            <div className="modal-header"><div className="modal-title">{tr("ui.8e2f41b0af17")}</div><button className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.8e2f41b0af17")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
             <div className="modal-body">
               {formError && <div className="alert alert-danger">{localizeMessage(formError)}</div>}
 
@@ -1077,7 +1077,7 @@ export default function Vacation() {
       {modal === 'sick' && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
           <div className="modal">
-            <div className="modal-header"><div className="modal-title">{tr("ui.26339448d884")}</div><button className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.26339448d884")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setModal(null)}>✕</button></div>
             <div className="modal-body">
               {formError && <div className="alert alert-danger">{localizeMessage(formError)}</div>}
               {canManage ? (

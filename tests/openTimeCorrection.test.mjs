@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { correctionCheck } from '../src/lib/breakRules.js'
 import { correctionFutureProblem } from '../src/lib/timeCorrectionRules.js'
+import { pinView } from './pinView.mjs'   // Pin-Ausnahme Production-Polish (nur a11y + Schichttausch-Fix; Lohn/Stundennachweis ohne Ausnahme)
 
 const read = f => readFileSync(f, 'utf8')
 function extractFn(file, name) {
@@ -81,5 +82,5 @@ test('REGRESSION: nur TimeInput24 geändert – Zeitkorrektur, Schichtplan, Stem
     'src/pages/Payroll.jsx', 'src/lib/compensation.js', 'src/lib/workHours.js', 'src/pages/Timesheet.jsx', 'src/lib/sickLeaveLogic.js', 'src/lib/vacationLogic.js',
     'src/lib/accessReset.js', 'src/components/AccessResetDialog.jsx', 'src/pages/SetNewPassword.jsx', 'src/App.jsx', 'src/components/Auth/Login.jsx',
     'supabase/functions/_shared/access-reset.js', 'supabase/migrations_onboarding/37_time_correction_past_only.sql', 'supabase/migrations_onboarding/38_admin_access_reset.sql'])
-    assert.equal(read(f), execFileSync('git', ['show', `${BEFORE}:${f}`], { encoding: 'utf8' }), f)
+    assert.equal(pinView(f, read(f)), pinView(f, execFileSync('git', ['show', `${BEFORE}:${f}`], { encoding: 'utf8' })), f)
 })

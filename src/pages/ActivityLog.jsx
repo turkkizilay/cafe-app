@@ -122,7 +122,7 @@ export default function ActivityLog() {
           <div style={{ padding:16, display:'flex', flexWrap:'wrap', gap:12, alignItems:'flex-end' }}>
             <div style={{ flex:'1 1 160px' }}>
               <label style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:4 }}>{tr("ui.52f2a87a419c")}</label>
-              <select className="input select-styled" value={category} onChange={e => setCategory(e.target.value)} style={{ width:'100%' }}>
+              <select aria-label={tr("ui.52f2a87a419c")} className="input select-styled" value={category} onChange={e => setCategory(e.target.value)} style={{ width:'100%' }}>
                 <option value="all">{tr("ui.5ed9ab4be78f")}</option>
                 {Object.entries(LOG_CATEGORIES).map(([key, c]) => (
                   <option key={key} value={key}>{c.icon} {sourceLabel(c.label)}</option>
@@ -131,15 +131,15 @@ export default function ActivityLog() {
             </div>
             <div style={{ flex:'1 1 130px' }}>
               <label style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:4 }}>{tr("ui.640e86cbc244")}</label>
-              <input type="date" lang={getIntlLocale()} className="input" value={fromDate} max={toDate || undefined} onChange={e => setFromDate(e.target.value)} style={{ width:'100%' }} />
+              <input aria-label={tr("ui.640e86cbc244")} type="date" lang={getIntlLocale()} className="input" value={fromDate} max={toDate || undefined} onChange={e => setFromDate(e.target.value)} style={{ width:'100%' }} />
             </div>
             <div style={{ flex:'1 1 130px' }}>
               <label style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:4 }}>{tr("ui.078a815372af")}</label>
-              <input type="date" lang={getIntlLocale()} className="input" value={toDate} min={fromDate || undefined} onChange={e => setToDate(e.target.value)} style={{ width:'100%' }} />
+              <input aria-label={tr("ui.078a815372af")} type="date" lang={getIntlLocale()} className="input" value={toDate} min={fromDate || undefined} onChange={e => setToDate(e.target.value)} style={{ width:'100%' }} />
             </div>
             <div style={{ flex:'2 1 200px' }}>
               <label style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:4 }}>{tr("ui.a4f2922e2d95")}</label>
-              <input type="text" className="input" placeholder={tr("ui.7fa22c57f636")} value={search} onChange={e => setSearch(e.target.value)} style={{ width:'100%' }} />
+              <input aria-label={tr("ui.a4f2922e2d95")} type="text" className="input" placeholder={tr("ui.7fa22c57f636")} value={search} onChange={e => setSearch(e.target.value)} style={{ width:'100%' }} />
             </div>
             {hasActiveFilter && (
               <button className="btn btn-sm" onClick={resetFilters}>{tr("ui.5b59510b692f")}</button>

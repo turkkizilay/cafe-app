@@ -208,19 +208,19 @@ export default function PayrollDocuments() {
               <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end' }}>
                 <div className="form-group" style={{ marginBottom:0, flex:2, minWidth:180 }}>
                   <label>{tr("ui.f4cb6891b9e5")}</label>
-                  <select value={selEmp} onChange={e => setSelEmp(e.target.value)}>
+                  <select aria-label={tr("ui.f4cb6891b9e5")} value={selEmp} onChange={e => setSelEmp(e.target.value)}>
                     {[{ id: '', placeholder: true }, ...employees].map(e => <option key={e.id || 'none'} value={e.id}>{e.placeholder ? tr("time.selectEmployee") : `${e.first_name} ${e.last_name}`}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
                   </select>
                 </div>
                 <div className="form-group" style={{ marginBottom:0 }}>
                   <label>{tr("ui.2933070469a2")}</label>
-                  <select value={selMonth} onChange={e => setSelMonth(+e.target.value)} style={{ width:'auto' }}>
+                  <select aria-label={tr("ui.2933070469a2")} value={selMonth} onChange={e => setSelMonth(+e.target.value)} style={{ width:'auto' }}>
                     {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
                   </select>
                 </div>
                 <div className="form-group" style={{ marginBottom:0 }}>
                   <label>{tr("ui.ed1ad93b8967")}</label>
-                  <select value={selYear} onChange={e => setSelYear(+e.target.value)} style={{ width:90 }}>
+                  <select aria-label={tr("ui.ed1ad93b8967")} value={selYear} onChange={e => setSelYear(+e.target.value)} style={{ width:90 }}>
                     {[now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1].map(y => <option key={y}>{y}</option>)}
                   </select>
                 </div>
@@ -228,11 +228,11 @@ export default function PayrollDocuments() {
               <div style={{ display:'flex', gap:12, marginTop:12, alignItems:'flex-end', flexWrap:'wrap' }}>
                 <div className="form-group" style={{ marginBottom:0, flex:2, minWidth:200 }}>
                   <label>{tr("ui.5efc8d482bd3")}</label>
-                  <input type="file" ref={fileRef} accept="application/pdf" style={{ padding:'6px 10px' }} />
+                  <input aria-label={tr("ui.5efc8d482bd3")} type="file" ref={fileRef} accept="application/pdf" style={{ padding:'6px 10px' }} />
                 </div>
                 <div className="form-group" style={{ marginBottom:0, flex:2, minWidth:180 }}>
                   <label>{tr("ui.337da4d81ab6")}</label>
-                  <input value={selNotes} onChange={e => setSelNotes(e.target.value)} placeholder={tr("ui.18ff0b7672f3")} />
+                  <input aria-label={tr("ui.337da4d81ab6")} value={selNotes} onChange={e => setSelNotes(e.target.value)} placeholder={tr("ui.18ff0b7672f3")} />
                 </div>
                 <button className="btn btn-primary" onClick={handleUpload} disabled={uploading || !selEmp} style={{ height:38 }}>
                   {uploading ? tr("ui.d3a1f56371cf") : tr("ui.d9658baabf2e")}
@@ -296,7 +296,7 @@ export default function PayrollDocuments() {
                         <div className="flex gap-2">
                           <button className="btn btn-sm btn-primary" onClick={() => handleDownload(doc)}>{tr("ui.294dc7c74bf7")}</button>
                           {isAdmin && (
-                            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(doc)}>
+                            <button aria-label={tr("a11y.delete")} className="btn btn-sm btn-danger" onClick={() => handleDelete(doc)}>
                               🗑
                             </button>
                           )}

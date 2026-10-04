@@ -328,7 +328,7 @@ export default function Account() {
                     <button className="btn btn-sm btn-primary" onClick={() => fileRef.current?.click()} disabled={false}>
                       📷 {avatarUrl ? tr("ui.ea5e3417aabc") : tr("ui.6638ef84fb9e")}
                     </button>
-                    {avatarUrl && <button className="btn btn-sm" onClick={removeAvatar}>✕</button>}
+                    {avatarUrl && <button aria-label={tr("a11y.remove")} className="btn btn-sm" onClick={removeAvatar}>✕</button>}
                   </div>
                   <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic"
                     style={{ display:'none' }} onChange={handleFileSelected} />

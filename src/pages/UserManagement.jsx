@@ -541,7 +541,7 @@ export default function UserManagement() {
         {confirmDel && (
           <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
             <div className="modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
-              <div className="modal-header"><div className="modal-title">{tr("ui.8684fa78f100")}</div><button className="btn btn-sm" onClick={() => setConfirmDel(null)}>✕</button></div>
+              <div className="modal-header"><div className="modal-title">{tr("ui.8684fa78f100")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setConfirmDel(null)}>✕</button></div>
               <div className="modal-body"><div className="alert alert-danger">{tr("ui.63d122d94372")}<strong>{confirmDel.email}</strong>{tr("ui.e41958841181")}</div></div>
               <div className="modal-footer">
                 <button className="btn" onClick={() => setConfirmDel(null)}>{tr("ui.f7ff1178af20")}</button>
@@ -554,7 +554,7 @@ export default function UserManagement() {
         {confirmOrphan && (
           <div className="modal-overlay" onClick={() => setConfirmOrphan(null)}>
             <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
-              <div className="modal-header"><div className="modal-title">{tr('lifecycle.removeOrphanTitle')}</div><button className="btn btn-sm" onClick={() => setConfirmOrphan(null)}>✕</button></div>
+              <div className="modal-header"><div className="modal-title">{tr('lifecycle.removeOrphanTitle')}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setConfirmOrphan(null)}>✕</button></div>
               <div className="modal-body"><div className="alert alert-warn">{tr('lifecycle.removeOrphanConfirm', { email: confirmOrphan.email })}</div></div>
               <div className="modal-footer">
                 <button className="btn" onClick={() => setConfirmOrphan(null)}>{tr("ui.f7ff1178af20")}</button>
@@ -571,7 +571,7 @@ export default function UserManagement() {
           return (
             <div className="modal-overlay" onClick={close}>
               <div className="modal" style={{ maxWidth:480 }} role="alertdialog" aria-modal="true" onClick={e => e.stopPropagation()}>
-                <div className="modal-header"><div className="modal-title">{tr(c?.mode === 'login_only' ? 'reset.titleLogin' : 'reset.titleFull')}</div><button className="btn btn-sm" disabled={busy} onClick={close}>✕</button></div>
+                <div className="modal-header"><div className="modal-title">{tr(c?.mode === 'login_only' ? 'reset.titleLogin' : 'reset.titleFull')}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" disabled={busy} onClick={close}>✕</button></div>
                 <div className="modal-body" style={{ fontSize:13, lineHeight:1.55 }}>
                   <div style={{ marginBottom:10 }}>{tr('reset.affected')} <strong>{c?.email || rp.email}</strong></div>
                   {ld && <div>{tr('reset.checking')}</div>}
@@ -622,7 +622,7 @@ export default function UserManagement() {
             <div className="modal" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <div className="modal-title">{inviteModal.isNew ? tr("ui.c21aa413ff3c") : tr("ui.bd4b210a4249")}</div>
-                <button className="btn btn-sm" onClick={closeInvite}>✕</button>
+                <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={closeInvite}>✕</button>
               </div>
               <div className="modal-body">
                 {!inviteResult ? (
@@ -638,14 +638,14 @@ export default function UserManagement() {
 
                     <div className="form-group">
                       <label>{tr("ui.3aa94d6b25ac")}</label>
-                      <input type="email" value={inviteForm.email} onChange={e => { setInviteForm(f => ({...f, email: e.target.value})); setInviteConflictInfo(null) }}
+                      <input aria-label={tr("ui.3aa94d6b25ac")} type="email" autoComplete="off" value={inviteForm.email} onChange={e => { setInviteForm(f => ({...f, email: e.target.value})); setInviteConflictInfo(null) }}
                         placeholder={tr("ui.3cb2486e1691")} />
                       <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>{tr("ui.0b4996890ea1")}</div>
                     </div>
 
                     {!inviteModal.isNew && <div className="form-group">
                       <label>{tr("ui.0038a9cf8661")}</label>
-                      <select value={inviteForm.role} onChange={e => setInviteForm(f => ({...f, role: e.target.value}))}>
+                      <select aria-label={tr("ui.0038a9cf8661")} value={inviteForm.role} onChange={e => setInviteForm(f => ({...f, role: e.target.value}))}>
                         {ROLES.filter(r => r.value !== 'admin').map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                       </select>
                     </div>}
@@ -659,18 +659,18 @@ export default function UserManagement() {
                             <div style={{ fontWeight:600, fontSize:13, marginBottom:8 }}>{tr("ui.6f5b9aaab942")}</div>
                             <div className="two-col">
                               <div className="form-group"><label>{tr("ui.50614a65c54c")}</label>
-                                <select value={inviteJob.employment_type} onChange={e => { const t = e.target.value; setInviteJob(j => ({ ...j, employment_type:t, hours_per_week:{ vollzeit:40, teilzeit:20, werkstudent:20, minijob:10 }[t], pay_type: canHaveFixedPay(t) ? payTypeOf(j) : PAY_HOURLY })) }}>
+                                <select aria-label={tr("ui.50614a65c54c")} value={inviteJob.employment_type} onChange={e => { const t = e.target.value; setInviteJob(j => ({ ...j, employment_type:t, hours_per_week:{ vollzeit:40, teilzeit:20, werkstudent:20, minijob:10 }[t], pay_type: canHaveFixedPay(t) ? payTypeOf(j) : PAY_HOURLY })) }}>
                                   <option value="vollzeit">{tr("ui.49dbe1b0b4b3")}</option><option value="teilzeit">{tr("ui.df763b1cc689")}</option>
                                   <option value="werkstudent">{tr("ui.fa23b3bc413a")}</option><option value="minijob">{tr("ui.b3fc8da9deb1")}</option>
                                 </select></div>
                               <div className="form-group"><label>{tr("ui.e214a5535edd")}</label>
-                                <input type="number" min="1" max="60" value={inviteJob.hours_per_week} onChange={e => setInviteJob(j => ({ ...j, hours_per_week:e.target.value }))} /></div>
+                                <input aria-label={tr("ui.e214a5535edd")} type="number" min="1" max="60" value={inviteJob.hours_per_week} onChange={e => setInviteJob(j => ({ ...j, hours_per_week:e.target.value }))} /></div>
                             </div>
                             <PayModelFields name="invite_pay_type" employmentType={inviteJob.employment_type} payType={payTypeOf(inviteJob)} monthlySalary={inviteJob.monthly_salary}
                               onChange={patch => setInviteJob(j => ({ ...j, ...patch }))} />
                             <div className="two-col">
                               <div className="form-group"><label>{tr("ui.015cd60df3a4")}</label>
-                                <input inputMode="decimal" value={inviteJob.hourly_rate} placeholder={payTypeOf(inviteJob) === PAY_FIXED ? '' : MINDESTLOHN.toLocaleString(getIntlLocale())}
+                                <input aria-label={tr("ui.015cd60df3a4")} inputMode="decimal" value={inviteJob.hourly_rate} placeholder={payTypeOf(inviteJob) === PAY_FIXED ? '' : MINDESTLOHN.toLocaleString(getIntlLocale())}
                                   onChange={e => setInviteJob(j => ({ ...j, hourly_rate:e.target.value.replace(/[^0-9.,]/g, '') }))} />
                                 {parseFloat(String(inviteJob.hourly_rate).replace(',', '.')) < MINDESTLOHN && (
                                   <div style={{ fontSize:11.5, color:'var(--danger)', marginTop:3 }}>{tr("ui.73d8e2d2f8fd")}</div>)}
@@ -678,13 +678,13 @@ export default function UserManagement() {
                                   <div style={{ fontSize:10.5, color:'var(--text-muted)', marginTop:3 }}>{tr("payModel.hourlyInternal")}</div>)}
                               </div>
                               <div className="form-group"><label>{tr("ui.a64008756943")}</label>
-                                <input type="date" value={inviteJob.start_date} onChange={e => setInviteJob(j => ({ ...j, start_date:e.target.value }))} /></div>
+                                <input aria-label={tr("ui.a64008756943")} type="date" value={inviteJob.start_date} onChange={e => setInviteJob(j => ({ ...j, start_date:e.target.value }))} /></div>
                             </div>
                             <div className="two-col">
                               <div className="form-group"><label>{tr("ui.6d031af10da7")}</label>
-                                <input value={inviteJob.position} placeholder={tr("ui.fccc61c8a5e6")} onChange={e => setInviteJob(j => ({ ...j, position:e.target.value }))} /></div>
+                                <input aria-label={tr("ui.6d031af10da7")} value={inviteJob.position} placeholder={tr("ui.fccc61c8a5e6")} onChange={e => setInviteJob(j => ({ ...j, position:e.target.value }))} /></div>
                               <div className="form-group"><label>{tr("ui.f8b1ee737baf")}</label>
-                                <select value={inviteJob.role} onChange={e => setInviteJob(j => ({ ...j, role:e.target.value }))}>
+                                <select aria-label={tr("ui.f8b1ee737baf")} value={inviteJob.role} onChange={e => setInviteJob(j => ({ ...j, role:e.target.value }))}>
                                   <option value="employee">{tr("ui.d422e9b832d6")}</option><option value="manager">{tr("ui.0e60bc79039b")}</option>
                                 </select></div>
                             </div>
@@ -758,7 +758,7 @@ export default function UserManagement() {
           <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">{tr("ui.c9544328f44f")}</div>
-              <button className="btn btn-sm" onClick={() => setConfirmDelActive(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setConfirmDelActive(null)}>✕</button>
             </div>
             <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
               <strong>{confirmDelActive.first_name} {confirmDelActive.last_name}</strong> ({confirmDelActive.email}{tr("ui.88cd72890353")}<div style={{ fontSize:12.5, color:'var(--text-secondary)', marginTop:8 }}>{tr("ui.530ce066fc36")}<strong>{tr("ui.f4cb6891b9e5")}</strong>.
@@ -777,7 +777,7 @@ export default function UserManagement() {
           <div className="modal" style={{ maxWidth:440 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">{roleConfirm.role === 'admin' ? tr("ui.cce2d65684a2") : tr("ui.906d8673add3")}</div>
-              <button className="btn btn-sm" onClick={() => setRoleConfirm(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setRoleConfirm(null)}>✕</button>
             </div>
             <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>
               <strong>{`${roleConfirm.p.first_name || ''} ${roleConfirm.p.last_name || ''}`.trim() || roleConfirm.p.email}</strong>
@@ -804,7 +804,7 @@ export default function UserManagement() {
           <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">{tr("ui.7bde82621548")}</div>
-              <button className="btn btn-sm" onClick={() => setConfirmRevoke(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setConfirmRevoke(null)}>✕</button>
             </div>
             <div className="modal-body" style={{ fontSize:13.5, lineHeight:1.6 }}>{tr("ui.749a17d7ca56")}<strong>{confirmRevoke._name || confirmRevoke.email}</strong>
               {confirmRevoke._name ? <> ({confirmRevoke.email})</> : null}{tr("ui.e560e8577e34")}<em>{tr("ui.199f179164d1")}</em>
@@ -1028,13 +1028,13 @@ export default function UserManagement() {
                         </td>
                         <td data-label={tr("ui.35c88d0cd1a7")} style={{ fontSize:12, color:'var(--text-secondary)' }}>{formatDate(p.created_at.split('T')[0])}</td>
                         <td data-label={tr("ui.99b0d54d304a")}>
-                          <select value={form.employee_id||''} onChange={e => setPendingForm(p.id,'employee_id',e.target.value)} style={{ fontSize:13 }}>
+                          <select aria-label={tr("ui.f4cb6891b9e5")} value={form.employee_id||''} onChange={e => setPendingForm(p.id,'employee_id',e.target.value)} style={{ fontSize:13 }}>
                             <option value="">{tr("ui.ad8b6612ef74")}</option>
                             {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
                           </select>
                         </td>
                         <td data-label={tr("ui.0038a9cf8661")}>
-                          <select value={form.role||'employee'} onChange={e => setPendingForm(p.id,'role',e.target.value)} style={{ fontSize:13, width:'auto' }}>
+                          <select aria-label={tr("ui.0038a9cf8661")} value={form.role||'employee'} onChange={e => setPendingForm(p.id,'role',e.target.value)} style={{ fontSize:13, width:'auto' }}>
                             {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                           </select>
                         </td>
@@ -1043,7 +1043,7 @@ export default function UserManagement() {
                             <button className="btn btn-sm btn-success" disabled={working===p.id||!form.employee_id} onClick={() => approvePending(p)}>
                               {working===p.id?'...':tr("ui.d8ee0df1b99c")}
                             </button>
-                            <button className="btn btn-sm btn-danger" onClick={() => setConfirmDel(p)}>✗</button>
+                            <button aria-label={tr("a11y.delete")} className="btn btn-sm btn-danger" onClick={() => setConfirmDel(p)}>✗</button>
                           </div>
                         </td>
                       </tr>
@@ -1081,12 +1081,12 @@ export default function UserManagement() {
                         <td data-label={tr("ui.f4cb6891b9e5")}>
                           {isEdit ? (
                             <div className="flex gap-2">
-                              <select value={selEmpId} onChange={e => setEditState(prev => ({...prev, [p.id]: e.target.value}))} style={{ fontSize:12 }}>
+                              <select aria-label={tr("ui.f4cb6891b9e5")} value={selEmpId} onChange={e => setEditState(prev => ({...prev, [p.id]: e.target.value}))} style={{ fontSize:12 }}>
                                 <option value="">{tr("ui.2df680d72fec")}</option>
                                 {employees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
                               </select>
-                              <button className="btn btn-sm btn-success" onClick={() => changeEmployeeLink(p.id, editState[p.id])}>✓</button>
-                              <button className="btn btn-sm" onClick={() => setEditState(e => { const n={...e}; delete n[p.id]; return n })}>✕</button>
+                              <button aria-label={tr("a11y.save")} className="btn btn-sm btn-success" onClick={() => changeEmployeeLink(p.id, editState[p.id])}>✓</button>
+                              <button aria-label={tr("a11y.cancel")} className="btn btn-sm" onClick={() => setEditState(e => { const n={...e}; delete n[p.id]; return n })}>✕</button>
                             </div>
                           ) : (
                             <div className="flex gap-2" style={{ alignItems:'center' }}>
@@ -1111,7 +1111,7 @@ export default function UserManagement() {
                           ) : p.is_owner ? (
                             <span className="badge badge-red" title={tr("ui.9ae9dd92b093")}>{tr("ui.0ec3ebb416da")}</span>
                           ) : (
-                            <select value={p.role} onChange={e => requestRoleChange(p, e.target.value)} style={{ fontSize:12, width:'auto' }}>
+                            <select aria-label={tr("ui.0038a9cf8661")} value={p.role} onChange={e => requestRoleChange(p, e.target.value)} style={{ fontSize:12, width:'auto' }}>
                               {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                             </select>
                           )}

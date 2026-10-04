@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { liveStateOf, ACTIONS_BY_STATE, runLiveAction, liveErrorKind } from '../src/lib/liveTimeControl.js'
+import { pinView } from './pinView.mjs'   // Pin-Ausnahme Production-Polish (nur a11y + Schichttausch-Fix; Lohn/Stundennachweis ohne Ausnahme)
 
 const read = f => readFileSync(f, 'utf8')
 const BEFORE = '2a620d7'   // Stand vor der Live-Steuerung (Live-Personalkosten live)
@@ -18,7 +19,7 @@ test('REGRESSION: Lohn, DATEV, Timesheet, Pausen-/Krankheitslogik, Live-Kosten, 
                    'src/pages/ClockIn.jsx', 'src/lib/remoteClock.js', 'src/lib/breaks.js', 'src/pages/Shifts.jsx', 'src/pages/Vacation.jsx',
                    'supabase/migrations_onboarding/34_break_hardening.sql', 'supabase/migrations_onboarding/35_labor_cost_today.sql',
                    'supabase/migrations_onboarding/29_remote_clock.sql'])
-    assert.equal(read(f), atBefore(f), f)
+    assert.equal(pinView(f, read(f)), pinView(f, atBefore(f)), f)
 })
 
 test('Zustand je Person wie auf dem Server; nur gültige Aktionen je Zustand', () => {

@@ -393,6 +393,15 @@ nicht, `try/catch` griff nie). Löschfristen gehören in einen pg_cron-Job (läu
 nie per GRANT an `authenticated`. Zugesagte Fristen (`src/legal/legalContent.js`) bei neuen Datenarten gegen Jobs prüfen.
 Regression: `tests/db/activity_log_retention.test.mjs` (Harness hat dafür eine pg_cron-Nachbildung).
 
+### Dialoge zentral barrierefrei; Browser-Tests dürfen Abstürze nicht „überspringen“
+`src/lib/modalA11y.js` (in `main.jsx` installiert) gibt jedem `.modal-overlay > .modal` role/aria-modal/Titel, Fokus
+in den Container (nicht ins erste Feld – sonst Handy-Tastatur) und zurück, Tab-Falle, Escape = Klick auf den
+Hintergrund (nicht schließbare Dialoge bleiben offen). Neue Dialoge brauchen dafür nur diese Klassen.
+Headless-Browser-Tests: ist Chrome vorhanden, aber die Seite liefert kein Ergebnis, muss der Test FEHLSCHLAGEN –
+„skip bei Harness-Fehler“ verdeckte eine echte Regression (Mutation überlebte). Muster: `result()` in
+`tests/modalA11y.test.mjs`. Touch-Messungen nur mit `pointer: coarse`-Emulation (sonst falsche „zu klein“-Befunde).
+Byte-gepinnte Dateien (Lohn/DATEV/Zeit/Account-Reset) auch für reinen UI-Feinschliff nicht anfassen – vorher Freigabe.
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

@@ -63,6 +63,8 @@ export default function Shifts() {
   const toast   = useToast()
   const addGuard    = useSavingGuard()
   const updateGuard = useSavingGuard()
+  const respondGuard = useSavingGuard()   // Tausch annehmen/ablehnen/zurückziehen: Doppeltipp → nur eine Anfrage
+  const [swapBusyId, setSwapBusyId] = useState(null)
   const { dark: darkMode } = useDarkMode()
   const canEdit = isAdmin || isManager
   const myEmpId = profile?.employee_id
@@ -227,21 +229,24 @@ export default function Shifts() {
     fetchSwaps()
   }
 
-  async function respondSwap(id, accept) {
-    const { error } = await supabase.from('shift_swap_requests')
-      .update({ status: accept ? 'accepted' : 'declined' }).eq('id', id)
-    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.14f8a52d95b2"))); return }
-    toast.success(accept ? (appMessage("ui.996526422813")) : (appMessage("ui.a9148e8654e8")))
-    fetchSwaps()
+  // Nur offene Anfragen; 0 getroffene Zeilen (inzwischen erledigt/entfernt) ist kein Erfolg. Der Server (swap_guard)
+  // prüft die Übergänge ohnehin – hier geht es um Doppeltipp und veraltete Ansicht ohne widersprüchliche Meldungen.
+  async function updateOwnSwap(id, status, failKey, okKey) {
+    if (!respondGuard.begin()) return
+    setSwapBusyId(id)
+    try {
+      const { data, error } = await supabase.from('shift_swap_requests')
+        .update({ status }).eq('id', id).eq('status', 'open').select('id')
+      if (error) { toast.error(translateSupabaseError(error, appMessage(failKey))); return }
+      if (!data?.length) { toast.error(appMessage("error.bd03e1e5cae8")); return }
+      toast.success(appMessage(okKey))
+    } finally {
+      respondGuard.end(); setSwapBusyId(null)
+      fetchSwaps()
+    }
   }
-
-  async function cancelSwap(id) {
-    const { error } = await supabase.from('shift_swap_requests')
-      .update({ status:'cancelled' }).eq('id', id)
-    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.53b0832683e3"))); return }
-    toast.success(appMessage("ui.397fbdd910af"))
-    fetchSwaps()
-  }
+  const respondSwap = (id, accept) => updateOwnSwap(id, accept ? 'accepted' : 'declined', "ui.14f8a52d95b2", accept ? "ui.996526422813" : "ui.a9148e8654e8")
+  const cancelSwap = id => updateOwnSwap(id, 'cancelled', "ui.53b0832683e3", "ui.397fbdd910af")
 
   // ── Schichttausch: Admin-Freigabe (führt Schichten tatsächlich zusammen) ──
   // Eine Transaktion in der DB (approve_swap): prüft Status + Schichtbesitz erneut, alles oder nichts
@@ -570,12 +575,12 @@ export default function Shifts() {
                     <div style={{ display:'flex', gap:6, flexShrink:0 }}>
                       {isToMe && sw.status==='open' && (
                         <>
-                          <button className="btn btn-sm btn-primary" onClick={() => respondSwap(sw.id, true)}>{tr("ui.3d9ac3f1c8e7")}</button>
-                          <button className="btn btn-sm" onClick={() => respondSwap(sw.id, false)}>{tr("ui.7be75ced7162")}</button>
+                          <button className="btn btn-sm btn-primary" disabled={swapBusyId === sw.id} onClick={() => respondSwap(sw.id, true)}>{tr("ui.3d9ac3f1c8e7")}</button>
+                          <button className="btn btn-sm" disabled={swapBusyId === sw.id} onClick={() => respondSwap(sw.id, false)}>{tr("ui.7be75ced7162")}</button>
                         </>
                       )}
                       {isFromMe && sw.status==='open' && (
-                        <button className="btn btn-sm" onClick={() => cancelSwap(sw.id)}>{tr("ui.53b0832683e3")}</button>
+                        <button className="btn btn-sm" disabled={swapBusyId === sw.id} onClick={() => cancelSwap(sw.id)}>{tr("ui.53b0832683e3")}</button>
                       )}
                       {canEdit && sw.status==='accepted' && (
                         <>
@@ -601,7 +606,7 @@ export default function Shifts() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">{tr("ui.4dd7ed0c319c")}</div>
-              <button className="btn btn-sm" onClick={() => setEditModal(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setEditModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ background:'var(--bg)', borderRadius:8, padding:'10px 12px', marginBottom:14, fontSize:12, color:'var(--text-secondary)' }}>
@@ -647,7 +652,7 @@ export default function Shifts() {
       {modal && (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setModal(false)}>
           <div className="modal">
-            <div className="modal-header"><div className="modal-title">{tr("ui.e8f73e8a2f58")}</div><button className="btn btn-sm" onClick={() => setModal(false)}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.e8f73e8a2f58")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setModal(false)}>✕</button></div>
             <div className="modal-body">
               <div className="form-group">
                 <label>{tr("ui.f4cb6891b9e5")}</label>
@@ -696,7 +701,7 @@ export default function Shifts() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">{tr("ui.aa1f314dc477")}</div>
-              <button className="btn btn-sm" onClick={() => setSwapModal(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setSwapModal(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ background:'var(--bg)', borderRadius:8, padding:'10px 12px', marginBottom:14, fontSize:12, color:'var(--text-secondary)' }}>

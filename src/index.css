@@ -842,8 +842,10 @@ input, select, textarea {
 
 /* ── Touch: bessere Ziele + aktives Feedback auf Mobile ── */
 @media (pointer: coarse) {
-  .btn { min-height: 44px; }
+  .btn { min-height: 44px; min-width: 44px; }   /* auch Icon-Buttons (‹ › ✕ ✓ ✗ 🗑) treffbar */
   .nav-item { min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { min-width: 20px; min-height: 20px; }
+  .legal-links a { display: inline-block; padding: 10px 4px; }
   .btn:active:not(:disabled) { transform: scale(0.96); }
 }
 
@@ -861,6 +863,9 @@ html.dark .skeleton {
     rgba(255,255,255,0.04) 75%);
   background-size: 200% 100%;
 }
+
+/* Dialog-Container erhält den Fokus nur programmatisch (lib/modalA11y.js) – kein Rahmen um den ganzen Dialog */
+.modal:focus { outline: none; }
 
 /* ── Sichtbarer Tastatur-Fokus (Accessibility) ── */
 .btn:focus-visible,

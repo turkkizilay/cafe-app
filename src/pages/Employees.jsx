@@ -357,6 +357,8 @@ export default function Employees() {
         setError(/personnel_number/.test(err.message || '') ? appMessage("employee.personnelNumberTaken") : translateSupabaseError(err, appMessage("ui.84853b348826")))
         return
       }
+      // Bearbeiten ohne getroffene Zeile (inzwischen gelöscht / keine Berechtigung mehr) ist kein Erfolg
+      if (modal === 'edit' && !saved) { setError(appMessage("employee.saveNoRows")); fetchEmployees(); return }
       if (modal === 'add' && saved) setJustCreated(saved)
       else toast.success(appMessage("ui.4424bc9901a8"))
       setModal(null)
@@ -441,7 +443,7 @@ export default function Employees() {
       <div className="topbar">
         <div className="topbar-title">{tr("ui.f4cb6891b9e5")}</div>
         <div className="topbar-right">
-          <input style={{ width: 200 }} placeholder={tr("ui.7f7211cd472d")} value={search} onChange={e => setSearch(e.target.value)} />
+          <input aria-label={tr("ui.7f7211cd472d")} style={{ width: 200 }} placeholder={tr("ui.7f7211cd472d")} value={search} onChange={e => setSearch(e.target.value)} />
           <button className="btn btn-sm" onClick={() => setShowInactive(x => !x)}
             style={{ borderColor: showInactive ? 'var(--accent)' : undefined, color: showInactive ? 'var(--accent)' : undefined }}>
             {showInactive ? tr("ui.625cdcf52e80") : tr("ui.f37c3c02afe6")}
@@ -528,7 +530,7 @@ export default function Employees() {
           <div className="modal" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">{tr("ui.5c5bb03cfd8e")}</div>
-              <button className="btn btn-sm" onClick={() => setAddChoice(false)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setAddChoice(false)}>✕</button>
             </div>
             <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:10 }}>
               <button className="btn" style={{ justifyContent:'flex-start', textAlign:'left', padding:'14px 16px', height:'auto', whiteSpace:'normal' }}
@@ -569,7 +571,7 @@ export default function Employees() {
       {confirmDeact && (
         <div className="modal-overlay" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>
           <div className="modal" style={{ maxWidth:380 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><div className="modal-title">{tr("ui.3d275245a375")}</div><button className="btn btn-sm" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>✕</button></div>
+            <div className="modal-header"><div className="modal-title">{tr("ui.3d275245a375")}</div><button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => { setConfirmDeact(null); setOpenClockIn(false) }}>✕</button></div>
             <div className="modal-body">
               {openClockIn && (
                 <div className="alert" style={{ background:'#FEF3C7', border:'1px solid #F59E0B', color:'#92400E', marginBottom:12, borderRadius:8, padding:'12px 14px' }}>
@@ -603,7 +605,7 @@ export default function Employees() {
           <div className="modal" style={{ maxWidth: 540 }}>
             <div className="modal-header">
               <div className="modal-title">{modal === 'add' ? tr("ui.8b96938fac5b") : isAdmin ? tr("ui.4de5a5b9b16e") : tr("ui.4b108417160e")}</div>
-              <button className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
+              <button aria-label={tr("a11y.close")} className="btn btn-sm" onClick={() => setModal(null)}>✕</button>
             </div>
             <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
               {error && <div className="alert alert-danger">❌ {localizeMessage(error)}</div>}
@@ -627,25 +629,25 @@ export default function Employees() {
               )}
               <fieldset disabled={!isAdmin} style={{ border:'none', padding:0, margin:0, minWidth:0 }}>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.5e3182902258")}</label><input value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder={tr("ui.a1a5936d3b0f")} /></div>
-                <div className="form-group"><label>{tr("ui.20b2178fa509")}</label><input value={form.last_name}  onChange={e => f('last_name', e.target.value)} placeholder={tr("ui.c9ff763e960d")} /></div>
+                <div className="form-group"><label>{tr("ui.5e3182902258")}</label><input aria-label={tr("ui.5e3182902258")} autoComplete="off" value={form.first_name} onChange={e => f('first_name', e.target.value)} placeholder={tr("ui.a1a5936d3b0f")} /></div>
+                <div className="form-group"><label>{tr("ui.20b2178fa509")}</label><input aria-label={tr("ui.20b2178fa509")} autoComplete="off" value={form.last_name}  onChange={e => f('last_name', e.target.value)} placeholder={tr("ui.c9ff763e960d")} /></div>
               </div>
               <div className="form-group">
                 <label>
                   {modal === 'edit' ? tr("ui.1fdaca2f9659") : tr("ui.7368dce2f90e")}
                   {modal === 'edit' && <span style={{ fontSize:10, fontWeight:400, color:'var(--text-muted)', marginLeft:6 }}>{tr("ui.03adc8ca59f7")}</span>}
                 </label>
-                <input type="email" value={form.email} onChange={e => f('email', e.target.value)} placeholder={tr("ui.aa71e8319ba4")} />
+                <input aria-label={modal === 'edit' ? tr("ui.1fdaca2f9659") : tr("ui.7368dce2f90e")} autoComplete="off" type="email" value={form.email} onChange={e => f('email', e.target.value)} placeholder={tr("ui.aa71e8319ba4")} />
               </div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.fa6906d76ee9")}</label><input value={form.phone || ''} onChange={e => f('phone', e.target.value)} placeholder="+49 170 1234567" /></div>
-                <div className="form-group"><label>{tr("ui.6882904da71a")}</label><input type="date" value={form.birth_date || ''} onChange={e => f('birth_date', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.fa6906d76ee9")}</label><input aria-label={tr("ui.fa6906d76ee9")} type="tel" inputMode="tel" autoComplete="off" value={form.phone || ''} onChange={e => f('phone', e.target.value)} placeholder="+49 170 1234567" /></div>
+                <div className="form-group"><label>{tr("ui.6882904da71a")}</label><input aria-label={tr("ui.6882904da71a")} type="date" value={form.birth_date || ''} onChange={e => f('birth_date', e.target.value)} /></div>
               </div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.6d031af10da7")}</label><input value={form.position || ''} onChange={e => f('position', e.target.value)} placeholder={tr("ui.183e568d81e8")} /></div>
+                <div className="form-group"><label>{tr("ui.6d031af10da7")}</label><input aria-label={tr("ui.6d031af10da7")} autoComplete="off" value={form.position || ''} onChange={e => f('position', e.target.value)} placeholder={tr("ui.183e568d81e8")} /></div>
                 <div className="form-group">
                   <label>{tr("ui.50614a65c54c")}</label>
-                  <select value={form.employment_type} onChange={e => {
+                  <select aria-label={tr("ui.50614a65c54c")} value={form.employment_type} onChange={e => {
                       const type = e.target.value
                       f('employment_type', type)
                       const defaults = { vollzeit: 40, teilzeit: 20, werkstudent: 20, minijob: 10 }
@@ -662,7 +664,7 @@ export default function Employees() {
               <div className="two-col">
                 <div className="form-group">
                   <label>{tr("ui.b8139666f8ca")}</label>
-                  <input type="number" value={form.hours_per_week} onChange={e => f('hours_per_week', e.target.value)} min="1" max="60" />
+                  <input aria-label={tr("ui.b8139666f8ca")} type="number" value={form.hours_per_week} onChange={e => f('hours_per_week', e.target.value)} min="1" max="60" />
                   {form.employment_type === 'werkstudent' && parseFloat(form.hours_per_week) > 20 && (
                     <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 3 }}>{tr("ui.c4f2372a2379")}</div>
                   )}
@@ -679,7 +681,7 @@ export default function Employees() {
                 {isAdmin && pnFeatureOn && (
                 <div className="form-group">
                   <label>{tr("employee.personnelNumber")}</label>
-                  <input inputMode="numeric" value={form.personnel_number ?? ''} onChange={e => f('personnel_number', e.target.value)} maxLength={10} />
+                  <input aria-label={tr("employee.personnelNumber")} autoComplete="off" inputMode="numeric" value={form.personnel_number ?? ''} onChange={e => f('personnel_number', e.target.value)} maxLength={10} />
                   <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3 }}>{tr("employee.personnelNumberHint")}</div>
                 </div>
                 )}
@@ -718,7 +720,7 @@ export default function Employees() {
                   {payTypeOf(form) === PAY_FIXED && (
                     <div className="form-group">
                       <label>{tr("payModel.monthlySalary")}</label>
-                      <input type="number" step="0.01" min="0" inputMode="decimal" value={form.monthly_salary ?? ''} onChange={e => f('monthly_salary', e.target.value)} />
+                      <input aria-label={tr("payModel.monthlySalary")} type="number" step="0.01" min="0" inputMode="decimal" value={form.monthly_salary ?? ''} onChange={e => f('monthly_salary', e.target.value)} />
                     </div>
                   )}
                 </div>
@@ -726,45 +728,45 @@ export default function Employees() {
               <div className="two-col">
                 <div className="form-group">
                   <label>{tr("ui.0ba856e3d3d8")}</label>
-                  <input type="number" min="0" max="365" value={form.vacation_days_per_year} onChange={e => f('vacation_days_per_year', e.target.value)} />
+                  <input aria-label={tr("ui.0ba856e3d3d8")} type="number" min="0" max="365" value={form.vacation_days_per_year} onChange={e => f('vacation_days_per_year', e.target.value)} />
                   {modal === 'edit' && parseInt(form.vacation_days_per_year) !== form._origVac && (
                     <div style={{ fontSize:10, color:'var(--warn)', marginTop:3 }}>{tr("ui.3cd3af9b9ef7")}</div>
                   )}
                 </div>
-                <div className="form-group"><label>{tr("ui.5de567a16489")}</label><input type="date" value={form.start_date || ''} onChange={e => f('start_date', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.5de567a16489")}</label><input aria-label={tr("ui.5de567a16489")} type="date" value={form.start_date || ''} onChange={e => f('start_date', e.target.value)} /></div>
               </div>
               {isAdmin && (<>
               <div style={{ fontWeight:700, fontSize:13, margin:'18px 0 10px', paddingTop:14, borderTop:'1px solid var(--border)' }}>{tr("ui.c89f3b303b04")}{form.onboarding_completed_at && <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:8 }}>{tr("ui.b3915789c10b")}</span>}
               </div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.807b1204e06c")}</label><input value={form.birth_name || ''} onChange={e => f('birth_name', e.target.value)} /></div>
-                <div className="form-group"><label>{tr("ui.590571d3da6b")}</label><input value={form.birth_place || ''} onChange={e => f('birth_place', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.807b1204e06c")}</label><input aria-label={tr("ui.807b1204e06c")} autoComplete="off" value={form.birth_name || ''} onChange={e => f('birth_name', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.590571d3da6b")}</label><input aria-label={tr("ui.590571d3da6b")} autoComplete="off" value={form.birth_place || ''} onChange={e => f('birth_place', e.target.value)} /></div>
               </div>
-              <div className="form-group"><label>{tr("ui.3e3a47041a87")}</label><input value={form.nationality || ''} onChange={e => f('nationality', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.3e3a47041a87")}</label><input aria-label={tr("ui.3e3a47041a87")} autoComplete="off" value={form.nationality || ''} onChange={e => f('nationality', e.target.value)} /></div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 90px', gap:12 }}>
-                <div className="form-group"><label>{tr("ui.58a3778c18c4")}</label><input value={form.street || ''} onChange={e => f('street', e.target.value)} /></div>
-                <div className="form-group"><label>{tr("ui.318ca5480cb8")}</label><input value={form.house_number || ''} onChange={e => f('house_number', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.58a3778c18c4")}</label><input aria-label={tr("ui.58a3778c18c4")} autoComplete="off" value={form.street || ''} onChange={e => f('street', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.318ca5480cb8")}</label><input aria-label={tr("ui.318ca5480cb8")} autoComplete="off" value={form.house_number || ''} onChange={e => f('house_number', e.target.value)} /></div>
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'90px 1fr', gap:12 }}>
-                <div className="form-group"><label>{tr("ui.c6127fd4465d")}</label><input inputMode="numeric" maxLength={5} value={form.postal_code || ''} onChange={e => f('postal_code', e.target.value.replace(/\D/g, ''))} /></div>
-                <div className="form-group"><label>{tr("ui.30fb259129e5")}</label><input value={form.city || ''} onChange={e => f('city', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.c6127fd4465d")}</label><input aria-label={tr("ui.c6127fd4465d")} autoComplete="off" inputMode="numeric" maxLength={5} value={form.postal_code || ''} onChange={e => f('postal_code', e.target.value.replace(/\D/g, ''))} /></div>
+                <div className="form-group"><label>{tr("ui.30fb259129e5")}</label><input aria-label={tr("ui.30fb259129e5")} autoComplete="off" value={form.city || ''} onChange={e => f('city', e.target.value)} /></div>
               </div>
               {!form.street && (
-                <div className="form-group"><label>{tr("ui.bc815da9b21b")}</label><input value={form.address || ''} onChange={e => f('address', e.target.value)} placeholder={tr("ui.01fd2c11ba5c")} /></div>
+                <div className="form-group"><label>{tr("ui.bc815da9b21b")}</label><input aria-label={tr("ui.bc815da9b21b")} autoComplete="off" value={form.address || ''} onChange={e => f('address', e.target.value)} placeholder={tr("ui.01fd2c11ba5c")} /></div>
               )}
-              <div className="form-group"><label>IBAN</label><input value={form.iban ? formatIBAN(form.iban) : ''} onChange={e => f('iban', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} placeholder={tr("ui.7f377fd57c25")} style={{ fontFamily:'monospace' }} /></div>
+              <div className="form-group"><label>IBAN</label><input aria-label="IBAN" autoComplete="off" value={form.iban ? formatIBAN(form.iban) : ''} onChange={e => f('iban', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())} placeholder={tr("ui.7f377fd57c25")} style={{ fontFamily:'monospace' }} /></div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.e2ddc853f6c8")}</label><input value={form.account_holder || ''} onChange={e => f('account_holder', e.target.value)} /></div>
-                <div className="form-group"><label>{tr("ui.500348e73c9e")}</label><input value={form.health_insurance || ''} onChange={e => f('health_insurance', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.e2ddc853f6c8")}</label><input aria-label={tr("ui.e2ddc853f6c8")} autoComplete="off" value={form.account_holder || ''} onChange={e => f('account_holder', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.500348e73c9e")}</label><input aria-label={tr("ui.500348e73c9e")} autoComplete="off" value={form.health_insurance || ''} onChange={e => f('health_insurance', e.target.value)} /></div>
               </div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.45239f930c27")}</label><input inputMode="numeric" value={form.tax_id || ''} onChange={e => f('tax_id', e.target.value.replace(/[^0-9 ]/g, ''))} style={{ fontFamily:'monospace' }} /></div>
-                <div className="form-group"><label>{tr("ui.019891f68f41")}</label><input value={form.social_security_number || ''} onChange={e => f('social_security_number', e.target.value.replace(/[^A-Za-z0-9 ]/g, '').toUpperCase())} placeholder={tr("ui.ac2e02feab3d")} style={{ fontFamily:'monospace' }} /></div>
+                <div className="form-group"><label>{tr("ui.45239f930c27")}</label><input aria-label={tr("ui.45239f930c27")} autoComplete="off" inputMode="numeric" value={form.tax_id || ''} onChange={e => f('tax_id', e.target.value.replace(/[^0-9 ]/g, ''))} style={{ fontFamily:'monospace' }} /></div>
+                <div className="form-group"><label>{tr("ui.019891f68f41")}</label><input aria-label={tr("ui.019891f68f41")} autoComplete="off" value={form.social_security_number || ''} onChange={e => f('social_security_number', e.target.value.replace(/[^A-Za-z0-9 ]/g, '').toUpperCase())} placeholder={tr("ui.ac2e02feab3d")} style={{ fontFamily:'monospace' }} /></div>
               </div>
               <div className="two-col">
                 <div className="form-group">
                   <label>{tr("ui.ec918980364d")}</label>
-                  <select value={form.other_employment === true ? 'ja' : form.other_employment === false ? 'nein' : ''}
+                  <select aria-label={tr("ui.ec918980364d")} value={form.other_employment === true ? 'ja' : form.other_employment === false ? 'nein' : ''}
                     onChange={e => f('other_employment', e.target.value === 'ja' ? true : e.target.value === 'nein' ? false : null)}>
                     <option value="">{tr("ui.0c3b3b84e6b6")}</option>
                     <option value="nein">{tr("ui.90ebc1bde6f3")}</option>
@@ -772,14 +774,14 @@ export default function Employees() {
                   </select>
                 </div>
                 {form.other_employment === true && (
-                  <div className="form-group"><label>{tr("ui.e55bff7f9626")}</label><input value={form.other_employment_note || ''} onChange={e => f('other_employment_note', e.target.value)} /></div>
+                  <div className="form-group"><label>{tr("ui.e55bff7f9626")}</label><input aria-label={tr("ui.e55bff7f9626")} autoComplete="off" value={form.other_employment_note || ''} onChange={e => f('other_employment_note', e.target.value)} /></div>
                 )}
               </div>
               <div className="two-col">
-                <div className="form-group"><label>{tr("ui.b285b3cd6355")}</label><input value={form.emergency_contact_name || ''} onChange={e => f('emergency_contact_name', e.target.value)} /></div>
-                <div className="form-group"><label>{tr("ui.0d21914d5fd4")}</label><input value={form.emergency_contact_phone || ''} onChange={e => f('emergency_contact_phone', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.b285b3cd6355")}</label><input aria-label={tr("ui.b285b3cd6355")} autoComplete="off" value={form.emergency_contact_name || ''} onChange={e => f('emergency_contact_name', e.target.value)} /></div>
+                <div className="form-group"><label>{tr("ui.0d21914d5fd4")}</label><input aria-label={tr("ui.0d21914d5fd4")} type="tel" inputMode="tel" autoComplete="off" value={form.emergency_contact_phone || ''} onChange={e => f('emergency_contact_phone', e.target.value)} /></div>
               </div>
-              <div className="form-group"><label>{tr("ui.74c060e64273")}</label><textarea rows="2" value={form.notes || ''} onChange={e => f('notes', e.target.value)} /></div>
+              <div className="form-group"><label>{tr("ui.74c060e64273")}</label><textarea aria-label={tr("ui.74c060e64273")} rows="2" value={form.notes || ''} onChange={e => f('notes', e.target.value)} /></div>
               </>)}
               </fieldset>
 
@@ -794,28 +796,28 @@ export default function Employees() {
                     <div className="two-col">
                       <div className="form-group" style={{ marginBottom:10 }}>
                         <label style={{ fontSize:12 }}>{tr("ui.d34fdfab4164")}</label>
-                        <select value={docForm.document_type} onChange={e => setDocForm(p=>({...p, document_type:e.target.value}))}>
+                        <select aria-label={tr("ui.d34fdfab4164")} value={docForm.document_type} onChange={e => setDocForm(p=>({...p, document_type:e.target.value}))}>
                           {Object.entries(DOC_TYPES).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
                       </div>
                       <div className="form-group" style={{ marginBottom:10 }}>
                         <label style={{ fontSize:12 }}>{tr("ui.fe0fc68dab2d")}</label>
-                        <input placeholder={tr("ui.0380d18a5633")} value={docForm.title} onChange={e => setDocForm(p=>({...p, title:e.target.value}))} />
+                        <input aria-label={tr("ui.fe0fc68dab2d")} placeholder={tr("ui.0380d18a5633")} value={docForm.title} onChange={e => setDocForm(p=>({...p, title:e.target.value}))} />
                       </div>
                     </div>
                     <div className="two-col">
                       <div className="form-group" style={{ marginBottom:10 }}>
                         <label style={{ fontSize:12 }}>{tr("ui.c30bc49049b9")}</label>
-                        <input type="date" value={docForm.valid_from} onChange={e => setDocForm(p=>({...p, valid_from:e.target.value}))} />
+                        <input aria-label={tr("ui.c30bc49049b9")} type="date" value={docForm.valid_from} onChange={e => setDocForm(p=>({...p, valid_from:e.target.value}))} />
                       </div>
                       <div className="form-group" style={{ marginBottom:10 }}>
                         <label style={{ fontSize:12 }}>{tr("ui.ad350696ac38")}</label>
-                        <input type="date" value={docForm.valid_until} onChange={e => setDocForm(p=>({...p, valid_until:e.target.value}))} />
+                        <input aria-label={tr("ui.ad350696ac38")} type="date" value={docForm.valid_until} onChange={e => setDocForm(p=>({...p, valid_until:e.target.value}))} />
                       </div>
                     </div>
                     <div className="form-group" style={{ marginBottom:10 }}>
                       <label style={{ fontSize:12 }}>{tr("ui.5a3c9c535f09")}</label>
-                      <input placeholder={tr("ui.a3a53e8f27a4")} value={docForm.description} onChange={e => setDocForm(p=>({...p, description:e.target.value}))} />
+                      <input aria-label={tr("ui.5a3c9c535f09")} placeholder={tr("ui.a3a53e8f27a4")} value={docForm.description} onChange={e => setDocForm(p=>({...p, description:e.target.value}))} />
                     </div>
                     {/* Datei-Upload */}
                     {docFile ? (
@@ -825,7 +827,7 @@ export default function Employees() {
                           <div style={{ fontWeight:600, fontSize:12, color:'var(--success)' }}>✅ {docFile.name}</div>
                           <div style={{ fontSize:11, color:'var(--text-muted)' }}>{(docFile.size/1024).toLocaleString(getIntlLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{tr("ui.0efab8e1457f")}</div>
                         </div>
-                        <button className="btn btn-sm" onClick={() => { setDocFile(null); if(docFileRef.current) docFileRef.current.value='' }}>✕</button>
+                        <button aria-label={tr("a11y.remove")} className="btn btn-sm" onClick={() => { setDocFile(null); if(docFileRef.current) docFileRef.current.value='' }}>✕</button>
                       </div>
                     ) : (
                       <div style={{ border:'2px dashed var(--border)', borderRadius:8, padding:'12px', textAlign:'center', cursor:'pointer', marginBottom:10 }}
