@@ -23,7 +23,9 @@ after(async () => { await db?.stop() })
 
 // Jeder Test: keine offenen Einträge, GPS-Modus (GPS ODER WLAN), Rollen wie angelegt
 beforeEach(async () => {
-  await db.sys.query(`UPDATE time_entries SET clock_out = now() WHERE clock_out IS NULL`)
+  // Jeder Test beginnt ohne Zeiteinträge: die Tests verschieben Einstempelzeiten künstlich zurück (Systemverbindung) –
+  // ohne Aufräumen entstünden Überschneidungen, die es real nicht gibt (Migration 37 prüft sie)
+  await db.sys.query(`DELETE FROM time_entries`)
   await db.sys.query(`UPDATE cafe_settings SET gps_lat = $1, gps_lng = $2, clock_require_network = false WHERE id = 1`, [CAFE.lat, CAFE.lng])
   await setProfile(MANAGER, 'manager', 'approved'); await setProfile(M2, 'manager', 'approved')
 })
@@ -282,6 +284,7 @@ test('Admin: Remote-Ausstempeln rechnet wie beim Mitarbeiter (Serverzeit, Pausen
   assert.equal(Number(o.hours_worked), 4); assert.equal(o.break_minutes, 0)
   let e = await one(db.sys, `SELECT clock_out, clock_out_method FROM time_entries WHERE id = $1`, [r.id])
   assert.equal(e.clock_out_method, 'remote'); assert.ok(Math.abs(new Date(e.clock_out) - Date.now()) < 60000)
+  await db.sys.query(`DELETE FROM time_entries WHERE id = $1`, [r.id])   // Zeitreise unten würde den eben beendeten Eintrag überlappen
   r = await remoteIn(c, OUTSIDE)
   await db.sys.query(`UPDATE time_entries SET clock_in = now() - interval '14 hours' WHERE id = $1`, [r.id])
   o = await remoteOut(c, OUTSIDE)
@@ -289,6 +292,7 @@ test('Admin: Remote-Ausstempeln rechnet wie beim Mitarbeiter (Serverzeit, Pausen
   // Admin im Café über die RPC → normale Methode, kein Protokoll
   const w = await as(ADMIN, CAFE_IP)
   const before = (await logs('time.remote_clock_out', ADMIN)).length
+  await db.sys.query(`DELETE FROM time_entries WHERE id = $1`, [r.id])   // Zeitreise unten würde den vorigen Eintrag überlappen
   r = await remoteIn(w, null, false)
   await db.sys.query(`UPDATE time_entries SET clock_in = now() - interval '2 hours' WHERE id = $1`, [r.id])
   o = await remoteOut(w, null, false)
@@ -317,7 +321,7 @@ test('Remote-Markierung ist für Manager nicht änderbar; Admin-Korrektur funkti
   await remoteOut(c, OUTSIDE)
   const state = (await one(db.sys, `SELECT _time_entry_state($1) s`, [r.id])).s
   const a = await as(ADMIN)
-  const res = (await one(a, `SELECT admin_save_time_entry($1, NULL, current_date, '08:00', '12:00', '[]'::jsonb, 0, NULL, 'Test-Korrektur', $2) r`, [r.id, state])).r
+  const res = (await one(a, `SELECT admin_save_time_entry($1, NULL, current_date - 3, '08:00', '12:00', '[]'::jsonb, 0, NULL, 'Test-Korrektur', $2) r`, [r.id, state])).r
   assert.equal(res.success, true)
   e = await one(db.sys, `SELECT clock_in_method, hours_worked FROM time_entries WHERE id = $1`, [r.id])
   assert.equal(e.clock_in_method, 'remote'); assert.equal(Number(e.hours_worked), 4)

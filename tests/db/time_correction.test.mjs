@@ -69,7 +69,7 @@ test('Über Mitternacht: Zeiten vor der Einstempelzeit gehören zum Folgetag –
 
 test('Sommer-/Winterzeit: Nachtschichten über die Umstellung zählen echte Stunden (Europe/Berlin)', async () => {
   const a = await db.session(ADMIN)
-  const fall = await save(a, { date: '2026-10-24', inT: '22:00', outT: '06:00' })     // Uhr 03:00 → 02:00
+  const fall = await save(a, { date: '2025-10-25', inT: '22:00', outT: '06:00' })     // Uhr 03:00 → 02:00 (vergangen – Korrektur nur für Vergangenes, Migration 37)
   const spring = await save(a, { date: '2026-03-28', inT: '22:00', outT: '06:00' })   // Uhr 02:00 → 03:00
   const normal = await save(a, { date: '2026-06-13', inT: '22:00', outT: '06:00' })
   assert.deepEqual([(await entry(fall.id)).h, (await entry(spring.id)).h, (await entry(normal.id)).h], [9, 7, 8])
@@ -129,7 +129,7 @@ test('Laufende Schicht der Person stört nicht: vergangenen Eintrag anlegen/korr
   await save(a, { id: open, emp: EMP(E2), date: day(0), inT, outT: null, breaks: [{ start: await hhmm(brk[0]), end: await hhmm(brk[1] + 60) }], expected: s })
   const e = await entry(open)
   assert.deepEqual([e.clock_out, e.h], [null, null], 'bleibt offen, Stunden erst beim Ausstempeln')
-  assert.match(await err(async () => save(a, { emp: EMP(E2), date: day(-1), inT: '08:00', outT: null })), /duplicate key|one_open/, 'zweite offene Schicht per Index verhindert')
+  assert.match(await err(async () => save(a, { emp: EMP(E2), date: day(-1), inT: '08:00', outT: null })), /duplicate key|one_open|überschneiden/, 'zweite offene Schicht verhindert (Überschneidung, Migration 37 / Index)')
 })
 
 test('Löschen: atomar mit Protokoll, veraltete Ansicht abgewiesen, doppelt → „bereits gelöscht“', async () => {
@@ -176,7 +176,7 @@ test('Offboarding-Übersicht (M7): nur Admin, zählt offene Punkte, ändert nich
 
 test('Frontend ↔ DB: timeEntryState() = _time_entry_state(); Rundreise der UI (Berlin-Zeit laden → speichern) ändert nichts; Vorschau = DB-Stunden', async () => {
   const a = await db.session(ADMIN)
-  for (const [date, inT, outT, breaks] of [[day(-20), '08:00', '16:30', [{ start: '12:00', end: '12:30' }]], [day(-21), '22:00', '06:00', [{ start: '01:00', end: '01:20' }]], ['2026-10-24', '21:00', '05:00', []]]) {
+  for (const [date, inT, outT, breaks] of [[day(-20), '08:00', '16:30', [{ start: '12:00', end: '12:30' }]], [day(-21), '22:00', '06:00', [{ start: '01:00', end: '01:20' }]], ['2024-10-26', '21:00', '05:00', []]]) {
     const r = await save(a, { date, inT, outT, breaks })
     const e = await one(db.sys, `SELECT * FROM time_entries WHERE id = $1`, [r.id])
     const b = (await db.sys.query(`SELECT break_start, break_end FROM time_entry_breaks WHERE time_entry_id = $1`, [r.id])).rows
@@ -188,6 +188,6 @@ test('Frontend ↔ DB: timeEntryState() = _time_entry_state(); Rundreise der UI 
     await save(a, { id: r.id, date: e.date instanceof Date ? date : e.date, inT: form.inT, outT: form.outT, breaks: form.breaks, expected: timeEntryState(e, b) })
     assert.deepEqual(await state(r.id), before1, 'Rundreise ohne Änderung')
     assert.equal((await entry(r.id)).h, h1)
-    if (date !== '2026-10-24') assert.equal(Math.round(correctionPlan(form).hours * 100) / 100, h1, 'Vorschau = DB (2 Nachkommastellen, außerhalb der Zeitumstellung)')
+    if (date !== '2024-10-26') assert.equal(Math.round(correctionPlan(form).hours * 100) / 100, h1, 'Vorschau = DB (2 Nachkommastellen, außerhalb der Zeitumstellung)')
   }
 })

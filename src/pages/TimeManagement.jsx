@@ -9,6 +9,7 @@ import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
 import { breakElapsedMinutes, BREAK_WARNING_MINUTES, formerStaffCutoff, endsNextDay, timeEntryState, berlinTime } from '../lib/workHours'
 import { correctionCheck, legacyBreakMinutes } from '../lib/breakRules'
+import { correctionFutureProblem } from '../lib/timeCorrectionRules'
 import { notifyTimeDataChanged } from '../lib/laborCost'
 import { fetchBreaksForEntries, isBreakFeatureMissing } from '../lib/breaks'
 import Avatar from '../components/UI/Avatar'
@@ -159,6 +160,8 @@ export default function TimeManagement() {
     // Mitternacht: Uhrzeiten vor der Einstempelzeit gehören zum Folgetag (wie die DB) – keine „gleicher Tag“-Annahme
     const plan = correctionCheck({ inT: form.clock_in_time, outT: form.clock_out_time, breaks: form.breaks })
     if (plan.error) { toast.warn(appMessage(BREAK_ERROR_KEY[plan.error.code], { n: (plan.error.index ?? 0) + 1 })); return }
+    // Zeitkorrektur nur für Vergangenes (Migration 37) – laufende Arbeit wird gestempelt, Geplantes im Schichtplan
+    if (correctionFutureProblem({ date: form.date, inT: form.clock_in_time, outT: form.clock_out_time || null })) { toast.warn(appMessage("time.futureNotAllowed")); return }
     setSaving(true)
     const orig = modal === 'edit' ? entries.find(e => e.id === form.id) : null
     // Eintrag + Pausen + Stunden + Korrekturprotokoll atomar in der DB; veraltete Ansicht → Abbruch statt Überschreiben

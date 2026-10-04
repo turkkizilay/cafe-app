@@ -23,7 +23,7 @@ import { showToast } from '../components/UI/Toast'
 
 // Stellvertretende Live-Buchung (Manager/Admin): Rückmeldungen je Aktion bzw. Fehlerart
 const LIVE_DONE_KEY = { clock_in: 'live.doneClockIn', break_start: 'live.doneBreakStart', break_end: 'live.doneBreakEnd', clock_out: 'live.doneClockOut' }
-const LIVE_ERROR_KEY = { stale: 'live.stale', invalid: 'live.stale', notAllowed: 'live.notAllowed', self: 'live.self', inactive: 'live.inactive', network: 'live.network', failed: 'live.failed' }
+const LIVE_ERROR_KEY = { stale: 'live.stale', invalid: 'live.stale', notAllowed: 'live.notAllowed', self: 'live.self', inactive: 'live.inactive', overlap: 'live.overlap', network: 'live.network', failed: 'live.failed' }
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
 function greeting() {

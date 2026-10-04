@@ -18,6 +18,9 @@ const openCount = async n => (await one(db.sys, `SELECT count(*)::int c FROM tim
 const clockInSql = n => [`INSERT INTO time_entries (employee_id, date, clock_in) VALUES ($1, current_date, now()) RETURNING id`, [EMP(n)]]
 // Einstempeln wie die App, danach Beginn systemseitig in die Vergangenheit legen (Testaufbau)
 async function clockedIn(n, hoursAgo) {
+  // künstliche Zeitreise (Einstempeln stundenweise zurück): frühere synthetische Einträge der Person entfernen, sonst
+  // entstünden Überschneidungen, die real nicht möglich sind (Migration 37 prüft sie)
+  await db.sys.query(`DELETE FROM time_entries WHERE employee_id = $1 AND clock_out IS NOT NULL`, [EMP(n)])
   const c = await db.as(n)
   const { id } = await one(c, ...clockInSql(n))
   await db.sys.query(`UPDATE time_entries SET clock_in = now() - make_interval(secs => $2::float8 * 3600) WHERE id = $1`, [id, hoursAgo])

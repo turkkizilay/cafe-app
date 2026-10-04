@@ -362,6 +362,17 @@ Do Not: Uhrzeit-Eingabe in diesem Ablauf; Standort-Ausnahme für die eigene Pers
 Zeitkorrektur. Test-Falle: Vorher/Nachher-Tests einer Migration mit `MIGRATIONS.slice(0, indexOf(...))` aufbauen, nicht
 mit `filter` – sonst laufen spätere Migrationen ohne ihre Vorgänger. Regression: `tests/db/staff_live_action.test.mjs`.
 
+### Zeitkorrektur nur für Vergangenes, keine Überschneidungen (Migration 37, Audit H1/M1)
+Problem: Die Korrektur nahm ein Ende in der Zukunft an (Production: 08:30–18:00 um 14:04) → Stunden vor der Arbeit,
+Person galt als „nicht eingestempelt“ und wurde erneut stellvertretend eingestempelt → überlappende Einträge.
+Fix: `admin_save_time_entry` lehnt Beginn/Ende > jetzt + 1 Min. und Überschneidungen mit anderen Einträgen der Person
+ab (Lohnmonat-Sperre hat Vorrang); der Einstempel-Trigger lehnt ab, solange ein Eintrag der Person noch nicht zu Ende
+ist; die Konsistenzprüfung am Transaktionsende prüft Überschneidung zusätzlich. Kein Exclusion-Constraint, weil er
+bestehende Daten prüfen würde (Production enthält ein überlappendes Testpaar) – geprüft werden nur neue/geänderte Zeilen.
+Test-Falle: Tests, die Einstempelzeiten per Systemverbindung zurückdrehen („Zeitreise“), erzeugen sonst unmögliche
+Überschneidungen – vorher frühere synthetische Einträge der Person entfernen; Korrektur-Testdaten immer in der
+Vergangenheit (keine festen Zukunftsdaten). Regression: `tests/db/time_correction_past_only.test.mjs`.
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

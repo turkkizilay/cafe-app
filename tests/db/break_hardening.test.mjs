@@ -17,6 +17,9 @@ const corrections = async id => (await one(db.sys, `SELECT count(*)::int n FROM 
 const snap = async id => JSON.stringify([await entry(id), await breaksOf(id), await corrections(id)])
 const closeAll = () => db.sys.query(`UPDATE time_entries SET clock_out = clock_in + interval '1 hour', hours_worked = 1, break_minutes = 0 WHERE clock_out IS NULL`)
 async function clockedIn(n, hoursAgo) {
+  // künstliche Zeitreise (Einstempeln stundenweise zurück): frühere synthetische Einträge der Person entfernen, sonst
+  // entstünden Überschneidungen, die real nicht möglich sind (Migration 37 prüft sie)
+  await db.sys.query(`DELETE FROM time_entries WHERE employee_id = $1 AND clock_out IS NOT NULL`, [EMP(n)])
   const c = await db.as(n)
   const { id } = await one(c, `INSERT INTO time_entries (employee_id, date, clock_in) VALUES ($1, current_date, now()) RETURNING id`, [EMP(n)])
   await db.sys.query(`UPDATE time_entries SET clock_in = now() - make_interval(secs => $2::float8 * 3600) WHERE id = $1`, [id, hoursAgo])
@@ -249,6 +252,7 @@ test('C5: Admin stempelt sich selbst wie alle – Serverzeit, laufende Pause end
   assert.ok(Math.abs(new Date(e.clock_out) - Date.now()) < 60000, 'Serverzeit (nicht +5 h)')
   assert.deepEqual([e.h, e.break_minutes, await breaksOf(r.id).then(b => b.length)], [3.5, 30, 1], 'laufende Pause endet, Netto serverseitig')
   const r2 = await one(c, `INSERT INTO time_entries (employee_id, date, clock_in) VALUES ($1, current_date, now()) RETURNING id`, [EMP(ADMIN)])
+  await db.sys.query(`DELETE FROM time_entries WHERE id = $1`, [r.id])   // Zeitreise unten würde den eben beendeten Eintrag überlappen
   await db.sys.query(`UPDATE time_entries SET clock_in = now() - interval '14 hours' WHERE id = $1`, [r2.id])
   await c.query(`UPDATE time_entries SET clock_out = now(), hours_worked = 14 WHERE id = $1`, [r2.id])
   const e2 = await entry(r2.id)

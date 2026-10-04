@@ -21,11 +21,12 @@ export function liveErrorKind(error) {
   if (hint === 'live_not_allowed') return 'notAllowed'
   if (hint === 'live_self') return 'self'
   if (hint === 'live_employee_inactive') return 'inactive'
+  if (hint === 'entry_overlap') return 'overlap'
   if (!error?.code && !hint && /fetch|network|timeout|abort/i.test(String(error?.message || ''))) return 'network'
   return 'failed'
 }
 
-// → { ok:true, state, serverTime } | { ok:false, kind:'stale'|'invalid'|'notAllowed'|'self'|'inactive'|'network'|'failed', state? }
+// → { ok:true, state, serverTime } | { ok:false, kind:'stale'|'invalid'|'notAllowed'|'self'|'inactive'|'overlap'|'network'|'failed', state? }
 export async function runLiveAction({ employeeId, action, expected }, client) {
   let res
   try {
