@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { parseCompleteTime24, sanitizeTimeDraft } from '../../lib/time24'
 
 // Uhrzeit-Eingabe im 24-Stunden-Format (HH:MM), identisch in Chrome, Safari (macOS/iOS) und Firefox.
@@ -22,7 +22,13 @@ export default function TimeInput24({ value, onChange, invalidText, ...rest }) {
   }
 
   const invalid = touched && draft !== '' && !parseCompleteTime24(draft)
-  const emit = (v, incomplete) => { if (v !== (value || '') || incomplete) onChange(v, { incomplete }) }
+  // Zuletzt gemeldetes „unvollständig“: Wird ein Teilwert („16:0“ … „1“) ganz gelöscht, bleibt der Wert '' gleich –
+  // die Rückkehr zu „vollständig/leer“ muss trotzdem gemeldet werden, sonst bleibt das Formular blockiert
+  const reportedIncomplete = useRef(false)
+  const emit = (v, incomplete) => {
+    if (v !== (value || '') || incomplete || reportedIncomplete.current) onChange(v, { incomplete })
+    reportedIncomplete.current = incomplete
+  }
 
   return (
     <>

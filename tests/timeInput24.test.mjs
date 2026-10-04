@@ -94,6 +94,12 @@ log.length = 0; type(''); type('1'); type('18'); out.short18 = { before: snap(),
 log.length = 0; type(''); for (const v of ['0', '07', '07:', '07:4', '07:45']) type(v); out.retype = { snap: snap(), log: log.slice() }
 // ungültig → Formular erfährt „unvollständig“ (für Felder, in denen leer eine Bedeutung hat)
 log.length = 0; type('25:00'); blur(); out.flag = { snap: snap(), log: log.slice() }
+// Vorbelegter Wert („16:00“, Zeitkorrektur-Ende) Zeichen für Zeichen gelöscht: zuletzt „leer + vollständig“ melden,
+// sonst bleibt das Formular als „unvollständig“ blockiert, obwohl das Feld leer ist (Production-Fall 04.10.2026)
+flushSync(() => setExternal('16:00')); log.length = 0
+for (const v of ['16:0', '16:', '16', '1', '']) type(v)
+out.backspace = { snap: snap(), log: log.slice() }
+flushSync(() => setExternal('16:00')); log.length = 0; type(''); out.clearAll = { snap: snap(), log: log.slice() }
 document.getElementById('out').textContent = JSON.stringify(out)
 `
 
@@ -147,6 +153,15 @@ test('Browser: „18“ ist Zwischenzustand – nie „01:00“ o. ä. ans Formu
   assert.deepEqual([R.retype.snap.shown, R.retype.snap.form], ['07:45', '07:45'])
   assert.deepEqual(R.retype.log.filter(([v]) => v), [['07:45', false]], `nach Löschen nur der vollständige Wert: ${JSON.stringify(R.retype.log)}`)
   assert.deepEqual([R.flag.snap.form, R.flag.snap.invalid, R.flag.log.at(-1)], ['', 'true', ['', true]], 'ungültig → leer + „unvollständig“')
+})
+
+test('Browser: vorbelegtes „16:00“ mit Rücktaste ganz gelöscht → zuletzt „leer, vollständig“ gemeldet (leer = offen erlaubt)', t => {
+  if (SKIP) return t.skip(SKIP)
+  const { snap, log } = R.backspace
+  assert.deepEqual([snap.shown, snap.form, snap.invalid, snap.hint], ['', '', null, false], 'Feld leer, nicht markiert')
+  assert.deepEqual(log.at(-1), ['', false], `letzte Meldung „leer, vollständig“: ${JSON.stringify(log)}`)
+  assert.ok(log.slice(0, -1).every(([v, inc]) => v === '' && inc), 'Zwischenstände unvollständig, nie ein halber Wert')
+  assert.deepEqual([R.clearAll.snap.form, R.clearAll.log], ['', [['', false]]], 'auf einmal gelöscht: ebenfalls „leer, vollständig“')
 })
 
 // ── Admin-Zeitkorrektur (TimeManagement) ──
