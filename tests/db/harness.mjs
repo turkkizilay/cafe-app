@@ -19,6 +19,7 @@ export const MIGRATIONS = [
   '24_account_recovery.sql', '25_account_lifecycle_hardening.sql', '26_registration_reset.sql', '27_ops_integrity.sql',
   '28_onboarding_resumable.sql', '29_remote_clock.sql', '30_fixed_pay_hourly_optional.sql', '31_hessen_holidays.sql',
   '32_onboarding_emergency_optional.sql', '33_sick_cases.sql', '34_break_hardening.sql', '35_labor_cost_today.sql', '36_staff_live_action.sql', '37_time_correction_past_only.sql',
+  '38_admin_access_reset.sql',
 ]
 // Migrationen, die Invite/Auth/Onboarding-Funktionen ersetzen: nach der Production-Vorlage (loadLifecycle) erneut
 // einspielen, sonst prüften Tests den Stand VOR der Migration. Diese Dateien sind wiederholt ausführbar geschrieben.
@@ -32,6 +33,9 @@ const PLATFORM = `
   CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, raw_user_meta_data jsonb DEFAULT '{}', raw_app_meta_data jsonb DEFAULT '{}', created_at timestamptz DEFAULT now(),
                            email_confirmed_at timestamptz DEFAULT now(), confirmation_sent_at timestamptz, last_sign_in_at timestamptz);
   CREATE UNIQUE INDEX users_email_key ON auth.users (email);   -- wie Supabase: eine Adresse = ein Auth-Konto
+  CREATE ROLE authenticator NOINHERIT;   -- PostgREST-Anmelderolle (trägt pgrst.db_pre_request)
+  CREATE TABLE auth.sessions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, created_at timestamptz DEFAULT now());
+  CREATE TABLE auth.refresh_tokens (id bigserial PRIMARY KEY, session_id uuid REFERENCES auth.sessions(id) ON DELETE CASCADE, token text);
   CREATE TABLE storage.objects (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, bucket_id text, name text, owner uuid, owner_id text, metadata jsonb, created_at timestamptz DEFAULT now());
   CREATE FUNCTION storage.foldername(name text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$ SELECT (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub', '')::uuid $$;

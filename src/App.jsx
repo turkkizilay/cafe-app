@@ -38,6 +38,8 @@ import RefreshButton from './components/RefreshButton.jsx'
 import LegalPage from './pages/Legal.jsx'
 import { legalKindForPath } from './legal/legalContent.js'
 import PrivacyAckGate, { PrivacyAckChecking } from './components/PrivacyAckGate.jsx'
+import SetNewPassword from './pages/SetNewPassword.jsx'
+import { loadMyAccessState } from './lib/accessReset'
 import { loadPrivacyAck, nextAckState } from './lib/privacyAck.js'
 
 // ── Passwort-Reset-Link erkennen ──────────────────────────────
@@ -188,6 +190,7 @@ export default function App() {
   const [recoveryDone,setRecoveryDone]= useState(false)
   const [recoveryEvent,setRecoveryEvent] = useState(false)
   const [privacyAck,  setPrivacyAck]  = useState({ uid: null, state: 'checking' })
+  const [mustChangePw, setMustChangePw] = useState(false)   // Admin-Reset: erst neues Passwort (Migration 38)
 
   const handleAutoLogout = useCallback(async (reason) => {
     try {
@@ -222,6 +225,11 @@ export default function App() {
     if (loadedUidRef.current !== uid) setLoading(true)
     setFetchErr(null)
     try {
+      // Nach einem Admin-Reset zuerst das neue Passwort – serverseitig ist ohnehin alles andere gesperrt
+      const access = await loadMyAccessState(supabase)
+      if (access.revoked) { await supabase.auth.signOut({ scope: 'local' }); setLoading(false); return }
+      setMustChangePw(access.mustChange)
+      if (access.mustChange) { setProfile(null); loadedUidRef.current = null; setLoading(false); return }
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -321,6 +329,7 @@ export default function App() {
         pushRefreshedRef.current = false
         setPrivacyAck({ uid: null, state: 'checking' })
         setProfile(null)
+        setMustChangePw(false)
         setPending(0)
         setLoading(false)
       }
@@ -364,6 +373,12 @@ export default function App() {
         <Login />
       </ToastProvider>
     </DarkModeProvider>
+  )
+
+  if (mustChangePw) return (
+    <SetNewPassword
+      onDone={() => { setMustChangePw(false); fetchProfile(session.user.id, true) }}
+      onSignOut={() => { supabase.auth.signOut(); sessionStorage.removeItem('cafe_session_active'); localStorage.removeItem('cafe_no_remember') }} />
   )
 
   if (fetchErr) return (

@@ -19,6 +19,7 @@ import { fetchStaffOperational, mergeStaffRows } from '../lib/staffDirectory'
 const PAY_ERROR_KEY = { fixedNotAllowed: "payModel.fixedNotAllowed", salaryMissing: "payModel.salaryMissing" }
 import { validatePersonal, formatIBAN, cleanIBAN, cleanTaxId, cleanSV, FIELD_LABELS, FIELD_MESSAGES } from '../lib/personalData'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import AccessResetDialog from '../components/AccessResetDialog.jsx'
 
 const EMPTY = {
   first_name: '', last_name: '', email: '', phone: '', birth_date: '',
@@ -74,6 +75,7 @@ export default function Employees() {
   const [addChoice,     setAddChoice]     = useState(false)  // Auswahl: einladen oder selbst anlegen
   const [justCreated,   setJustCreated]   = useState(null)   // nach „Selbst anlegen“: App-Zugang anbieten
   const [lockLogin,     setLockLogin]     = useState(true)   // beim Deaktivieren auch App-Zugang sperren
+  const [accessReset,   setAccessReset]   = useState(null)   // { id, name } → Dialog „Zugang zurücksetzen“ (nur Admin)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -614,6 +616,13 @@ export default function Employees() {
                     onClick={() => { const id = form.id; setModal(null); navigate(access[id] ? '/benutzer' : `/benutzer?invite=${id}`) }}>
                     {access[form.id] ? tr("ui.4d914f496dcd") : tr("ui.09c4b067fdbe")}
                   </button>
+                  {access[form.id] === 'active' && (
+                    <button type="button" data-testid="access-reset-open"
+                      style={{ flexBasis:'100%', textAlign:'left', background:'none', border:'none', padding:'2px 0 0', cursor:'pointer', fontSize:12, color:'var(--text-secondary)', textDecoration:'underline' }}
+                      onClick={() => setAccessReset({ id: form.id, name: `${form.first_name || ''} ${form.last_name || ''}`.trim() })}>
+                      {tr("accessReset.open")}
+                    </button>
+                  )}
                 </div>
               )}
               <fieldset disabled={!isAdmin} style={{ border:'none', padding:0, margin:0, minWidth:0 }}>
@@ -904,6 +913,7 @@ export default function Employees() {
           </div>
         </div>
       )}
+      {isAdmin && accessReset && <AccessResetDialog employeeId={accessReset.id} name={accessReset.name} onClose={() => setAccessReset(null)} />}
     </>
   )
 }

@@ -373,6 +373,19 @@ Test-Falle: Tests, die Einstempelzeiten per Systemverbindung zurückdrehen („Z
 Überschneidungen – vorher frühere synthetische Einträge der Person entfernen; Korrektur-Testdaten immer in der
 Vergangenheit (keine festen Zukunftsdaten). Regression: `tests/db/time_correction_past_only.test.mjs`.
 
+### Zugang zurücksetzen: Server-Sperre statt Browser-Redirect (Migration 38, lokal – noch nicht live)
+Supabase widerruft Access-Tokens nicht vor `exp`; `auth.admin.signOut` braucht den JWT der Person; ob eine
+Passwortänderung Sitzungen beendet, ist Konfiguration. Daher: Reset löscht `auth.sessions` (Refresh-Tokens per
+CASCADE) UND `access_gate()` als `pgrst.db_pre_request` weist jede Data-API-Anfrage aus einer Sitzung vor
+`sessions_valid_after` ab – sowie bei `must_change_password` alles außer `rpc/my_access_state`. Viele Policies prüfen
+`profiles` inline statt über `is_approved()`/`my_employee_id()` – eine Sperre nur in den Helfern wäre lückenhaft.
+Pre-Request gilt NICHT für Storage/Realtime → RESTRICTIVE-Policy auf `storage.objects`; Realtime-Publikation ist leer
+(käme eine Tabelle hinzu, braucht sie dieselbe Prüfung). Pflicht löschen nur `service_role` NACH erfolgreichem Auth-
+`PUT /user` mit dem JWT der Person (A: nie gelöscht ohne Änderung; B: Fehler → Pflicht bleibt, erneut versuchen).
+Temporäres Passwort nur in der Antwort der Edge Function, nie in DB/Log/Storage; Protokoll-`detail` per CHECK nur Codes.
+Edge Functions bekommen den Pre-Request nicht automatisch für Service-Aufrufe – eigene Rechte prüfen (JWT + DB).
+Regression: `tests/db/admin_access_reset.test.mjs`, `tests/accessReset.test.mjs`.
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.
