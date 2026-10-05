@@ -10,6 +10,9 @@ import { useSavingGuard } from '../lib/savingGuard'
 import { logActivity } from '../lib/activityLog'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import { formerStaffCutoff } from '../lib/workHours'
+import { pageCount, clampPage, hasFilters, loadDocumentsPage } from '../lib/payrollDocuments'
+
+const NO_FILTER = { employeeId: '', year: '', month: '' }
 
 const getMonths = () => Array.from({ length: 12 }, (_, i) => ({
   v: i + 1,
@@ -23,7 +26,14 @@ export default function PayrollDocuments() {
   const toast = useToast()
   const deleteGuard = useSavingGuard()
   const [employees,  setEmployees]  = useState([])
-  const [documents,  setDocuments]  = useState([])
+  const [filterEmployees, setFilterEmployees] = useState([])   // Filter: alle Personen (auch lange Ausgeschiedene mit alten Abrechnungen)
+  const [minYear,    setMinYear]    = useState(null)
+  const [documents,  setDocuments]  = useState([])   // nur die aktuelle Seite
+  const [total,      setTotal]      = useState(0)    // exakte Gesamtzahl (Server, nach RLS und Filter)
+  const [page,       setPage]       = useState(1)
+  const [filter,     setFilter]     = useState(NO_FILTER)
+  const [listBusy,   setListBusy]   = useState(false)
+  const [listError,  setListError]  = useState(false)
   const [loading,    setLoading]    = useState(true)
   const [actionDocId, setActionDocId] = useState(null)  // 'id:open' | 'id:dl' | null
   const [uploading,  setUploading]  = useState(false)
@@ -33,39 +43,59 @@ export default function PayrollDocuments() {
   const [selNotes,   setSelNotes]   = useState('')
   const [msg,        setMsg]        = useState('')
   const fileRef = useRef()
+  const listRef = useRef()
+  const req = useRef({ page: 1, filter: NO_FILTER })   // zuletzt angeforderte Seite/Filter (auch für „Erneut versuchen“)
+  const seq = useRef(0)                                // nur die jüngste Antwort zählt (schnelles Blättern/Filtern)
 
   const now = new Date()
 
   useEffect(() => { fetchAll() }, [])
   useRefreshHandler(() => fetchAll())   // Aktualisieren-Button
 
+  // Auswahllisten (nur Admin) + aktuelle Seite mit aktuellen Filtern neu laden
   async function fetchAll() {
-    setLoading(true)
-    try {
     if (isAdmin) {
-      const [{ data: emps }, { data: docs }] = await Promise.all([
-        supabase.from('employees').select('id, first_name, last_name, is_active').or(`is_active.eq.true,end_date.gte.${formerStaffCutoff()}`).order('last_name'),   // + kürzlich Ausgeschiedene (letzte Abrechnung)
-        supabase.from('payroll_documents').select('*, employees!employee_id(first_name, last_name)').order('year', { ascending: false }).order('month', { ascending: false }),
-      ])
-      setEmployees(emps || [])
-      setDocuments(docs || [])
-      // keine automatische Auswahl: Upload ordnet ein Dokument einer Person zu → nur nach bewusster Auswahl
-    } else {
-      // Mitarbeiter sieht nur eigene Dokumente
-      const myEmpId = profile.employee_id
-      if (!myEmpId) { setDocuments([]); setLoading(false); return }
-      const { data: docs } = await supabase
-        .from('payroll_documents')
-        .select('*')
-        .eq('employee_id', myEmpId)
-        .order('year', { ascending: false })
-        .order('month', { ascending: false })
-      setDocuments(docs || [])
+      try {
+        const [{ data: emps }, { data: all }, { data: oldest }] = await Promise.all([
+          supabase.from('employees').select('id, first_name, last_name, is_active').or(`is_active.eq.true,end_date.gte.${formerStaffCutoff()}`).order('last_name'),   // + kürzlich Ausgeschiedene (letzte Abrechnung)
+          supabase.from('employees').select('id, first_name, last_name, is_active').order('last_name').order('first_name'),
+          supabase.from('payroll_documents').select('year').order('year', { ascending: true }).limit(1),
+        ])
+        setEmployees(emps || [])
+        setFilterEmployees(all || [])
+        setMinYear(oldest?.length ? oldest[0].year : null)
+        // keine automatische Auswahl: Upload ordnet ein Dokument einer Person zu → nur nach bewusster Auswahl
+      } catch (err) {
+        console.error('PayrollDocuments fetch error:', err)
+      }
     }
-    } catch (err) {
-      console.error('PayrollDocuments fetch error:', err)
-    }
+    await loadDocs()
     setLoading(false)
+  }
+
+  // Eine Seite vom Server holen (Mitarbeiter: nur eigene – RLS erzwingt es ohnehin). Fehler → sichtbarer Hinweis
+  // statt einer leeren Liste, die wie „keine Abrechnungen“ aussähe.
+  async function loadDocs(nextPage = req.current.page, nextFilter = req.current.filter, { scroll = false } = {}) {
+    const my = ++seq.current
+    req.current = { page: nextPage, filter: nextFilter }
+    setListBusy(true)
+    let r
+    try {
+      r = await loadDocumentsPage(supabase, { isAdmin, ownEmployeeId: profile?.employee_id, filters: nextFilter, page: nextPage })
+    } catch (err) { r = { error: err } }
+    if (my !== seq.current) return
+    setListBusy(false)
+    if (r.error) { console.error('PayrollDocuments fetch error:', r.error); setListError(true); return }
+    req.current = { page: r.page, filter: nextFilter }
+    setListError(false); setDocuments(r.rows); setTotal(r.total); setPage(r.page)
+    if (scroll) listRef.current?.scrollIntoView?.({ block: 'start' })
+  }
+
+  // Filterwechsel → immer zurück auf Seite 1
+  function changeFilter(patch) {
+    const next = { ...req.current.filter, ...patch }
+    setFilter(next)
+    loadDocs(1, next)
   }
 
   async function handleUpload() {
@@ -166,14 +196,17 @@ export default function PayrollDocuments() {
     const who = emp ? `${emp.first_name} ${emp.last_name}` : tr("ui.e9a753bcc8a5")
     if (!window.confirm(tr("ui.7230af15fa2e", { p1: (monthName || ''), p2: (doc.year || ''), p3: (who) }))) return
     if (!deleteGuard.begin()) return
+    let deleted = false
     try {
       const { error } = await supabase.from('payroll_documents').delete().eq('id', doc.id)
       if (error) { toast.error(appMessage("ui.5bbd80995ec4")); return }
+      deleted = true
       await supabase.storage.from('payroll-docs').remove([doc.file_path])
       toast.success(appMessage("ui.d01284bfc449"))
     } finally {
       deleteGuard.end()
-      fetchAll()
+      // War es das letzte Dokument der letzten Seite, direkt die vorherige gültige Seite laden
+      loadDocs(deleted ? clampPage(req.current.page, total - 1) : req.current.page)
     }
   }
 
@@ -183,6 +216,10 @@ export default function PayrollDocuments() {
     if (b < 1048576) return `${(b/1024).toLocaleString(getIntlLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 0 })} KB`
     return `${(b/1048576).toLocaleString(getIntlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`
   }
+
+  const pages = pageCount(total)
+  // Jahr-Filter: vom ältesten vorhandenen Dokument bis nächstes Jahr (Upload-Jahre bleiben unverändert)
+  const filterYears = Array.from({ length: now.getFullYear() + 1 - Math.min(minYear ?? now.getFullYear() - 1, now.getFullYear() - 1) + 1 }, (_, i) => now.getFullYear() + 1 - i)
 
   if (loading) return <div style={{ padding: 24 }}>{tr("ui.7a72dd7b9d46")}</div>
 
@@ -243,26 +280,62 @@ export default function PayrollDocuments() {
           </div>
         )}
 
-        {/* ── Dokumente Liste ── */}
-        <div className="card">
+        {/* ── Dokumente Liste (serverseitig seitenweise, 25 je Seite) ── */}
+        <div className="card" ref={listRef}>
           <div className="card-header">
             <div className="card-title">
-              {isAdmin ? tr("ui.e51fbe65ba0d", { p1: (documents.length) }) : tr("ui.9df4055151ed", { p1: (documents.length) })}
+              {hasFilters(filter) ? tr("payrollDocs.filteredTitle", { p1: total }) : isAdmin ? tr("ui.e51fbe65ba0d", { p1: total }) : tr("ui.9df4055151ed", { p1: total })}
             </div>
           </div>
-          {documents.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">📄</div>
-              <div className="empty-state-text">
-                {isAdmin
-                  ? tr("ui.ede31be770da")
-                  : tr("ui.e9b8f9cffca2")
-                }
+          {isAdmin && (
+            <div className="doc-filters">
+              <div className="form-group">
+                <label htmlFor="doc-filter-emp">{tr("ui.f4cb6891b9e5")}</label>
+                <select id="doc-filter-emp" value={filter.employeeId} onChange={e => changeFilter({ employeeId: e.target.value })}>
+                  <option value="">{tr("payrollDocs.allEmployees")}</option>
+                  {filterEmployees.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}{e.is_active === false ? tr('employee.archivedSuffix') : ''}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="doc-filter-month">{tr("ui.2933070469a2")}</label>
+                <select id="doc-filter-month" value={filter.month} onChange={e => changeFilter({ month: e.target.value })}>
+                  <option value="">{tr("payrollDocs.allMonths")}</option>
+                  {MONTHS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="doc-filter-year">{tr("ui.ed1ad93b8967")}</label>
+                <select id="doc-filter-year" value={filter.year} onChange={e => changeFilter({ year: e.target.value })}>
+                  <option value="">{tr("payrollDocs.allYears")}</option>
+                  {filterYears.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
               </div>
             </div>
+          )}
+          {listError && (
+            <div className="alert alert-danger doc-list-error" role="alert">
+              <span>{tr("payrollDocs.loadFailed")}</span>
+              <button type="button" className="btn btn-sm" onClick={() => loadDocs()} disabled={listBusy}>{tr("ui.948643cb59e8")}</button>
+            </div>
+          )}
+          {total === 0 ? (
+            !listError && (
+              <div className="empty-state">
+                <div className="empty-state-icon">📄</div>
+                <div className="empty-state-text">
+                  {hasFilters(filter)
+                    ? tr("payrollDocs.noMatches")
+                    : isAdmin
+                      ? tr("ui.ede31be770da")
+                      : tr("ui.e9b8f9cffca2")
+                  }
+                </div>
+                {hasFilters(filter) && <button type="button" className="btn" style={{ marginTop: 12 }} onClick={() => changeFilter(NO_FILTER)}>{tr("ui.5b59510b692f")}</button>}
+              </div>
+            )
           ) : (
-            <div className="table-wrap">
-              <table>
+            <div className="table-wrap" aria-busy={listBusy || undefined} style={{ opacity: listBusy ? 0.6 : 1 }}>
+              <table className="table-stack">
                 <thead>
                   <tr>
                     {isAdmin && <th>{tr("ui.f4cb6891b9e5")}</th>}
@@ -278,18 +351,18 @@ export default function PayrollDocuments() {
                   {documents.map(doc => (
                     <tr key={doc.id}>
                       {isAdmin && (
-                        <td>
+                        <td data-label={tr("ui.f4cb6891b9e5")}>
                           <strong>{doc.employees?.first_name} {doc.employees?.last_name}</strong>
                         </td>
                       )}
-                      <td>{MONTHS.find(m => m.v === doc.month)?.l}</td>
-                      <td>{doc.year}</td>
-                      <td style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                      <td data-label={tr("ui.2933070469a2")}>{MONTHS.find(m => m.v === doc.month)?.l}</td>
+                      <td data-label={tr("ui.ed1ad93b8967")}>{doc.year}</td>
+                      <td data-label={tr("ui.9b5378efc9fc")} style={{ fontSize:12, color:'var(--text-secondary)' }}>
                         📄 {doc.file_name}
                         {doc.notes && <div style={{ color:'var(--text-muted)' }}>{doc.notes}</div>}
                       </td>
-                      <td style={{ fontSize:12 }}>{formatBytes(doc.file_size)}</td>
-                      <td style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                      <td data-label={tr("ui.aedc3f80989a")} style={{ fontSize:12 }}>{formatBytes(doc.file_size)}</td>
+                      <td data-label={tr("ui.9ed323d68644")} style={{ fontSize:12, color:'var(--text-secondary)' }}>
                         {new Date(doc.created_at).toLocaleDateString(getIntlLocale(),{day:'2-digit',month:'2-digit',year:'numeric'})}
                       </td>
                       <td>
@@ -307,6 +380,17 @@ export default function PayrollDocuments() {
                 </tbody>
               </table>
             </div>
+          )}
+          {pages > 1 && (
+            <nav className="pager" aria-label={tr("payrollDocs.pagination")}>
+              <button type="button" className="btn" onClick={() => loadDocs(page - 1, req.current.filter, { scroll: true })} disabled={listBusy || page <= 1}>
+                <span aria-hidden="true">←</span> {tr("a11y.previous")}
+              </button>
+              <span className="pager-status" aria-live="polite">{tr("payrollDocs.pageOf", { p1: page, p2: pages })}</span>
+              <button type="button" className="btn" onClick={() => loadDocs(page + 1, req.current.filter, { scroll: true })} disabled={listBusy || page >= pages}>
+                {tr("a11y.next")} <span aria-hidden="true">→</span>
+              </button>
+            </nav>
           )}
         </div>
       </div>

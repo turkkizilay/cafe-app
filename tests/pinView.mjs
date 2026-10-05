@@ -3,6 +3,7 @@
 //   ändern (aria-label, autoComplete="off" – nur Attribute, keine Logik).
 // • Shifts.jsx: zusätzlich exakt der Schichttausch-Fix (respondSwap/cancelSwap mit Sperre, „nur offen“, 0 Zeilen ≠ Erfolg)
 //   – der neue Block wird hier wörtlich auf den alten zurückgeführt; jede andere Änderung bricht den Pin weiterhin.
+// • PayrollDocuments.jsx: zusätzlich der Pagination-Umbau (05.10.2026), siehe PAYROLL_DOCS_FROZEN unten.
 // • Payroll.jsx, Timesheet.jsx und alle übrigen Dateien: KEINE Ausnahme, weiter byte-gleich.
 const A11Y_ONLY = new Set(['src/pages/Vacation.jsx', 'src/pages/TimeManagement.jsx', 'src/pages/PayrollDocuments.jsx',
   'src/pages/UserManagement.jsx', 'src/pages/Account.jsx', 'src/pages/Shifts.jsx'])
@@ -51,10 +52,29 @@ const TIME_FOCUS = "        onFocus={e => {\n          rest.onFocus?.(e)\n      
 const TIME_PARSE_NEW = "// Während des Tippens: nur eine VOLLSTÄNDIGE Uhrzeit gilt (Minuten zweistellig angegeben): „18:00“, „8:30“, „8.30“,\n// „0830“ – auch ganz ohne Trenner, weil die Ziffern-Tastatur auf dem Handy (inputMode numeric, iPhone) keinen „:“ hat.\n// Dreistellig nur, wenn die erste Ziffer 3–9 ist („915“ → 09:15, „830“ → 08:30): Daraus kann durch Weitertippen keine\n// andere gültige Uhrzeit mehr werden (Stunde 91/83 gibt es nicht). „123“, „183“, „18“, „8“ bleiben unvollständig –\n// der Nutzer tippt evtl. weiter („18“ → „1830“) –, so erreicht nie ein Zwischenstand wie „01:00“ die Formular-/\n// Validierungs-/ArbZG-Logik. Ungültiges (25:00, 12:60, 9:99) wird nie „korrigiert“.\nexport function parseCompleteTime24(text) {\n  const t = String(text ?? '').trim()\n  return /^\\d{1,2}[:.,hH]\\d{2}$/.test(t) || /^\\d{4}$/.test(t) || /^[3-9]\\d{2}$/.test(t) ? parseTime24(t) : null\n}"
 const TIME_PARSE_OLD = "// Während des Tippens: nur eine VOLLSTÄNDIGE Uhrzeit gilt (Minuten zweistellig angegeben): „18:00“, „8:30“, „8.30“,\n// „0830“. Kurzformen („18“, „8“, „830“) sind hier noch unvollständig – der Nutzer tippt evtl. weiter („18“ → „1830“) –\n// und werden erst beim Verlassen des Feldes über parseTime24 normalisiert. So erreicht nie ein Zwischenstand wie\n// „01:00“ (beim Tippen von „18“) die Formular-/Validierungs-/ArbZG-Logik.\nexport function parseCompleteTime24(text) {\n  const t = String(text ?? '').trim()\n  return /^\\d{1,2}[:.,hH]\\d{2}$/.test(t) || /^\\d{4}$/.test(t) ? parseTime24(t) : null\n}"
 
+// Lohndokumente-Pagination (05.10.2026, Pin für genau diesen Umbau freigegeben): Liste, Abfrage, Filter und das Neuladen
+// nach dem Löschen dürfen sich ändern (eigene Verhaltenstests: payrollDocumentsPaging). Byte-gleich zum Pin bleiben
+// weiterhin Kopfzeile, Upload (Funktion + Formular inkl. Upload-Jahre), Öffnen/Download (Signed URLs), Byte-Format und
+// der Lösch-Anfang (Bestätigung + Sperre) – jede Änderung dort bricht den Pin wie bisher.
+const PAYROLL_DOCS_FROZEN = [
+  ['  async function handleUpload() {', '\n  }\n'], ['  async function handleOpen(doc) {', '\n  }\n'],
+  ['  async function handleDownload(doc) {', '\n  }\n'], ['  async function handleDelete(doc) {', 'if (!deleteGuard.begin()) return\n'],
+  ['  function formatBytes(b) {', '\n  }\n'], ['      <div className="topbar">', '      <div className="content">'],
+  ['        {/* ── Admin: Upload ── */}', '        {/* ── Dokumente Liste'],
+]
+function payrollDocsFrozen(src) {
+  return PAYROLL_DOCS_FROZEN.map(([start, end]) => {
+    const i = src.indexOf(start), j = i < 0 ? -1 : src.indexOf(end, i)
+    if (i < 0 || j < 0 || src.indexOf(start, i + 1) >= 0) return `FEHLT/MEHRDEUTIG: ${start}`
+    return src.slice(i, j + end.length)
+  }).join('\n---\n')
+}
+
 export function pinView(file, src) {
   if (file === 'src/components/UI/TimeInput24.jsx') return src.replace(TIME_FOCUS, '')
   if (file === 'src/lib/time24.js') return src.replace(TIME_PARSE_NEW, TIME_PARSE_OLD)
   if (!A11Y_ONLY.has(file)) return src
+  if (file === 'src/pages/PayrollDocuments.jsx') src = payrollDocsFrozen(src)
   let s = src.replace(/ aria-label=\{(?:[^{}]|\{[^{}]*\})*\}/g, '').replace(/ aria-label="[^"]*"/g, '').replace(/ autoComplete="off"/g, '')
   if (file === 'src/pages/Shifts.jsx') s = s.replace(SWAP_NEW, SWAP_OLD).replace(SWAP_STATE, '').replace(/ disabled=\{swapBusyId === sw\.id\}/g, '')
   return s

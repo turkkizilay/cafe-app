@@ -63,3 +63,62 @@ test('Storage: Upload nur Admin; Mitarbeiter lesen nur den eigenen Ordner (Ordne
   assert.equal(await put(ADMIN, f1), null)
   assert.equal(await see(E1, f1), 1); assert.equal(await see(E2, f1), 0); assert.equal(await see(MANAGER, f1), 0)
 })
+
+// ── Pagination (05.10.2026): genau die Abfragen, die PostgREST für die Liste erzeugt (count + ORDER + LIMIT/OFFSET),
+// ausgeführt in der Rolle des jeweiligen Benutzers. RLS bleibt die einzige Grenze: Filter/Seiten können nichts Fremdes
+// sichtbar machen, die Gesamtzahl zählt nur Erlaubtes.
+const COLS = 'id, employee_id, year, month, file_name, file_path, file_size, notes, created_at'
+const ORDER = 'ORDER BY year DESC, month DESC, created_at DESC, id ASC'
+async function listPage(c, { emp, year, month } = {}, page = 1) {
+  const cond = [], params = []
+  if (emp) { params.push(emp); cond.push(`employee_id = $${params.length}`) }
+  if (year) { params.push(year); cond.push(`year = $${params.length}`) }
+  if (month) { params.push(month); cond.push(`month = $${params.length}`) }
+  const where = cond.length ? `WHERE ${cond.join(' AND ')}` : ''
+  const total = (await c.query(`SELECT count(*)::int n FROM payroll_documents ${where}`, params)).rows[0].n
+  const rows = (await c.query(`SELECT ${COLS} FROM payroll_documents ${where} ${ORDER} LIMIT 25 OFFSET ${(page - 1) * 25}`, params)).rows
+  return { total, rows }
+}
+
+test('Pagination unter RLS: Mitarbeiter blättert nur durch eigene, Admin durch alle; Seiten lückenlos und ohne Doppelte', async () => {
+  await db.sys.query(`INSERT INTO payroll_documents (employee_id, year, month, file_name, file_path, created_at)
+    SELECT $1::uuid, y, m, 'p.pdf', $1::text || '/' || y || '-' || m || '.pdf', make_timestamptz(y, m, 28, 8, 0, 0) FROM generate_series(2019, 2023) y, generate_series(1, 12) m`, [EMP(E1)])
+  await db.sys.query(`INSERT INTO payroll_documents (employee_id, year, month, file_name, file_path) SELECT $1, 2019, m, 'p.pdf', 'x' FROM generate_series(1, 7) m`, [EMP(E2)])
+  const all = (await db.sys.query(`SELECT id, employee_id FROM payroll_documents ${ORDER}`)).rows
+  const own1 = all.filter(r => r.employee_id === EMP(E1)), own2 = all.filter(r => r.employee_id === EMP(E2))
+  assert.ok(own1.length > 50 && own2.length > 0)
+
+  const e1 = await db.session(E1), seen = []
+  for (let p = 1; p <= Math.ceil(own1.length / 25); p++) {
+    const r = await listPage(e1, {}, p)
+    assert.equal(r.total, own1.length, 'Gesamtzahl = nur eigene')
+    assert.ok(r.rows.every(x => x.employee_id === EMP(E1)))
+    seen.push(...r.rows.map(x => x.id))
+  }
+  assert.deepEqual(seen, own1.map(r => r.id), 'eigene Liste vollständig, neueste zuerst, keine Doppelten')
+  const beyond = await listPage(e1, {}, Math.ceil(own1.length / 25) + 1)
+  assert.deepEqual(beyond.rows, [])
+
+  const adm = await db.session(ADMIN), first = await listPage(adm, {}, 1)
+  assert.equal(first.total, all.length); assert.deepEqual(first.rows.map(r => r.id), all.slice(0, 25).map(r => r.id))
+  const f2 = await listPage(adm, { emp: EMP(E2) }, 1)
+  assert.equal(f2.total, own2.length); assert.ok(f2.rows.every(x => x.employee_id === EMP(E2)))
+  const ym = await listPage(adm, { year: 2019, month: 3 }, 1)
+  assert.deepEqual(ym.rows.map(r => r.employee_id).sort(), [EMP(E1), EMP(E2)].sort())
+})
+
+test('RLS: fremde employee_id / Jahr / Monat als Filter liefert Mitarbeitern 0 Zeilen und 0 als Anzahl; Manager sieht nichts', async () => {
+  const e1 = await db.session(E1), e2 = await db.session(E2)
+  for (const f of [{ emp: EMP(E2) }, { emp: EMP(E2), year: 2019 }, { emp: EMP(E2), year: 2019, month: 3 }]) {
+    const r = await listPage(e1, f, 1)
+    assert.deepEqual([r.total, r.rows.length], [0, 0], JSON.stringify(f))
+  }
+  const r2 = await listPage(e2, { year: 2019, month: 3 }, 1)
+  assert.equal(r2.total, 1); assert.equal(r2.rows[0].employee_id, EMP(E2))
+  const m = await listPage(await db.session(MANAGER), {}, 1)
+  assert.deepEqual([m.total, m.rows.length], [0, 0])
+  // Mitarbeiter kann eigene Abrechnung nicht löschen (nur Admin)
+  const id = (await e1.query(`SELECT id FROM payroll_documents LIMIT 1`)).rows[0].id
+  assert.equal((await e1.query(`DELETE FROM payroll_documents WHERE id = $1`, [id])).rowCount, 0)
+  assert.equal((await one(db.sys, `SELECT count(*)::int n FROM payroll_documents WHERE id = $1`, [id])).n, 1)
+})

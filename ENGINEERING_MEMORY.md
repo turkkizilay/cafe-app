@@ -402,6 +402,15 @@ Headless-Browser-Tests: ist Chrome vorhanden, aber die Seite liefert kein Ergebn
 `tests/modalA11y.test.mjs`. Touch-Messungen nur mit `pointer: coarse`-Emulation (sonst falsche „zu klein“-Befunde).
 Byte-gepinnte Dateien (Lohn/DATEV/Zeit/Account-Reset) auch für reinen UI-Feinschliff nicht anfassen – vorher Freigabe.
 
+### Wachsende Listen: serverseitig blättern, nie „alles laden“ (Lohnabrechnungen)
+Die Supabase-API liefert höchstens „Max rows“ (Standard 1000) Zeilen je Antwort und schneidet still ab – ohne Fehler,
+Zählung über `data.length` ist dann falsch. Unbegrenzt wachsende Listen daher mit `range()` + `count: 'exact'`
+(zählt nach RLS) und deterministischer Sortierung bis zu einem eindeutigen Tie-Breaker (`id`) laden; Filter als `eq()`
+auf dem Server, Filterwechsel → Seite 1. Seite hinter dem Ende (PostgREST 416/PGRST103 oder 0 Zeilen, z. B. nach
+Löschen) → letzte gültige Seite. Nur die jüngste Antwort anwenden (Sequenz-Ref). Ladefehler sichtbar machen statt
+leerer Liste. Muster: `src/lib/payrollDocuments.js`, Tests `tests/payrollDocumentsPaging.test.mjs` (echte Seite im
+Browser gegen nachgebildeten PostgREST) + `tests/db/payroll_documents.test.mjs` (RLS mit LIMIT/OFFSET).
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.
