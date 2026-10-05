@@ -9,6 +9,12 @@ import { parseCompleteTime24, sanitizeTimeDraft } from '../../lib/time24'
 // zwischen Drücken und Loslassen der Maus – der Klick ginge verloren (im Browser nachgewiesen).
 // Zweites Argument von onChange: { incomplete } – true, wenn im Feld etwas steht, das keine vollständige Uhrzeit ist.
 // Formulare, in denen „leer“ eine Bedeutung hat (z. B. offene Schicht), müssen damit Speichern verhindern.
+// Eingabe am Ende (Tippen/Einfügen, Cursor danach am Schluss)? Ohne inputType (ältere Browser): Text wurde länger.
+function appendedAtEnd(e, prev) {
+  const el = e.target, type = e.nativeEvent?.inputType
+  return (type ? type.startsWith('insert') : el.value.length > prev.length) && el.selectionStart === el.value.length
+}
+
 export default function TimeInput24({ value, onChange, invalidText, ...rest }) {
   const [draft, setDraft] = useState(value || '')
   const [seenValue, setSeenValue] = useState(value || '')
@@ -33,16 +39,22 @@ export default function TimeInput24({ value, onChange, invalidText, ...rest }) {
   return (
     <>
       <input
-        type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} placeholder="HH:MM"
+        type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={6} placeholder="HH:MM"
         {...rest}
         value={draft}
         aria-invalid={invalid || undefined}
         style={invalid ? { borderColor: 'var(--danger)' } : undefined}
         onChange={e => {
-          const next = sanitizeTimeDraft(e.target.value)
-          setDraft(next)
+          // Eine getippte Ziffer über ein volles Feld hinaus („17:00“ + „5“) bleibt sichtbar und macht die Eingabe
+          // ungültig, statt still verschluckt zu werden (sonst hieße „15315“ plötzlich 15:31). Eingefügtes wie bisher ≤ 5.
+          const chars = e.target.value.replace(/[^0-9:.,]/g, '')
+          const next = e.nativeEvent?.inputType === 'insertText' && e.nativeEvent.data?.length === 1 && chars.length > 5 ? chars.slice(0, 6) : sanitizeTimeDraft(chars)
           const p = parseCompleteTime24(next)
           emit(p || '', next !== '' && !p)
+          // Sichtbar sofort HH:MM („1700“ → „17:00“, „815“ → „08:15“) – aber nur, wenn gerade am Ende getippt/eingefügt
+          // wurde und die Uhrzeit vollständig + eindeutig ist. Löschen (auch des „:“) und Bearbeiten in der Mitte bleiben
+          // unangetastet, sonst ließe sich der Doppelpunkt nie entfernen und der Cursor spränge.
+          setDraft(p && appendedAtEnd(e, draft) ? p : next)
         }}
         onBlur={() => {
           setTouched(true)

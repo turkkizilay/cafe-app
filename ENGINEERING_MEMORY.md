@@ -402,6 +402,14 @@ Headless-Browser-Tests: ist Chrome vorhanden, aber die Seite liefert kein Ergebn
 `tests/modalA11y.test.mjs`. Touch-Messungen nur mit `pointer: coarse`-Emulation (sonst falsche „zu klein“-Befunde).
 Byte-gepinnte Dateien (Lohn/DATEV/Zeit/Account-Reset) auch für reinen UI-Feinschliff nicht anfassen – vorher Freigabe.
 
+### Uhrzeit-Felder: eine Komponente, Anzeige nur beim Anfügen normalisieren
+Alle Uhrzeit-Eingaben laufen über `TimeInput24` (Freitext, `inputMode="numeric"`, kein `type="time"`): iPhone-Ziffern-
+Tastatur hat keinen „:“. Formularwert nur bei vollständiger, eindeutiger Uhrzeit (`parseCompleteTime24`), leer bleibt
+leer (offenes Arbeitsende = NULL, nie 00:00). Sichtbares HH:MM sofort, aber NUR beim Tippen/Einfügen am Ende
+(`inputType insert*` + Cursor am Schluss); Löschen und Bearbeiten in der Mitte nie umbauen (sonst lässt sich „:“ nicht
+löschen, Cursor springt). Volles Feld: getippte Zusatzziffer sichtbar + ungültig statt verschluckt (`maxLength` 6).
+Tests: `tests/timeInputMobile.test.mjs` (echte Tastaturereignisse, Touch + Desktop, Cursorposition).
+
 ### Wachsende Listen: serverseitig blättern, nie „alles laden“ (Lohnabrechnungen)
 Die Supabase-API liefert höchstens „Max rows“ (Standard 1000) Zeilen je Antwort und schneidet still ab – ohne Fehler,
 Zählung über `data.length` ist dann falsch. Unbegrenzt wachsende Listen daher mit `range()` + `count: 'exact'`

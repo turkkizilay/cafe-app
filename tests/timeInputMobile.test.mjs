@@ -54,7 +54,7 @@ async function openPage(file) {
   const caret = async (a, b = a) => { await ev(`(() => { const e = document.getElementById('t'); e.focus(); setTimeout(() => e.setSelectionRange(${a}, ${b}), 20) })()`); await sleep(80) }   // „zweites Antippen“ setzt Cursor/Auswahl
   const blur = async () => { await ev(`document.getElementById('other').focus()`); await sleep(50) }
   const state = () => ev(`(() => { const e = document.getElementById('t'); return { shown: e.value, form: window.__val, invalid: e.getAttribute('aria-invalid') === 'true', hint: document.body.innerText.includes('HINWEIS'), inputmode: e.inputMode, sel: [e.selectionStart, e.selectionEnd] } })()`)
-  return { key, type, paste, tap, reset, caret, blur, state, mode, close: () => ws.close() }
+  return { key, type, paste, tap, reset, caret, blur, state, mode, ev, close: () => ws.close() }
 }
 
 before(async () => {
@@ -104,9 +104,9 @@ for (const which of ['touch', 'desk']) {
     await p.reset('15:15'); await p.caret(3); await p.key('Backspace')
     let s = await p.state(); assert.deepEqual([s.shown, s.form, s.invalid], ['1515', '15:15', false])
     await p.blur(); assert.equal((await p.state()).shown, '15:15')
-    // … und danach normal weiter: letzte Ziffer ersetzen → 15:12 ohne „:“-Taste
+    // … und danach normal weiter: letzte Ziffer ersetzen → 15:12 ohne „:“-Taste; am Ende getippt → sofort sichtbar HH:MM
     await p.reset('15:15'); await p.caret(3); await p.key('Backspace'); await p.caret(4); await p.key('Backspace'); await p.type('2')
-    s = await p.state(); assert.deepEqual([s.shown, s.form], ['1512', '15:12'])
+    s = await p.state(); assert.deepEqual([s.shown, s.form], ['15:12', '15:12'])
     // einzelne Minuten-Ziffer löschen + neu
     await p.reset('15:15'); await p.caret(5); await p.key('Backspace'); await p.type('0')
     assert.equal((await p.state()).form, '15:10')
@@ -136,6 +136,91 @@ for (const which of ['touch', 'desk']) {
       await p.reset(''); await p.tap(); await p.type(junk); await p.blur()
       const s = await p.state(); assert.deepEqual([s.shown, s.form, s.invalid], ['', '', false], junk)
     }
+  })
+}
+
+// Sichtbare HH:MM-Normalisierung (05.10.2026): Auf dem iPhone blieb „1700“ stehen, solange das Feld fokussiert war
+// (Anzeige wurde nur beim Verlassen formatiert). Jetzt sofort beim Tippen/Einfügen am Ende – ohne Verlassen des Feldes.
+for (const which of ['touch', 'desk']) {
+  test(`${which}: sichtbar HH:MM schon während das Feld fokussiert ist; Cursor am Ende`, async t => {
+    if (SKIP) return t.skip(SKIP)
+    const p = await P(which)
+    const cases = { '1700': '17:00', '1730': '17:30', '0800': '08:00', '815': '08:15', '0000': '00:00', '2359': '23:59', '17:00': '17:00', '08:00': '08:00', '8:30': '08:30' }
+    for (const [typed, want] of Object.entries(cases)) {
+      await p.reset(''); await p.tap(); await p.type(typed)
+      const s = await p.state()   // KEIN blur
+      assert.deepEqual([s.shown, s.form, s.sel], [want, want, [5, 5]], typed)
+      assert.equal(await p.ev(`document.activeElement.id`), 't', `${typed}: Fokus bleibt (Tastatur bleibt offen)`)
+    }
+    // Zwischenstände werden nicht vorschnell umgebaut
+    for (const [typed, shown] of [['1', '1'], ['17', '17'], ['170', '170'], ['08', '08'], ['081', '081'], ['18', '18'], ['123', '123'], ['8', '8'], ['17:', '17:'], ['17:0', '17:0']]) {
+      await p.reset(''); await p.tap(); await p.type(typed)
+      const s = await p.state(); assert.deepEqual([s.shown, s.form], [shown, ''], typed)
+    }
+  })
+
+  test(`${which}: Ungültiges bleibt sichtbar wie getippt (nie umgedeutet); fünfte Ziffer wird nicht verschluckt`, async t => {
+    if (SKIP) return t.skip(SKIP)
+    const p = await P(which)
+    for (const bad of ['2400', '2500', '1260', '1299']) {
+      await p.reset(''); await p.tap(); await p.type(bad)
+      let s = await p.state(); assert.deepEqual([s.shown, s.form], [bad, ''], bad)
+      await p.blur(); s = await p.state(); assert.deepEqual([s.shown, s.form, s.invalid], [bad, '', true], bad)
+    }
+    await p.reset(''); await p.tap(); await p.type('abcd')
+    assert.deepEqual([(await p.state()).shown, (await p.state()).form], ['', ''])
+    await p.reset(''); await p.tap(); await p.type('15315')
+    let s = await p.state(); assert.deepEqual([s.shown, s.form], ['15:315', ''], 'Tippfehler bleibt sichtbar, Formular leer (Speichern gesperrt)')
+    await p.key('Backspace'); s = await p.state(); assert.deepEqual([s.shown, s.form], ['15:31', '15:31'], 'Rücktaste repariert')
+  })
+
+  test(`${which}: Bearbeiten bleibt frei – Doppelpunkt/Ziffer löschen wird nicht zurückformatiert, Cursor springt nicht`, async t => {
+    if (SKIP) return t.skip(SKIP)
+    const p = await P(which)
+    await p.reset('17:00'); await p.caret(3); await p.key('Backspace')
+    let s = await p.state(); assert.deepEqual([s.shown, s.form, s.sel], ['1700', '17:00', [2, 2]], 'Doppelpunkt gelöscht bleibt gelöscht')
+    await p.reset('17:00'); await p.caret(5); await p.key('Backspace')
+    s = await p.state(); assert.deepEqual([s.shown, s.form, s.sel], ['17:0', '', [4, 4]], 'Ziffer gelöscht: kein Auffüllen')
+    await p.type('5'); s = await p.state(); assert.deepEqual([s.shown, s.form], ['17:05', '17:05'])
+    // Löschen am Ende, das eine gültige Uhrzeit ergibt, wird nicht umgebaut (Löschen manipuliert nie die Anzeige)
+    await p.reset('8:300'); await p.caret(5); await p.key('Backspace')
+    s = await p.state(); assert.deepEqual([s.shown, s.form, s.sel], ['8:30', '08:30', [4, 4]])
+    // Cursor in der Mitte: Stunde ersetzen ohne Springen
+    await p.reset('17:00'); await p.caret(1, 2); await p.type('8')
+    s = await p.state(); assert.deepEqual([s.shown, s.form, s.sel], ['18:00', '18:00', [2, 2]], 'Cursor bleibt hinter der geänderten Ziffer')
+    await p.reset('1700'); await p.caret(1, 2); await p.type('8')
+    s = await p.state(); assert.deepEqual([s.shown, s.form, s.sel], ['1800', '18:00', [2, 2]], 'gültig, aber mitten im Text: nicht umbauen, Cursor bleibt')
+    await p.reset('1700'); await p.caret(2); await p.type('3')
+    s = await p.state(); assert.deepEqual([s.shown, s.form, s.sel], ['17300', '', [3, 3]], 'Einfügen in der Mitte wird nicht umgebaut')
+    // markieren + überschreiben, komplett leeren
+    await p.reset('17:00'); await p.caret(0, 5); await p.type('0815')
+    s = await p.state(); assert.deepEqual([s.shown, s.form], ['08:15', '08:15'])
+    await p.reset('17:00'); await p.caret(0, 5); await p.key('Backspace')
+    s = await p.state(); assert.deepEqual([s.shown, s.form], ['', ''])
+  })
+
+  test(`${which}: Einfügen HHMM / HH:MM / HH:MM:SS → sofort sichtbar HH:MM`, async t => {
+    if (SKIP) return t.skip(SKIP)
+    const p = await P(which)
+    for (const [txt, want] of [['1700', '17:00'], ['17:00', '17:00'], ['0800', '08:00'], ['17:00:00', '17:00'], ['815', '08:15']]) {
+      await p.reset(''); await p.caret(0); await p.paste(txt)
+      let s = await p.state(); assert.deepEqual([s.shown, s.form], [want, want], txt)
+      await p.reset('11:11'); await p.caret(0, 5); await p.paste(txt)
+      s = await p.state(); assert.deepEqual([s.shown, s.form], [want, want], `${txt} über bestehendem Wert`)
+    }
+    await p.reset(''); await p.caret(0); await p.paste('2400')
+    assert.deepEqual([(await p.state()).shown, (await p.state()).form], ['2400', ''])
+  })
+
+  test(`${which}: Arbeitsende leer bleibt leer – nie 00:00 oder eine andere Uhrzeit`, async t => {
+    if (SKIP) return t.skip(SKIP)
+    const p = await P(which)
+    await p.reset(''); await p.tap(); await p.blur()
+    let s = await p.state(); assert.deepEqual([s.shown, s.form, s.invalid], ['', '', false], 'leer betreten/verlassen')
+    await p.reset('16:00'); await p.caret(0, 5); await p.key('Backspace'); await p.blur()
+    s = await p.state(); assert.deepEqual([s.shown, s.form, s.invalid, await p.ev('window.__inc')], ['', '', false, false], 'vorbelegtes Ende geleert → leer, vollständig (offener Eintrag erlaubt)')
+    await p.reset('16:00'); await p.caret(5); for (let i = 0; i < 5; i++) await p.key('Backspace'); await p.blur()
+    s = await p.state(); assert.deepEqual([s.shown, s.form, await p.ev('window.__inc')], ['', '', false], 'Zeichen für Zeichen gelöscht → leer')
   })
 }
 

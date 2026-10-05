@@ -70,8 +70,15 @@ function payrollDocsFrozen(src) {
   }).join('\n---\n')
 }
 
+// Sichtbare HH:MM-Normalisierung (05.10.2026): exakt appendedAtEnd, der neue onChange-Block und maxLength 6 in
+// TimeInput24.jsx – wörtlich auf den vorherigen Stand zurückgeführt; jede andere Änderung bricht den Pin weiterhin.
+const TIME_VISUAL_FN = "// Eingabe am Ende (Tippen/Einfügen, Cursor danach am Schluss)? Ohne inputType (ältere Browser): Text wurde länger.\nfunction appendedAtEnd(e, prev) {\n  const el = e.target, type = e.nativeEvent?.inputType\n  return (type ? type.startsWith('insert') : el.value.length > prev.length) && el.selectionStart === el.value.length\n}\n\n"
+const TIME_VISUAL_NEW = "        onChange={e => {\n          // Eine getippte Ziffer über ein volles Feld hinaus („17:00“ + „5“) bleibt sichtbar und macht die Eingabe\n          // ungültig, statt still verschluckt zu werden (sonst hieße „15315“ plötzlich 15:31). Eingefügtes wie bisher ≤ 5.\n          const chars = e.target.value.replace(/[^0-9:.,]/g, '')\n          const next = e.nativeEvent?.inputType === 'insertText' && e.nativeEvent.data?.length === 1 && chars.length > 5 ? chars.slice(0, 6) : sanitizeTimeDraft(chars)\n          const p = parseCompleteTime24(next)\n          emit(p || '', next !== '' && !p)\n          // Sichtbar sofort HH:MM („1700“ → „17:00“, „815“ → „08:15“) – aber nur, wenn gerade am Ende getippt/eingefügt\n          // wurde und die Uhrzeit vollständig + eindeutig ist. Löschen (auch des „:“) und Bearbeiten in der Mitte bleiben\n          // unangetastet, sonst ließe sich der Doppelpunkt nie entfernen und der Cursor spränge.\n          setDraft(p && appendedAtEnd(e, draft) ? p : next)\n        }}\n"
+const TIME_VISUAL_OLD = "        onChange={e => {\n          const next = sanitizeTimeDraft(e.target.value)\n          setDraft(next)\n          const p = parseCompleteTime24(next)\n          emit(p || '', next !== '' && !p)\n        }}\n"
+
 export function pinView(file, src) {
-  if (file === 'src/components/UI/TimeInput24.jsx') return src.replace(TIME_FOCUS, '')
+  if (file === 'src/components/UI/TimeInput24.jsx') return src.replace(TIME_FOCUS, '').replace(TIME_VISUAL_FN, '').replace(TIME_VISUAL_NEW, TIME_VISUAL_OLD)
+    .replace('maxLength={6} placeholder="HH:MM"', 'maxLength={5} placeholder="HH:MM"')
   if (file === 'src/lib/time24.js') return src.replace(TIME_PARSE_NEW, TIME_PARSE_OLD)
   if (!A11Y_ONLY.has(file)) return src
   if (file === 'src/pages/PayrollDocuments.jsx') src = payrollDocsFrozen(src)
