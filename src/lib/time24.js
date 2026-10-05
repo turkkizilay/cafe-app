@@ -25,10 +25,12 @@ export function sanitizeTimeDraft(text) {
 }
 
 // Während des Tippens: nur eine VOLLSTÄNDIGE Uhrzeit gilt (Minuten zweistellig angegeben): „18:00“, „8:30“, „8.30“,
-// „0830“. Kurzformen („18“, „8“, „830“) sind hier noch unvollständig – der Nutzer tippt evtl. weiter („18“ → „1830“) –
-// und werden erst beim Verlassen des Feldes über parseTime24 normalisiert. So erreicht nie ein Zwischenstand wie
-// „01:00“ (beim Tippen von „18“) die Formular-/Validierungs-/ArbZG-Logik.
+// „0830“ – auch ganz ohne Trenner, weil die Ziffern-Tastatur auf dem Handy (inputMode numeric, iPhone) keinen „:“ hat.
+// Dreistellig nur, wenn die erste Ziffer 3–9 ist („915“ → 09:15, „830“ → 08:30): Daraus kann durch Weitertippen keine
+// andere gültige Uhrzeit mehr werden (Stunde 91/83 gibt es nicht). „123“, „183“, „18“, „8“ bleiben unvollständig –
+// der Nutzer tippt evtl. weiter („18“ → „1830“) –, so erreicht nie ein Zwischenstand wie „01:00“ die Formular-/
+// Validierungs-/ArbZG-Logik. Ungültiges (25:00, 12:60, 9:99) wird nie „korrigiert“.
 export function parseCompleteTime24(text) {
   const t = String(text ?? '').trim()
-  return /^\d{1,2}[:.,hH]\d{2}$/.test(t) || /^\d{4}$/.test(t) ? parseTime24(t) : null
+  return /^\d{1,2}[:.,hH]\d{2}$/.test(t) || /^\d{4}$/.test(t) || /^[3-9]\d{2}$/.test(t) ? parseTime24(t) : null
 }

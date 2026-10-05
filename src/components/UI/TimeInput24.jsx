@@ -49,6 +49,14 @@ export default function TimeInput24({ value, onChange, invalidText, ...rest }) {
           const p = parseCompleteTime24(draft)
           if (p && p !== draft) setDraft(p)   // nur Anzeige („8:30“ → „08:30“); der Wert ist schon beim Tippen übernommen
         }}
+        onFocus={e => {
+          rest.onFocus?.(e)
+          // Touch (Handy/PWA): beim Antippen den ganzen Wert markieren – neue Ziffern ersetzen ihn. Sonst landen Ziffern
+          // in einem vollen „15:15“ (maxLength) im Nichts, und nach Löschen des „:“ entsteht „15315“, das die
+          // Ziffern-Tastatur (ohne „:“) nicht mehr reparieren kann. Erneutes Antippen setzt den Cursor wie gewohnt.
+          const el = e.currentTarget
+          if (el.value && window.matchMedia?.('(pointer: coarse)').matches) setTimeout(() => { if (document.activeElement === el) el.select() }, 0)
+        }}
       />
       {/* Hinweis ohne Layout-Verschiebung (liegt im Abstand unter dem Feld) */}
       {invalid && invalidText && <div style={{ position: 'relative', height: 0 }}><div style={{ position: 'absolute', top: 2, left: 0, right: 0, fontSize: 11, lineHeight: 1.3, color: 'var(--danger)' }}>{invalidText}</div></div>}

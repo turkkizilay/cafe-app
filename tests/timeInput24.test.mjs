@@ -21,9 +21,11 @@ test('parseTime24: eindeutige 24-h-Normalisierung, nie 12-h-Deutung, Unvollstän
   assert.equal(sanitizeTimeDraft('18.305'), '18.30')
 })
 
-test('parseCompleteTime24: beim Tippen gilt nur eine vollständige Uhrzeit – Kurzformen bleiben Zwischenstand', () => {
-  for (const partial of ['1', '18', '18:', '18:0', '8', '830', '083', '183', '', '18:00 x']) assert.equal(parseCompleteTime24(partial), null, partial)
-  const ok = { '18:00': '18:00', '1800': '18:00', '8:30': '08:30', '8.30': '08:30', '0830': '08:30', '00:00': '00:00' }
+test('parseCompleteTime24: beim Tippen gilt nur eine vollständige Uhrzeit – mehrdeutige Kurzformen bleiben Zwischenstand, nie „korrigiert“', () => {
+  // „830“/„915“: Stunde einstellig 3–9 → kann durch Weitertippen keine andere gültige Uhrzeit mehr werden (Mobile-Fix 05.10.2026)
+  for (const partial of ['1', '18', '18:', '18:0', '8', '083', '183', '123', '', '18:00 x', '999', '960', '2400', '2500', '1260', '1299', 'abcd', '15315', '12:99', '24:00'])
+    assert.equal(parseCompleteTime24(partial), null, partial)
+  const ok = { '18:00': '18:00', '1800': '18:00', '8:30': '08:30', '8.30': '08:30', '0830': '08:30', '00:00': '00:00', '830': '08:30', '915': '09:15', '0915': '09:15', '1515': '15:15', '15:15': '15:15', '2359': '23:59', '0000': '00:00', '359': '03:59' }
   for (const [i, o] of Object.entries(ok)) assert.equal(parseCompleteTime24(i), o, i)
   assert.equal(parseCompleteTime24('25:00'), null)
 })
