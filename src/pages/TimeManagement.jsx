@@ -10,6 +10,7 @@ import { logActivity } from '../lib/activityLog'
 import { breakElapsedMinutes, BREAK_WARNING_MINUTES, formerStaffCutoff, endsNextDay, timeEntryState, berlinTime } from '../lib/workHours'
 import { correctionCheck, legacyBreakMinutes } from '../lib/breakRules'
 import { correctionFutureProblem } from '../lib/timeCorrectionRules'
+import { timeCorrectionSaveError } from '../lib/timeCorrectionErrors'
 import { notifyTimeDataChanged } from '../lib/laborCost'
 import { fetchBreaksForEntries, isBreakFeatureMissing } from '../lib/breaks'
 import Avatar from '../components/UI/Avatar'
@@ -177,7 +178,7 @@ export default function TimeManagement() {
       p_reason:        form.reason,
       p_expected:      orig ? timeEntryState(orig, breaksByEntry[orig.id] || []) : null,
     })
-    if (error || !data?.success) { toast.error(messageParts([appMessage("time.saveFailed"), errorMessage(error)]), 9000); setSaving(false); fetchEntries(); return }
+    if (error || !data?.success) { toast.error(timeCorrectionSaveError(error) || messageParts([appMessage("time.saveFailed"), errorMessage(error)]), 9000); setSaving(false); fetchEntries(); return }
     const entryId = data.id
     toast.success(appMessage("ui.29f204c81646", { p1: (modal === 'add' ? (appMessage("ui.d5601d043f1d")) : (appMessage("time.corrected"))) }))
 

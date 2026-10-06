@@ -4,6 +4,7 @@
 // • Shifts.jsx: zusätzlich exakt der Schichttausch-Fix (respondSwap/cancelSwap mit Sperre, „nur offen“, 0 Zeilen ≠ Erfolg)
 //   – der neue Block wird hier wörtlich auf den alten zurückgeführt; jede andere Änderung bricht den Pin weiterhin.
 // • PayrollDocuments.jsx: zusätzlich der Pagination-Umbau (05.10.2026), siehe PAYROLL_DOCS_FROZEN unten.
+// • TimeManagement.jsx: zusätzlich die Überschneidungs-Meldung (06.10.2026), siehe TM_OVERLAP_* unten.
 // • Payroll.jsx, Timesheet.jsx und alle übrigen Dateien: KEINE Ausnahme, weiter byte-gleich.
 const A11Y_ONLY = new Set(['src/pages/Vacation.jsx', 'src/pages/TimeManagement.jsx', 'src/pages/PayrollDocuments.jsx',
   'src/pages/UserManagement.jsx', 'src/pages/Account.jsx', 'src/pages/Shifts.jsx'])
@@ -76,7 +77,14 @@ const TIME_VISUAL_FN = "// Eingabe am Ende (Tippen/Einfügen, Cursor danach am S
 const TIME_VISUAL_NEW = "        onChange={e => {\n          // Eine getippte Ziffer über ein volles Feld hinaus („17:00“ + „5“) bleibt sichtbar und macht die Eingabe\n          // ungültig, statt still verschluckt zu werden (sonst hieße „15315“ plötzlich 15:31). Eingefügtes wie bisher ≤ 5.\n          const chars = e.target.value.replace(/[^0-9:.,]/g, '')\n          const next = e.nativeEvent?.inputType === 'insertText' && e.nativeEvent.data?.length === 1 && chars.length > 5 ? chars.slice(0, 6) : sanitizeTimeDraft(chars)\n          const p = parseCompleteTime24(next)\n          emit(p || '', next !== '' && !p)\n          // Sichtbar sofort HH:MM („1700“ → „17:00“, „815“ → „08:15“) – aber nur, wenn gerade am Ende getippt/eingefügt\n          // wurde und die Uhrzeit vollständig + eindeutig ist. Löschen (auch des „:“) und Bearbeiten in der Mitte bleiben\n          // unangetastet, sonst ließe sich der Doppelpunkt nie entfernen und der Cursor spränge.\n          setDraft(p && appendedAtEnd(e, draft) ? p : next)\n        }}\n"
 const TIME_VISUAL_OLD = "        onChange={e => {\n          const next = sanitizeTimeDraft(e.target.value)\n          setDraft(next)\n          const p = parseCompleteTime24(next)\n          emit(p || '', next !== '' && !p)\n        }}\n"
 
+// Zeitkorrektur-Überschneidung verständlich (06.10.2026): exakt der neue Import und der Fehler-Toast in
+// TimeManagement.jsx (bei HINT entry_overlap eigene Meldung, sonst unverändert „nicht gespeichert: <Servertext>“).
+const TM_OVERLAP_IMPORT = "import { timeCorrectionSaveError } from '../lib/timeCorrectionErrors'\n"
+const TM_OVERLAP_NEW = "toast.error(timeCorrectionSaveError(error) || messageParts([appMessage(\"time.saveFailed\"), errorMessage(error)]), 9000)"
+const TM_OVERLAP_OLD = "toast.error(messageParts([appMessage(\"time.saveFailed\"), errorMessage(error)]), 9000)"
+
 export function pinView(file, src) {
+  if (file === 'src/pages/TimeManagement.jsx') src = src.replace(TM_OVERLAP_IMPORT, '').replace(TM_OVERLAP_NEW, TM_OVERLAP_OLD)
   if (file === 'src/components/UI/TimeInput24.jsx') return src.replace(TIME_FOCUS, '').replace(TIME_VISUAL_FN, '').replace(TIME_VISUAL_NEW, TIME_VISUAL_OLD)
     .replace('maxLength={6} placeholder="HH:MM"', 'maxLength={5} placeholder="HH:MM"')
   if (file === 'src/lib/time24.js') return src.replace(TIME_PARSE_NEW, TIME_PARSE_OLD)

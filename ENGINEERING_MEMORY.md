@@ -410,6 +410,12 @@ leer (offenes Arbeitsende = NULL, nie 00:00). Sichtbares HH:MM sofort, aber NUR 
 löschen, Cursor springt). Volles Feld: getippte Zusatzziffer sichtbar + ungültig statt verschluckt (`maxLength` 6).
 Tests: `tests/timeInputMobile.test.mjs` (echte Tastaturereignisse, Touch + Desktop, Cursorposition).
 
+### Server-Ablehnungen im Browser: über HINT erkennen, Konflikt verständlich benennen
+Fachliche Ablehnungen aus RPCs tragen einen `HINT` (z. B. `entry_overlap`, `entry_future`, `payroll_locked`) – daran
+erkennen, nie am deutschen Text. Bei Überschneidungen nennt der Server nur den ersten Konflikt minutengenau; ein
+Sekunden-Fehlstempel wirkte als „09:03 – 09:03“ wie ein App-Fehler. Muster: `src/lib/timeCorrectionErrors.js`
+(eigene Meldung, Schutzregel bleibt allein auf dem Server). Tests binden die Erwartung an den Text der Migration.
+
 ### Wachsende Listen: serverseitig blättern, nie „alles laden“ (Lohnabrechnungen)
 Die Supabase-API liefert höchstens „Max rows“ (Standard 1000) Zeilen je Antwort und schneidet still ab – ohne Fehler,
 Zählung über `data.length` ist dann falsch. Unbegrenzt wachsende Listen daher mit `range()` + `count: 'exact'`
