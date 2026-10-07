@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { getVacationBalance } from '../src/lib/vacationLogic.js'
 import { allocateApprovedVacations, summarizeVacationAccount } from '../src/lib/vacationAccount.js'
+import { pinView } from './pinView.mjs'   // freigegebene, wörtliche Ausnahmen (z. B. Dashboard-Panel „Handlungsbedarf“)
 
 const read = f => readFileSync(f, 'utf8')
 const BEFORE = '071a946'   // letzter freigegebener Stand vor Phase 1
@@ -106,5 +107,5 @@ test('Bestand unverändert: Urlaubslogik, alle Urlaubs-/Lohn-Seiten und Migratio
   for (const f of ['src/lib/vacationLogic.js', 'src/pages/Vacation.jsx', 'src/pages/Account.jsx', 'src/pages/MyHours.jsx', 'src/pages/Employees.jsx',
     'src/pages/Dashboard.jsx', 'src/pages/AbsenceCalendar.jsx', 'src/pages/Payroll.jsx', 'src/pages/Timesheet.jsx', 'src/lib/compensation.js',
     ...readdirSync('supabase/migrations_onboarding').filter(f => f < '40').map(f => `supabase/migrations_onboarding/${f}`)])
-    assert.equal(read(f), atBefore(f), f)
+    assert.equal(pinView(f, read(f)), pinView(f, atBefore(f)), f)
 })

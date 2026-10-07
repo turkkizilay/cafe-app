@@ -1,4 +1,4 @@
-import { t as tr, getIntlLocale, sourceLabel, message as appMessage, formatParam } from '../i18n/runtime.js'
+import { t as tr, getIntlLocale, message as appMessage, formatParam } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useState, useEffect, useCallback } from 'react'
 import { groupSickLeavesIntoCases, getSickCaseWarnings } from '../lib/sickLeaveLogic'
@@ -7,7 +7,6 @@ import { supabase } from '../lib/supabase'
 import { formatTime, formatDate } from '../i18n/format.js'
 import Avatar from '../components/UI/Avatar'
 import { missingPersonalFields } from '../components/PersonalDataCard'
-import { BACKUP_REMIND_DAYS } from '../lib/backup'
 import AppSetupCard from '../components/AppSetupCard'
 import { useProfile } from '../context/ProfileContext'
 import { openBreak } from '../lib/workHours'
@@ -20,6 +19,7 @@ import LiveTimeControl from '../components/LiveTimeControl'
 import { liveStateOf, runLiveAction } from '../lib/liveTimeControl'
 import { notifyTimeDataChanged } from '../lib/laborCost'
 import { showToast } from '../components/UI/Toast'
+import AttentionPanel from '../components/AttentionPanel'
 
 // Stellvertretende Live-Buchung (Manager/Admin): Rückmeldungen je Aktion bzw. Fehlerart
 const LIVE_DONE_KEY = { clock_in: 'live.doneClockIn', break_start: 'live.doneBreakStart', break_end: 'live.doneBreakEnd', clock_out: 'live.doneClockOut' }
@@ -87,6 +87,8 @@ export default function Dashboard() {
   const [backupDays,  setBackupDays]  = useState(null) // Tage seit letztem Sicherungs-Download (nur Admin); -1 = noch nie
   const [soleAdmin,   setSoleAdmin]   = useState(false)
   const [retentionDue, setRetentionDue] = useState(0)
+  const [swapsAccepted, setSwapsAccepted] = useState(0)            // Handlungsbedarf: Tausch angenommen, Freigabe fehlt
+  const [onboardingSubmitted, setOnboardingSubmitted] = useState(0) // Handlungsbedarf: Registrierung eingereicht (nur Admin)
   const [hideAppSetup, setHideAppSetup] = useState(() => { try { return localStorage.getItem('cafe_hide_app_setup') === '1' } catch { return false } })
   const [hideAdminTip, setHideAdminTip] = useState(() => { try { return localStorage.getItem('cafe_hide_admin_tip') === '1' } catch { return false } })
   const [stats,       setStats]       = useState({ employees:0, pendingVac:0, pendingUsers:0, pendingSwaps:0 })
@@ -140,22 +142,25 @@ export default function Dashboard() {
           supabase.from('employees').select('*', { count:'exact', head:true }).eq('is_active', true),
           supabase.from('vacation_requests').select('*', { count:'exact', head:true }).eq('status', 'pending'),
           supabase.from('profiles').select('*', { count:'exact', head:true }).eq('status', 'pending'),
-          supabase.from('shift_swap_requests').select('*', { count:'exact', head:true }).in('status', ['open','accepted']),
+          supabase.from('shift_swap_requests').select('status').in('status', ['open','accepted']),   // gleiche Anfrage; Status für „Freigabe fehlt“
           supabase.from('shifts').select('*, employees!employee_id(first_name, last_name, avatar_color, avatar_url)').eq('date', todayISO).order('start_time'),
           supabase.from('employees').select('id, first_name, last_name, birth_date, avatar_color').eq('is_active', true).not('birth_date', 'is', null),
         ])
-        setStats({ employees: staff ? staff.filter(e => e.is_active).length : (empCount.count||0), pendingVac: vacPending.count||0, pendingUsers: usersPending.count||0, pendingSwaps: swapsPending.count||0 })
+        setStats({ employees: staff ? staff.filter(e => e.is_active).length : (empCount.count||0), pendingVac: vacPending.count||0, pendingUsers: usersPending.count||0, pendingSwaps: (swapsPending.data || []).length })
+        setSwapsAccepted((swapsPending.data || []).filter(s => s.status === 'accepted').length)
         setTodayShifts(fillEmbeddedEmployees(todayShiftRes.data || [], staff))
         if (isAdmin) {
           const { count: fCount } = await supabase.from('time_entries').select('id', { count:'exact', head:true })
             .like('notes', '%AUSSTEMPELN VERGESSEN%')
           setForgotten(fCount || 0)
           try {
-            const [{ data: bl }, { count: adminCount }, { data: ret }] = await Promise.all([
+            const [{ data: bl }, { count: adminCount }, { data: ret }, { count: obSubmitted }] = await Promise.all([
               supabase.rpc('backup_list'),
               supabase.from('profiles').select('id', { count:'exact', head:true }).eq('role', 'admin').eq('status', 'approved'),
               supabase.rpc('retention_overview'),
+              supabase.from('employee_onboarding').select('id', { count:'exact', head:true }).eq('status', 'submitted'),   // eingereicht, nicht Entwurf
             ])
+            setOnboardingSubmitted(obSubmitted || 0)
             if (ret?.success) {
               // Keep the received categories; labels are composed in the current language when rendered.
               const due = ret.total_due ? (ret.categories || []).filter(c => c.due > 0).map(({ key, due, title }) => ({ key, due, title })) : []
@@ -273,6 +278,12 @@ export default function Dashboard() {
       </div>
 
       <div className="content">
+        {/* ── Handlungsbedarf (Admin/Manager): ersetzt die bisherigen Einzelhinweise „Ausstempeln vergessen“, Sicherung, Löschfristen ── */}
+        {canManage && (
+          <AttentionPanel role={isAdmin ? 'admin' : 'manager'} loading={loading} onOpenLive={setLiveTarget}
+            data={{ liveClockIns, liveBreaks, forgottenCount: forgotten, pendingVacations: pendingReqs.vac, swapsAccepted, onboardingSubmitted, backupDays, retentionDue }} />
+        )}
+
         {/* ── Profil vervollständigen (Bestands-Mitarbeiter ohne vollständige Personaldaten) ── */}
         {!loading && myEmployee && missingPersonalFields(myEmployee).length > 0 && (
           <div style={{ background:'var(--warn-bg)', border:'1px solid #FDE68A', borderRadius:10, padding:'12px 14px', marginBottom:16, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
@@ -281,27 +292,6 @@ export default function Dashboard() {
               <span style={{ color:'var(--text-secondary)' }}>{tr("ui.3fb7e1b1e2a7")}</span>
             </div>
             <Link to="/konto" className="btn btn-primary btn-sm">{tr("ui.011b5e732b49")}</Link>
-          </div>
-        )}
-
-        {isAdmin && forgotten > 0 && (
-          <div className="alert alert-warn" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-            <span>⚠️ {tr("dashboard.forgotten", { count: forgotten })}</span>
-            <Link to="/zeitkorrekturen" style={{ color:'inherit', fontWeight:600 }}>{tr("ui.c041e3e9279c")}</Link>
-          </div>
-        )}
-
-        {isAdmin && backupDays !== null && (backupDays === -1 || backupDays >= BACKUP_REMIND_DAYS) && (
-          <div className="alert alert-warn" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-            <span>💾 {backupDays === -1 ? tr("ui.48fd6a9638f4") : tr("ui.15e9ef667d1b", { p1: (backupDays) })}{tr("ui.add2b4917aba")}</span>
-            <Link to="/einstellungen#datensicherung" style={{ color:'inherit', fontWeight:600 }}>{tr("ui.2ed6e97da000")}</Link>
-          </div>
-        )}
-
-        {isAdmin && !!retentionDue && (
-          <div className="alert alert-warn" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-            <span>{tr("ui.5ba2dba8d16d")}{retentionDue.map(c => `${c.due} ${c.key === 'verwaist' ? tr("ui.c664e3a24d8b") : sourceLabel(c.title)}`).join(', ')}{tr("ui.6043f353c565")}</span>
-            <Link to="/einstellungen#aufbewahrung" style={{ color:'inherit', fontWeight:600 }}>{tr("ui.880f63fa0a5b")}</Link>
           </div>
         )}
 
