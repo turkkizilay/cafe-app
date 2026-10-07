@@ -28,14 +28,16 @@ export default function PasswordInput({
       />
       <button
         type="button"
+        className="password-toggle"
         tabIndex={-1}
         onClick={() => setVisible(v => !v)}
         style={{
-          position: 'absolute', right: '10px', top: '50%',
-          transform: 'translateY(-50%)',
+          // Tippfläche über die volle Feldhöhe und 42 px breit (vorher ~29 × 25 px – auf dem Handy schwer zu treffen)
+          position: 'absolute', right: 0, top: 0, bottom: 0, width: '42px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'none', border: 'none', cursor: 'pointer',
           color: 'var(--text-muted)', fontSize: '17px',
-          padding: '4px', lineHeight: 1,
+          padding: 0, lineHeight: 1,
           userSelect: 'none',
         }}
         title={visible ? tr("ui.680d43e0eca7") : tr("ui.dccd381767f2")}

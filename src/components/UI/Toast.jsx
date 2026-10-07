@@ -61,7 +61,7 @@ export function ToastProvider({ children }) {
     <>
       {children}
       <div className="toast-container" style={{
-        position:'fixed', bottom:24, right:24, zIndex:9999,
+        position:'fixed', bottom:'calc(24px + env(safe-area-inset-bottom))', right:24, zIndex:9999,   // PWA: nicht unter dem iPhone-Home-Balken
         display:'flex', flexDirection:'column-reverse', gap:8,
         maxWidth:400, width:'calc(100% - 32px)',
         pointerEvents:'none',

@@ -1273,3 +1273,16 @@ html.dark .language-segment-indicator { background:var(--bg-hover); }
   .pager { padding: 12px; }
   .pager .btn { padding-left: 10px; padding-right: 10px; }
 }
+
+/* ── Touch-Geräte (iPhone/Android, auch PWA): Feinschliff 07.10.2026 ──
+   1) iOS Safari zoomt beim Antippen in jedes Eingabefeld mit Schrift < 16 px hinein und bleibt vergrößert
+      (Login, Zeitkorrektur, Urlaub …). 16 px verhindert das – ohne den Zoom der Seite zu sperren.
+   2) Häufig getippte Kleinflächen auf Fingergröße: Menü-Knopf (wurde im Flex-Layout schmaler als 44 px),
+      Menü schließen, Hell/Dunkel, Textlinks im Anmeldebereich („Passwort vergessen?“, „Zurück zur Anmeldung“). */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: 16px !important; }
+  .mobile-menu-btn { flex-shrink: 0; min-width: 44px; }
+  .sidebar-close { width: 44px; height: 44px; }
+  .dark-toggle { min-height: 44px; }
+  .login-card button:not(.btn):not(.password-toggle) { min-height: 44px; }   /* Auge: volle Feldhöhe (PasswordInput) */
+}
