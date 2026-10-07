@@ -19,7 +19,7 @@ export const MIGRATIONS = [
   '24_account_recovery.sql', '25_account_lifecycle_hardening.sql', '26_registration_reset.sql', '27_ops_integrity.sql',
   '28_onboarding_resumable.sql', '29_remote_clock.sql', '30_fixed_pay_hourly_optional.sql', '31_hessen_holidays.sql',
   '32_onboarding_emergency_optional.sql', '33_sick_cases.sql', '34_break_hardening.sql', '35_labor_cost_today.sql', '36_staff_live_action.sql', '37_time_correction_past_only.sql',
-  '38_admin_access_reset.sql', '39_activity_log_retention_job.sql',
+  '38_admin_access_reset.sql', '39_activity_log_retention_job.sql', '40_vacation_accounts_foundation.sql',
 ]
 // Migrationen, die Invite/Auth/Onboarding-Funktionen ersetzen: nach der Production-Vorlage (loadLifecycle) erneut
 // einspielen, sonst prüften Tests den Stand VOR der Migration. Diese Dateien sind wiederholt ausführbar geschrieben.

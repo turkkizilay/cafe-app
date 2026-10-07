@@ -416,6 +416,14 @@ erkennen, nie am deutschen Text. Bei Überschneidungen nennt der Server nur den 
 Sekunden-Fehlstempel wirkte als „09:03 – 09:03“ wie ein App-Fehler. Muster: `src/lib/timeCorrectionErrors.js`
 (eigene Meldung, Schutzregel bleibt allein auf dem Server). Tests binden die Erwartung an den Text der Migration.
 
+### Neue Tabellen: Default-Grants zurücknehmen; Historie per Trigger „nur anhängen“ (Migration 40)
+Supabase vergibt neue public-Tabellen per Default-Privileges ALLE Rechte an anon/authenticated/service_role – RLS
+allein reicht nicht als Absicherung gegen versehentliche Schreib-Policies: jede neue Tabelle mit `REVOKE ALL … FROM
+PUBLIC, anon, authenticated, service_role` anlegen und nur gezielt `GRANT SELECT` + Policy. Unveränderliche Historie
+(Buchungen, Zuordnungen) per BEFORE UPDATE/DELETE- und BEFORE TRUNCATE-Trigger sperren – Trigger gelten auch für
+Owner/Superuser, RLS nicht. Kein FK auf Daten mit Löschfrist (sonst blockiert oder löscht die Frist still); auf
+Personen ON DELETE RESTRICT (lauter Abbruch statt stillem Verlust). Muster/Tests: `tests/db/vacation_accounts_foundation.test.mjs`.
+
 ### Wachsende Listen: serverseitig blättern, nie „alles laden“ (Lohnabrechnungen)
 Die Supabase-API liefert höchstens „Max rows“ (Standard 1000) Zeilen je Antwort und schneidet still ab – ohne Fehler,
 Zählung über `data.length` ist dann falsch. Unbegrenzt wachsende Listen daher mit `range()` + `count: 'exact'`
