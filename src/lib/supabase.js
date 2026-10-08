@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { withRequestTimeout } from './requestTimeout'
 
 // ── Supabase Konfiguration ──────────────────────────────────
 // Supabase Konfiguration
@@ -37,7 +38,7 @@ export async function fetchWithSkewRetry(input, init) {
 export const supabase = createClient(
   SUPABASE_URL      || 'missing-url',
   SUPABASE_ANON_KEY || 'missing-key',
-  { global: { fetch: (...args) => fetchWithSkewRetry(...args) } }
+  { global: { fetch: withRequestTimeout((...args) => fetchWithSkewRetry(...args)) } }   // Daten-API mit garantiertem Ende (lib/requestTimeout.js)
 )
 
 // Beim Abmelden dieses Gerät von Push-Benachrichtigungen abmelden – sonst bekäme

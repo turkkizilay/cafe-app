@@ -64,11 +64,17 @@ test('Ausstempeln aus veralteter Ansicht (anderes Gerät hat schon ausgestempelt
   assert.match(extractFn('src/pages/ClockIn.jsx', 'clockOut'), /\.eq\('id', openEntry\.id\)\.is\('clock_out', null\)\.select\(/)
   for (const [label, res, kind] of [['bereits ausgestempelt', { data: null, error: null }, 'warn'], ['Erfolg', { data: { hours_worked: 7.5, notes: null }, error: null }, 'success'], ['Fehler', ERR, 'error']]) {
     const toast = spyToast(); const working = []; let fetched = 0
-    const fn = load('src/pages/ClockIn.jsx', 'clockOut', { ...common, working: false, openEntry: { id: 'e1', clock_in: new Date(Date.now() - 8 * 3600e3).toISOString(), break_minutes: 0 }, breaks: [], openBreak: () => null, setWorking: v => working.push(v), sumBreakMinutes: () => 0, calcWorkedHours: () => 8, gps: {}, supabase: fakeSupabase({ time_entries: res }), toast, fetchData: async () => { fetched++ }, breakLoad: 'ok', breaksOn: true, formatParam: () => '', tr: k => k })
+    const fn = load('src/pages/ClockIn.jsx', 'clockOut', { ...common, working: false, openEntry: { id: 'e1', clock_in: new Date(Date.now() - 8 * 3600e3).toISOString(), break_minutes: 0 }, breaks: [], openBreak: () => null, setWorking: v => working.push(v), sumBreakMinutes: () => 0, calcWorkedHours: () => 8, gps: {}, supabase: fakeSupabase({ time_entries: res }), toast, fetchData: async () => { fetched++ }, breakLoad: 'ok', breaksOn: true, formatParam: () => '', tr: k => k, attendance: 'ok' })
     await fn()
     assert.deepEqual(toast.calls.map(c => c[0]), [kind], label)
     assert.equal(working.at(-1), false, `${label}: Sperre frei`)
+    if (kind === 'error') assert.equal(fetched, 1, 'Fehler/keine Antwort: Serverstand neu laden (Resilience F2)')
   }
+  // Stempelstand unbekannt (Resilience F2): keine Anfrage, keine Meldung, keine Sperre
+  const sb = fakeSupabase({ time_entries: { data: null, error: null } }); const toast = spyToast(); const working = []
+  const fn = load('src/pages/ClockIn.jsx', 'clockOut', { ...common, working: false, openEntry: { id: 'e1', clock_in: new Date().toISOString(), break_minutes: 0 }, breaks: [], openBreak: () => null, setWorking: v => working.push(v), sumBreakMinutes: () => 0, calcWorkedHours: () => 8, gps: {}, supabase: sb, toast, fetchData: async () => {}, breakLoad: 'ok', breaksOn: true, formatParam: () => '', tr: k => k, attendance: 'error' })
+  await fn()
+  assert.deepEqual([toast.calls.length, working.length], [0, 0])
 })
 
 test('Urlaub entscheiden aus veralteter Ansicht: fremde Entscheidung wird nicht überschrieben', async () => {

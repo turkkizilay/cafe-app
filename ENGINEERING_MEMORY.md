@@ -433,6 +433,22 @@ Löschen) → letzte gültige Seite. Nur die jüngste Antwort anwenden (Sequenz-
 leerer Liste. Muster: `src/lib/payrollDocuments.js`, Tests `tests/payrollDocumentsPaging.test.mjs` (echte Seite im
 Browser gegen nachgebildeten PostgREST) + `tests/db/payroll_documents.test.mjs` (RLS mit LIMIT/OFFSET).
 
+### Resilience: Ladefehler ≠ leerer Zustand, Timeout ≠ fehlgeschlagen, Auto-Refresh schützt Eingaben (F1–F4)
+Ein fehlgeschlagener Request wird nie als gültiger leerer Zustand angezeigt: Profil bei vorübergehendem Fehler behalten
+(`src/lib/profileLoad.js`), Stempelstatus UNKNOWN statt „ausgestempelt“ (`src/lib/clockStatus.js`), je Ladung eine
+Sequenz-Ref – auch für Teil-Ladungen wie Pausen. Zentraler Timeout nur für `/rest/v1` (`src/lib/requestTimeout.js`,
+Lesen 25 s, Schreiben 45 s, als AbortError → postgrest-js wiederholt nicht); `/auth/v1`, Storage, Edge Functions bewusst
+ohne (abgebrochener Token-Refresh kann die Sitzung kosten). Schreib-Timeout = „möglicherweise gespeichert – prüfen“.
+Rückkehr in die App/online/Tageswechsel lösen den bestehenden Single-Flight-Refresh aus (`src/lib/resumeRefresh.js`).
+Lesson (Final Review): Ein AUTOMATISCHER Refresh darf ungespeicherte Inline-Eingaben nicht verwerfen – nach der Rückkehr
+aus einer anderen App ist das Feld auf dem Handy meist nicht mehr fokussiert, „Fokus = Eingabe“ reicht nicht. Daher sperrt
+`autoRefreshBlocked` zusätzlich bei jedem gefüllten Textfeld; ↻ (bewusste Handlung) bleibt bei `refreshBlocked`. (VERIFIED)
+Test-Falle: Der Supabase-Stub im Browser-Harness muss JEDEN Importpfad treffen (`../lib/supabase` UND `./supabase` aus
+`lib/breaks.js`) – sonst läuft eine Teilabfrage gegen den echten Client, scheitert still und verdeckt Fehler (so blieb die
+veraltete Pausen-Antwort zunächst unentdeckt). Gepinnte Dateien nur mit wörtlicher Rückführung in `tests/pinView.mjs`.
+Regression Protection: `tests/profileLoad`, `clockStatus` (echte Seite in Headless Chrome), `requestTimeout` (echte
+supabase-js), `resumeRefresh`.
+
 ## Project Anti-Patterns
 
 1. Berechtigung nur per UI (versteckter Button, Route) statt RLS/RPC.

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback, us
 import { message as appMessage } from '../i18n/runtime.js'
 import { showToast } from '../components/UI/Toast'
 import { createRefreshController } from '../lib/refreshController'
+import { createResumeTrigger } from '../lib/resumeRefresh'
 
 // Zentraler Daten-Refresh (kein Seiten-Reload): Jede Seite meldet ihre bestehende Ladefunktion an,
 // der Aktualisieren-Button ruft refreshData() auf (keine eigene Pull-Geste).
@@ -31,12 +32,21 @@ export function RefreshProvider({ children }) {
   const controller = useMemo(() => createRefreshController({
     getHandler: () => handlerRef.current,
     isBlocked: () => refreshBlocked(),
+    isAutoBlocked: () => autoRefreshBlocked(),
     isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
     setStatus,
     notify: kind => showToast(...NOTICE[kind]),
   }), [])
 
   const refreshData = useCallback(() => controller.refresh(), [controller])
+
+  // Rückkehr in die App / wieder online / Tageswechsel → derselbe zentrale Lauf (still, Schutzregeln wie oben).
+  // Genau eine Bindung je Provider; beim Abbau werden alle Listener und Timer entfernt (lib/resumeRefresh.js).
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return
+    const trigger = createResumeTrigger({ doc: document, win: window, onTrigger: () => controller.refresh({ auto: true }) })
+    return () => trigger.dispose()
+  }, [controller])
 
   const register = useCallback((fn) => {
     handlerRef.current = fn; setHasHandler(true)
@@ -60,4 +70,16 @@ export function useRefreshHandler(fn) {
     const stable = () => latest.current?.()
     return register(stable)
   }, [register])
+}
+
+// Automatischer Refresh (Rückkehr in die App, wieder online) zusätzlich NICHT, solange ein Textfeld Inhalt hat – auch
+// ohne Fokus: Seiten wie „Konto“ bearbeiten inline (ohne Dialog), und nach der Rückkehr aus einer anderen App ist das
+// Feld auf dem Handy meist nicht mehr fokussiert. Ein Neuladen würde ungespeicherte Eingaben verwerfen. Der ↻-Button
+// (bewusste Handlung) bleibt unverändert bei refreshBlocked.
+const TEXT_FIELDS = 'textarea, input:not([type]), input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="password"], input[type="url"], input[type="search"]'
+export function autoRefreshBlocked(doc = typeof document !== 'undefined' ? document : null) {
+  if (refreshBlocked(doc)) return true
+  if (!doc?.querySelectorAll) return false
+  for (const el of doc.querySelectorAll(TEXT_FIELDS)) if (!el.disabled && !el.readOnly && String(el.value ?? '').trim() !== '') return true
+  return false
 }

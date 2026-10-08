@@ -8,7 +8,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { ProfileContext } from './context/ProfileContext'
 import { DarkModeProvider } from './context/DarkModeContext'
-import { ToastProvider } from './components/UI/Toast'
+import { ToastProvider, showToast } from './components/UI/Toast'
+import { profileLoadOutcome, isTransientFailure } from './lib/profileLoad'
 import Login from './components/Auth/Login'
 import Sidebar from './components/Layout/Sidebar'
 import Dashboard from './pages/Dashboard'
@@ -230,7 +231,7 @@ export default function App() {
       if (access.revoked) { await supabase.auth.signOut({ scope: 'local' }); setLoading(false); return }
       setMustChangePw(access.mustChange)
       if (access.mustChange) { setProfile(null); loadedUidRef.current = null; setLoading(false); return }
-      const { data, error } = await supabase
+      const { data, error, status } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', uid)
@@ -238,6 +239,11 @@ export default function App() {
 
       if (error) {
         console.error('Profile fetch error:', error)
+        // Profil schon geladen (z. B. Rückkehr in die App bei noch fehlendem Netz): bestätigten Stand behalten, nur Hinweis
+        if (profileLoadOutcome({ failed: true, transient: isTransientFailure(status), uid, loadedUid: loadedUidRef.current }) === 'keep') {
+          showToast(appMessage('app.profileRefreshFailed'), 'warn', 6000)
+          lastFetchRef.current.at = 0; setLoading(false); return
+        }
         setFetchErr(/JWT|token/i.test(error.message || '') ? (appMessage("ui.4e68ca04d0c5")) : (messageParts([appMessage("ui.85443be5173c"), errorMessage(error)])))
         setProfile(null)
         setLoading(false)
@@ -256,7 +262,7 @@ export default function App() {
       if (data?.status === 'approved' && !pushRefreshedRef.current) { pushRefreshedRef.current = true; refreshPushSubscription() }
 
       if (data?.role === 'admin' || data?.role === 'manager') {
-        const [{ data: pend }, { count: vCount }, { data: onb }] = await Promise.all([
+        const [{ data: pend, error: pErr }, { count: vCount, error: vErr }, { data: onb, error: oErr }] = await Promise.all([
           supabase.from('profiles').select('id').eq('status','pending'),
           supabase.from('vacation_requests').select('*', { count:'exact', head:true }).eq('status','pending'),
           supabase.from('employee_onboarding').select('profile_id, status'),
@@ -267,13 +273,18 @@ export default function App() {
         const pCount = (onb || []).filter(o => o.status === 'submitted').length
                      + (pend || []).filter(p => !onbIds.has(p.id)).length
         // sick_leave hat keine status-Spalte — Krankmeldungen separat zählen
-        const { count: sCount } = await supabase
+        const { count: sCount, error: sErr } = await supabase
           .from('sick_leave').select('*', { count:'exact', head:true }).is('end_date', null)
-        setPending(data.role === 'admin' ? (pCount || 0) : 0)   // Freischalten kann nur der Admin
-        setVacPending(vCount || 0)
-        setSickPending(sCount || 0)
+        // Ladefehler ist keine „0“: bisherige Zähler bleiben stehen
+        if (!pErr && !oErr) setPending(data.role === 'admin' ? (pCount || 0) : 0)   // Freischalten kann nur der Admin
+        if (!vErr) setVacPending(vCount || 0)
+        if (!sErr) setSickPending(sCount || 0)
       }
     } catch (err) {
+      if (profileLoadOutcome({ failed: true, transient: true, uid, loadedUid: loadedUidRef.current }) === 'keep') {
+        showToast(appMessage('app.profileRefreshFailed'), 'warn', 6000)
+        lastFetchRef.current.at = 0; setLoading(false); return
+      }
       setFetchErr(messageParts([appMessage("ui.720fa1a222ad"), errorMessage(err)]))
       setProfile(null)
     }

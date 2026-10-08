@@ -19,21 +19,27 @@ export function createSingleFlight(run) {
 
 // Zentrale Refresh-Steuerung (von RefreshProvider genutzt): genau ein Lauf, Eingaben/Offline geschützt,
 // Status wird immer zurückgesetzt, Fehler werden gemeldet – nie ein Seiten-Reload als Rückfall.
-export function createRefreshController({ getHandler, isBlocked = () => false, isOffline = () => false, setStatus = () => {}, notify = () => {} }) {
+// { auto: true } = automatischer Auslöser (Rückkehr in die App, wieder online – lib/resumeRefresh.js): gleicher Lauf,
+// gleiche Schutzregeln, aber ohne Hinweis-Toasts (die Seiten zeigen Ladefehler selbst); ein ↻-Klick während eines
+// automatischen Laufs bekommt dessen Fehler wieder gemeldet. Automatisch gilt die strengere Sperre isAutoBlocked
+// (ungespeicherte Eingaben auch ohne Fokus, siehe RefreshContext.autoRefreshBlocked).
+export function createRefreshController({ getHandler, isBlocked = () => false, isAutoBlocked = isBlocked, isOffline = () => false, setStatus = () => {}, notify = () => {} }) {
+  let quiet = false
   const flight = createSingleFlight(async () => {
     const handler = getHandler()
     if (!handler) return
     setStatus('refreshing')
     try { await handler() }
-    catch { notify('failed') }
+    catch { if (!quiet) notify('failed') }
     finally { setStatus('idle') }
   })
   return {
-    refresh() {
+    refresh({ auto = false } = {}) {
       if (!getHandler()) return Promise.resolve('none')
-      if (flight.running) return flight.run()                 // zweiter Auslöser → derselbe Lauf
-      if (isOffline()) { notify('offline'); return Promise.resolve('offline') }   // alte Daten bleiben stehen
-      if (isBlocked()) { notify('blocked'); return Promise.resolve('blocked') }   // Dialog/Eingabe schützen
+      if (flight.running) { if (!auto) quiet = false; return flight.run() }   // zweiter Auslöser → derselbe Lauf
+      if (isOffline()) { if (!auto) notify('offline'); return Promise.resolve('offline') }   // alte Daten bleiben stehen
+      if (auto ? isAutoBlocked() : isBlocked()) { if (!auto) notify('blocked'); return Promise.resolve('blocked') }   // Dialog/Eingabe schützen
+      quiet = auto
       return flight.run()
     },
     get running() { return flight.running },

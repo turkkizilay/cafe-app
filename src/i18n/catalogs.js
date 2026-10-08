@@ -2404,6 +2404,13 @@ export const de = {
   "sickCase.err.kind": "Unbekanntes eAU-Merkmal.",
   "sickCase.err.worked_gap": "Zwischen diesen Krankmeldungen wurde gearbeitet – das sind getrennte Fälle.",
   "sickCase.err.admin_only": "Nur Admins können Krankheitsfälle zuordnen.",
+  "app.profileRefreshFailed": "Verbindung unterbrochen – die Anzeige konnte nicht aktualisiert werden. Ihre Eingaben bleiben erhalten.",
+  "clock.statusUnknown": "Stempelstatus konnte nicht geladen werden.",
+  "clock.statusUnknownHint": "Ohne bestätigten Stand wird nichts angeboten – maßgeblich ist der Server. Bitte Verbindung prüfen und erneut laden.",
+  "clock.statusLastKnown": "Zuletzt bestätigt: eingestempelt seit {time} (nicht aktuell).",
+  "clock.statusRetry": "Erneut laden",
+  "error.timeoutRead": "⏱ Zeitüberschreitung beim Laden – bitte erneut versuchen.",
+  "error.timeoutWrite": "⏱ Keine Antwort vom Server. Die Aktion wurde möglicherweise trotzdem gespeichert – bitte aktualisieren und den Stand prüfen, bevor Sie es erneut versuchen.",
 }
 
 export const en = {
@@ -4811,4 +4818,11 @@ export const en = {
   "sickCase.err.kind": "Unknown eAU marker.",
   "sickCase.err.worked_gap": "Work was recorded between these reports – these are separate cases.",
   "sickCase.err.admin_only": "Only admins can assign sickness cases.",
+  "app.profileRefreshFailed": "Connection interrupted – the view could not be updated. Your input is kept.",
+  "clock.statusUnknown": "Clock status could not be loaded.",
+  "clock.statusUnknownHint": "Without a confirmed status no action is offered – the server is authoritative. Please check the connection and reload.",
+  "clock.statusLastKnown": "Last confirmed: clocked in since {time} (not current).",
+  "clock.statusRetry": "Reload",
+  "error.timeoutRead": "⏱ Loading timed out – please try again.",
+  "error.timeoutWrite": "⏱ No response from the server. The action may have been saved anyway – please refresh and check the status before trying again.",
 }

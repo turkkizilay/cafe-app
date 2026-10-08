@@ -9,6 +9,7 @@ import { fetchBreaks, startBreak, endBreak, isBreakFeatureMissing } from '../lib
 import { notifyTimeDataChanged } from '../lib/laborCost'
 import { remoteClockState, remoteErrorKind, clockInRemote, clockOutRemote } from '../lib/remoteClock'
 import { createClockRevalidator, bindClockRevalidationEvents, locationSatisfied, withTimeout } from '../lib/clockRevalidation'
+import { attendanceLoadState, deriveClockStatus } from '../lib/clockStatus'
 import { useProfile } from '../context/ProfileContext'
 import { useToast } from '../components/UI/Toast'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
@@ -32,6 +33,10 @@ export default function ClockIn({ session }) {
   const [breakLoad, setBreakLoad] = useState('ok') // 'loading' | 'ok' | 'error' – unbekannt ist nie „keine Pause“
   const [remoteAsk, setRemoteAsk] = useState(null) // 'in' | 'out' – Bestätigungsdialog „außerhalb des Cafés“
   const remoteBusy = useRef(false)                 // synchroner Schutz gegen Doppeltipp (State ist asynchron)
+  // Stempelstand: 'loading' | 'ok' | 'error' – ein Ladefehler ist nie „ausgestempelt“ (lib/clockStatus.js)
+  const [attendance, setAttendance] = useState('loading')
+  const loadSeq = useRef(0)                         // nur die zuletzt angeforderte Ladung darf die Anzeige setzen
+  const breakSeq = useRef(0)                        // dasselbe für den Pausenstand (eigene Ladung, auch „Erneut laden“)
   // Live-Nachprüfung der Standortvoraussetzungen (WLAN/GPS), solange die Seite offen ist – siehe lib/clockRevalidation
   const cafeRef = useRef(null), gpsRef = useRef(gps), netRef = useRef(net), revalidator = useRef(null)
   gpsRef.current = gps; netRef.current = net
@@ -58,7 +63,7 @@ export default function ClockIn({ session }) {
     return () => { unbind(); rv.dispose(); revalidator.current = null }
   }, [])
 
-  useEffect(() => { fetchData() }, [profile?.employee_id])
+  useEffect(() => { fetchData(); return () => { loadSeq.current++ } }, [profile?.employee_id])   // Verlassen: späte Antworten verwerfen
   useRefreshHandler(() => fetchData())   // Aktualisieren-Button
 
   // Café-WLAN: der Server vergleicht die Client-IP mit den Café-Netzen. Offline/keine Antwort ist nie „erfüllt“.
@@ -90,15 +95,17 @@ export default function ClockIn({ session }) {
 
   // Pausen der offenen Schicht laden – auch als „Erneut laden“ nach einem Fehler
   async function loadBreaks(entryId) {
+    const my = ++breakSeq.current
     setBreakLoad('loading')
     try {
       const { breaks: rows, error } = await fetchBreaks(entryId)
+      if (my !== breakSeq.current) return   // veraltete Antwort: neuerer Pausenstand bleibt
       if (isBreakFeatureMissing(error)) { setBreaksOn(false); setBreaks([]); setBreakLoad('ok'); return }
       setBreaksOn(true)
       if (error) { setBreaks([]); setBreakLoad('error'); return }
       setBreaks(rows); setBreakLoad('ok')
     } catch {
-      setBreaks([]); setBreakLoad('error')
+      setBreaks([]); setBreakLoad('error')   // auch veraltet: höchstens „unbekannt“, nie „keine Pause“
     }
   }
 
@@ -108,26 +115,35 @@ export default function ClockIn({ session }) {
   }
 
   async function fetchData() {
-    setLoading(true)
+    // Vollbild „Lädt…“ nur bis zum ersten Stand; danach im Hintergrund (Seite und Dialoge bleiben stehen)
+    const my = ++loadSeq.current
     const today = localDateStr()
-    const { data: cafeData } = await supabase.from('cafe_settings').select('*').eq('id', 1).maybeSingle()
-    setCafe(cafeData)
+    const { data: cafeData, error: cafeErr } = await supabase.from('cafe_settings').select('*').eq('id', 1).maybeSingle()
+    if (my !== loadSeq.current) return
+    if (!cafeErr) { setCafe(cafeData); cafeRef.current = cafeData || null }   // Ladefehler: letzte bekannte Einstellungen behalten
 
     const empId = profile?.employee_id
     if (empId) {
-      const [{ data: empData }, { data: todayEntries }, { data: openRows }] = await Promise.all([
+      const [{ data: empData, error: empErr }, { data: todayEntries, error: todayErr }, { data: openRows, error: openErr }] = await Promise.all([
         supabase.from('employees').select('*').eq('id', empId).maybeSingle(),
         supabase.from('time_entries').select('*').eq('employee_id', empId).eq('date', today).order('clock_in'),
         // Offener Eintrag kann auch von gestern sein (Nachtschicht / vergessen auszuclocken)
         supabase.from('time_entries').select('*').eq('employee_id', empId).is('clock_out', null).order('clock_in', { ascending: false }).limit(1),
       ])
+      if (my !== loadSeq.current) return
+      // Offener Eintrag oder Mitarbeiter nicht ladbar → UNBEKANNT: letzten bestätigten Stand behalten, keine Aktion anbieten
+      if (attendanceLoadState({ employeeError: empErr, openEntryError: openErr }) === 'error') {
+        setAttendance('error'); setLoading(false); return
+      }
       setEmp(empData || null)
       const openEntry = openRows?.[0] || null
-      const list = todayEntries || []
+      const list = todayErr ? entries.filter(e => e.date === today) : (todayEntries || [])   // Tagesliste nicht ladbar: bisherige behalten
       setEntries(openEntry && !list.some(e => e.id === openEntry.id) ? [openEntry, ...list] : list)
       setOpen(openEntry)
+      setAttendance('ok')
       if (openEntry) await loadBreaks(openEntry.id)
-      else { setBreaks([]); setBreakLoad('ok') }
+      else { breakSeq.current++; setBreaks([]); setBreakLoad('ok') }   // keine offene Schicht: ältere Pausen-Antworten verwerfen
+      if (my !== loadSeq.current) return
 
       // 11 Std. Ruhezeit zwischen zwei Arbeitstagen (§ 5 ArbZG) — Unterbrechungen am selben Tag zählen nicht
       setRestWarn(null)
@@ -143,15 +159,14 @@ export default function ClockIn({ session }) {
           if (hoursSince < 11) setRestWarn(Math.round(hoursSince * 10) / 10)
         }
       }
-    }
+    } else setAttendance('ok')
 
-    cafeRef.current = cafeData || null
     revalidator.current?.trigger('initial')   // WLAN + GPS (auch nach „Aktualisieren“)
     setLoading(false)
   }
 
   async function clockIn() {
-    if (working) return
+    if (working || attendance !== 'ok') return
     if (openEntry) { toast.warn(appMessage("ui.55993cbfd15e")); return }
     if (!employee) return
     if (!employee.is_active) {
@@ -185,7 +200,7 @@ export default function ClockIn({ session }) {
   }
 
   async function onStartBreak() {
-    if (working || !openEntry) return
+    if (working || !openEntry || attendance !== 'ok') return
     setWorking(true)
     const { error } = await startBreak()
     if (error) { toast.error(breakError(error)); await fetchData(); setWorking(false); return }
@@ -196,7 +211,7 @@ export default function ClockIn({ session }) {
   }
 
   async function onEndBreak() {
-    if (working) return
+    if (working || attendance !== 'ok') return
     setWorking(true)
     const { data, error } = await endBreak()
     if (error) { toast.error(breakError(error)); await fetchData(); setWorking(false); return }
@@ -208,7 +223,7 @@ export default function ClockIn({ session }) {
   }
 
   async function clockOut() {
-    if (working) return
+    if (working || attendance !== 'ok') return
     if (!openEntry) { toast.warn(appMessage("ui.8a3492aa4c28")); return }
     if (openBreak(breaks) && !window.confirm(tr("clock.confirmClockOutOnBreak"))) return
     setWorking(true)
@@ -222,7 +237,7 @@ export default function ClockIn({ session }) {
       gps_lat_out: gps.lat ?? null, gps_lng_out: gps.lng ?? null,
       break_minutes: breakMin, hours_worked: parseFloat(netH.toFixed(2)),
     }).eq('id', openEntry.id).is('clock_out', null).select('hours_worked, notes').maybeSingle()
-    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); setWorking(false); return }
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.d31430ba7ba3"))); await fetchData(); setWorking(false); return }
     // Schon ausgestempelt (z. B. auf einem anderen Gerät): nichts überschreiben, keine Erfolgsmeldung
     if (!saved) { toast.warn(appMessage("ui.8a3492aa4c28")); await fetchData(); setWorking(false); return }
     // Server markiert Schichten > 12 Std. als „Ausstempeln vergessen“ (werden erst nach Korrektur bezahlt)
@@ -313,6 +328,7 @@ export default function ClockIn({ session }) {
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
   const elapsedMin = openEntry ? Math.max(0, Math.floor((tick - new Date(openEntry.clock_in)) / 60000)) : 0
   const breakUi      = breakUiState({ featureOn: breaksOn, loadState: breakLoad, breaks })
+  const clockStatus  = deriveClockStatus({ load: attendance, openEntry, breakUi })   // UNKNOWN ist nie OFF_CLOCK
   const runningBreak = breakUi === 'running' ? openBreak(breaks) : null
   const breakMinNow  = sumBreakMinutes(breaks, tick)
   const netHNow      = openEntry ? netWorkedHours(openEntry.clock_in, null, breaks, tick) : 0
@@ -378,7 +394,16 @@ export default function ClockIn({ session }) {
               </div>
             )}
 
-            {employee && !openEntry && (
+            {clockStatus === 'UNKNOWN' && (
+              <div className="break-panel" role="alert" data-testid="clock-status-unknown">
+                <div className="break-panel-warn" style={{ marginTop:0 }}>{tr("clock.statusUnknown")}</div>
+                {openEntry && <div style={{ fontSize:13, marginTop:6 }}>{tr("clock.statusLastKnown", { time: formatTime(openEntry.clock_in) })}</div>}
+                <div style={{ fontSize:12.5, marginTop:6, color:'var(--text-secondary)' }}>{tr("clock.statusUnknownHint")}</div>
+                <button type="button" className="btn btn-sm" style={{ marginTop:8 }} onClick={() => fetchData()} disabled={working}>{tr("clock.statusRetry")}</button>
+              </div>
+            )}
+
+            {employee && clockStatus === 'OFF_CLOCK' && (
               remote === 'outside' ? (
                 <button className="clock-btn btn-clock-remote" onClick={() => setRemoteAsk('in')} disabled={working || offline}>
                   {working ? '…' : tr("clock.remote.button")}
@@ -395,7 +420,7 @@ export default function ClockIn({ session }) {
               )
             )}
 
-            {employee && openEntry && (
+            {employee && openEntry && (clockStatus === 'WORKING' || clockStatus === 'ON_BREAK') && (
               <div>
                 <div style={{ marginBottom:12, fontSize:13.5, color:'var(--text-secondary)' }}>{tr("ui.0f953d7be19e")}{formatTime(openEntry.clock_in)}{tr("ui.82b45aa08404")}{' '}
                   <strong style={{ color:'var(--text-primary)' }}>
@@ -449,11 +474,11 @@ export default function ClockIn({ session }) {
           </div>
         </div>
 
-        {openEntry && elapsedMin > 0 && !runningBreak && (
+        {clockStatus === 'WORKING' && elapsedMin > 0 && !runningBreak && (
         <div style={{ textAlign:'center', padding:'10px', marginBottom:8, background:'var(--accent-light)', borderRadius:10, fontSize:13, color:'var(--accent)', fontWeight:600 }}>{tr("ui.5ebc04ce3734")}{elapsedMin >= 60 ? tr("ui.bab653ba27e2", { p1: (Math.floor(elapsedMin/60)), p2: (elapsedMin%60) }) : tr("count.minutes", { count: elapsedMin })}
         </div>
       )}
-      {!openEntry && restWarn !== null && (
+      {clockStatus === 'OFF_CLOCK' && restWarn !== null && (
         <div className="alert alert-warn" style={{ fontSize:13, marginBottom:12 }}>{tr("ui.c2c19df3a031")}{restWarn.toLocaleString(getIntlLocale())}{tr("ui.1c9f634a2384")}</div>
       )}
       <div className="card">

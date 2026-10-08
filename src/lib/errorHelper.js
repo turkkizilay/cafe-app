@@ -1,10 +1,15 @@
 import { t as tr, localizeMessage, message as appMessage, errorMessage, messageParts } from '../i18n/runtime.js'
+import { timeoutKind } from './requestTimeout.js'
 /**
  * Café Buur — Supabase Fehlermeldungen auf Deutsch
  * Gibt klare, handlungsorientierte Fehlermeldungen zurück
  */
 export function translateSupabaseError(error, context = '') {
   if (!error) return appMessage("ui.617580f0f7ef")
+
+  // ── Zeitüberschreitung (lib/requestTimeout.js) — Schreiben: Ergebnis UNBEKANNT, nie „fehlgeschlagen“ ──
+  const timedOut = timeoutKind(error)
+  if (timedOut) return appMessage(timedOut === 'write' ? 'error.timeoutWrite' : 'error.timeoutRead')
   
   const msg  = (error.message || '').toLowerCase()
   const code = error.code || ''
