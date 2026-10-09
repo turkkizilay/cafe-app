@@ -1,6 +1,6 @@
 import { t as tr, getIntlLocale, message as appMessage, formatParam } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { groupSickLeavesIntoCases, getSickCaseWarnings } from '../lib/sickLeaveLogic'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -69,6 +69,15 @@ function LiveClock() {
   )
 }
 
+// Ladezustand je Datengruppe (Resilience Batch 2d): 'loading' (noch nie geladen) | 'ok' | 'stale' (Aktualisierung gescheitert,
+// letzter Stand wird gezeigt) | 'failed' (noch nie erfolgreich geladen → „nicht geladen“ statt Nullen/Leerzuständen)
+function nextLoadState(prev, failed, canManage) {
+  const next = { ...prev }
+  for (const g of canManage ? ['mine', 'live', 'team', 'attention'] : ['mine'])
+    next[g] = failed[g] ? (prev[g] === 'ok' || prev[g] === 'stale' ? 'stale' : 'failed') : 'ok'
+  return next
+}
+
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
@@ -95,15 +104,24 @@ export default function Dashboard() {
   const [birthdays,   setBirthdays]   = useState([])
   const [loading,     setLoading]     = useState(true)
   const [clockedIn,   setClockedIn]   = useState(false)
+  const loadSeq = useRef(0)                 // nur die jüngste Ladung wird angewendet (Batch 2d)
+  const loadedOnceRef = useRef(false)       // „Lädt…“ nur beim ersten Laden
+  const [loadState, setLoadState] = useState({ mine: 'loading', live: 'loading', team: 'loading', attention: 'loading' })
   // Live-Personalkosten: Serverbasis labor_cost_today() (nur Admin, Migration 35) + lokales Fortschreiben
   const laborCosts = useLiveLaborCost(!!isAdmin)
   const [pendingReqs,  setPendingReqs]  = useState({ vac:[], sick:[], sickReviews:[] })
   const [staffList,   setStaffList]   = useState([])     // aktive Mitarbeiter für „+ Einstempeln“ (Manager/Admin)
   const [liveTarget,  setLiveTarget]  = useState(null)   // { employeeId, name } – Live-Steuerung geöffnet
   const [livePicker,  setLivePicker]  = useState(false)
+  const [retrying,    setRetrying]    = useState(false)   // „Erneut laden“ läuft (kein Mehrfachklick)
 
   const fetchAll = useCallback(async () => {
-    setLoading(true)
+    // Nur die jüngste Ladung darf die Anzeige setzen; „Lädt…“ nur bis zum ersten Stand (danach im Hintergrund)
+    const my = ++loadSeq.current
+    const outdated = () => my !== loadSeq.current
+    if (!loadedOnceRef.current) setLoading(true)
+    // Fehler je Datengruppe: eine fehlgeschlagene Gruppe behält ihren letzten Stand – nie Nullen/Leerlisten statt Daten
+    const failed = { mine: false, live: false, team: false, attention: false }
     try {
       const todayISO = localDateStr()
       const queries = [
@@ -124,18 +142,25 @@ export default function Dashboard() {
       ]
 
       const [shiftRes, liveRes, empRes, myClockRes] = await Promise.all(queries)
-
-      const shifts = shiftRes.data || []
-      setNextShift(shifts[0] || null)
-      setMyEmployee(empRes.data || null)
+      if (outdated()) return
+      failed.mine = !!(shiftRes.error || empRes.error || myClockRes.error)
+      if (!failed.mine) {
+        const shifts = shiftRes.data || []
+        setNextShift(shifts[0] || null)
+        setMyEmployee(empRes.data || null)
+      }
       // Manager: fremde Mitarbeiter nur operativ (Migration 19) – Namen aus get_staff_operational()
       const staff = canManage ? await fetchStaffOperational() : null
-      setStaffList(staff || [])
-      setLiveClockIns(fillEmbeddedEmployees(liveRes.data || [], staff))
       // Pausen der offenen Schichten (ohne Migration 17 → leer, Anzeige wie bisher)
-      const { byEntry: liveBreakMap } = await fetchBreaksForEntries((liveRes.data || []).map(e => e.id))
-      setLiveBreaks(liveBreakMap || {})
-      setClockedIn(!!myClockRes.data)
+      const { byEntry: liveBreakMap, error: breakErr } = await fetchBreaksForEntries((liveRes.data || []).map(e => e.id))
+      if (outdated()) return
+      failed.live = canManage && !!(liveRes.error || breakErr || staff === null)
+      if (!failed.live) {
+        setStaffList(staff || [])
+        setLiveClockIns(fillEmbeddedEmployees(liveRes.data || [], staff))
+        setLiveBreaks(liveBreakMap || {})
+      }
+      if (!failed.mine) setClockedIn(!!myClockRes.data)
 
       if (canManage) {
         const [empCount, vacPending, usersPending, swapsPending, todayShiftRes, allEmps] = await Promise.all([
@@ -146,29 +171,38 @@ export default function Dashboard() {
           supabase.from('shifts').select('*, employees!employee_id(first_name, last_name, avatar_color, avatar_url)').eq('date', todayISO).order('start_time'),
           supabase.from('employees').select('id, first_name, last_name, birth_date, avatar_color').eq('is_active', true).not('birth_date', 'is', null),
         ])
-        setStats({ employees: staff ? staff.filter(e => e.is_active).length : (empCount.count||0), pendingVac: vacPending.count||0, pendingUsers: usersPending.count||0, pendingSwaps: (swapsPending.data || []).length })
-        setSwapsAccepted((swapsPending.data || []).filter(s => s.status === 'accepted').length)
-        setTodayShifts(fillEmbeddedEmployees(todayShiftRes.data || [], staff))
+        if (outdated()) return
+        failed.team = !!(staff === null || empCount.error || vacPending.error || usersPending.error || swapsPending.error || todayShiftRes.error || allEmps.error)
+        if (!failed.team) {
+          setStats({ employees: staff ? staff.filter(e => e.is_active).length : (empCount.count||0), pendingVac: vacPending.count||0, pendingUsers: usersPending.count||0, pendingSwaps: (swapsPending.data || []).length })
+          setTodayShifts(fillEmbeddedEmployees(todayShiftRes.data || [], staff))
+        }
+        if (swapsPending.error) failed.attention = true
+        else setSwapsAccepted((swapsPending.data || []).filter(s => s.status === 'accepted').length)
         if (isAdmin) {
-          const { count: fCount } = await supabase.from('time_entries').select('id', { count:'exact', head:true })
+          const { count: fCount, error: fErr } = await supabase.from('time_entries').select('id', { count:'exact', head:true })
             .like('notes', '%AUSSTEMPELN VERGESSEN%')
-          setForgotten(fCount || 0)
+          if (outdated()) return
+          if (fErr) failed.attention = true
+          else setForgotten(fCount || 0)
           try {
-            const [{ data: bl }, { count: adminCount }, { data: ret }, { count: obSubmitted }] = await Promise.all([
+            const [{ data: bl, error: blErr }, { count: adminCount, error: adminErr }, { data: ret, error: retErr }, { count: obSubmitted, error: obErr }] = await Promise.all([
               supabase.rpc('backup_list'),
               supabase.from('profiles').select('id', { count:'exact', head:true }).eq('role', 'admin').eq('status', 'approved'),
               supabase.rpc('retention_overview'),
               supabase.from('employee_onboarding').select('id', { count:'exact', head:true }).eq('status', 'submitted'),   // eingereicht, nicht Entwurf
             ])
-            setOnboardingSubmitted(obSubmitted || 0)
-            if (ret?.success) {
+            if (outdated()) return
+            if (obErr || retErr || blErr) failed.attention = true
+            if (!obErr) setOnboardingSubmitted(obSubmitted || 0)
+            if (!retErr && ret?.success) {
               // Keep the received categories; labels are composed in the current language when rendered.
               const due = ret.total_due ? (ret.categories || []).filter(c => c.due > 0).map(({ key, due, title }) => ({ key, due, title })) : []
               setRetentionDue(due.length ? due : 0)
             }
-            if (bl?.success) setBackupDays(bl.last_download_at ? Math.floor((Date.now() - new Date(bl.last_download_at)) / 86400000) : -1)
-            setSoleAdmin(adminCount === 1)
-          } catch { /* Hinweise sind optional */ }
+            if (!blErr && bl?.success) setBackupDays(bl.last_download_at ? Math.floor((Date.now() - new Date(bl.last_download_at)) / 86400000) : -1)
+            if (!adminErr) setSoleAdmin(adminCount === 1)
+          } catch { failed.attention = true /* Hinweise nicht prüfbar → nie „nichts zu tun“ */ }
         }
 
         // Live-Personalkosten berechnen – nur Admin (Löhne sind für Manager nicht lesbar)
@@ -180,8 +214,8 @@ export default function Dashboard() {
         // Offene Anträge laden (Admin/Manager)
         if (canManage) {
           const today = localDateStr()
-          const [{ data: pendingVac }, { data: pendingSick },
-                 { data: approvedVacs }, { data: sickNoAttest }] = await Promise.all([
+          const [{ data: pendingVac, error: pvErr }, { data: pendingSick, error: psErr },
+                 { data: approvedVacs, error: avErr }, { data: sickNoAttest, error: snErr }] = await Promise.all([
             supabase.from('vacation_requests')
               .select('*, employees!employee_id(first_name, last_name)')
               .eq('status','pending').order('created_at'),
@@ -200,8 +234,10 @@ export default function Dashboard() {
               .eq('certificate_received', false)
               .is('certificate_file_path', null),
           ])
-
+          if (outdated()) return
+          if (pvErr || psErr || avErr || snErr) failed.attention = true
           // §9 BUrlG: Finde Krankmeldungen die genehmigten Urlaub überschneiden
+          else {
           const sickReviews = (sickNoAttest || []).filter(sl => {
             const sickEnd = sl.end_date || today
             return (approvedVacs || []).some(vr =>
@@ -211,9 +247,11 @@ export default function Dashboard() {
             )
           })
           setPendingReqs({ vac: fillEmbeddedEmployees(pendingVac, staff), sick: fillEmbeddedEmployees(pendingSick, staff), sickReviews: fillEmbeddedEmployees(sickReviews, staff) })
+          }
         }
 
         // Geburtstage nächste 30 Tage
+        if (!failed.team) {
         const todayDate = new Date(); todayDate.setHours(0,0,0,0)
         const upcoming = mergeStaffRows(allEmps.data, staff, e => e.is_active && !!e.birth_date).filter(e => {
           const bd   = new Date(e.birth_date)
@@ -226,10 +264,15 @@ export default function Dashboard() {
           return da - db
         })
         setBirthdays(upcoming)
+        }
       }
     } catch (err) {
       console.error('Dashboard fetch error:', err)
+      for (const g of Object.keys(failed)) failed[g] = true   // unerwarteter Fehler: nichts gilt als geprüft
     }
+    if (outdated()) return
+    setLoadState(prev => nextLoadState(prev, failed, canManage))
+    loadedOnceRef.current = true
     setLoading(false)
   }, [profile?.employee_id, canManage])
 
@@ -264,6 +307,11 @@ export default function Dashboard() {
   const todayDate = localDateStr()
   const isToday   = nextShift?.date === todayDate
   const noEmpLinked = !profile?.employee_id && !myEmployee
+  // Batch 2d: 'failed' = noch nie geladen → „nicht geladen“ statt Null/Leerzustand; 'stale' = letzter Stand + Hinweis
+  const notLoaded   = g => loadState[g] === 'failed'
+  const hasProblem  = g => loadState[g] === 'failed' || loadState[g] === 'stale'
+  const loadProblem = ['mine', 'live', 'team', 'attention'].some(hasProblem)
+  const retryLoad   = async () => { setRetrying(true); try { await fetchAll() } finally { setRetrying(false) } }
 
   return (
     <div>
@@ -279,8 +327,16 @@ export default function Dashboard() {
 
       <div className="content">
         {/* ── Handlungsbedarf (Admin/Manager): ersetzt die bisherigen Einzelhinweise „Ausstempeln vergessen“, Sicherung, Löschfristen ── */}
+        {/* ── Ladeproblem (Batch 2d): nie stillschweigend Nullen/„nichts zu tun“; letzter Stand bleibt sichtbar ── */}
+        {!loading && loadProblem && (
+          <div className="alert alert-warn" role="alert" data-testid="dashboard-load-problem" style={{ marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', fontSize:13 }}>
+            <span>{tr('dashboard.loadProblem')}</span>
+            <button type="button" className="btn btn-sm" data-testid="dashboard-retry" style={{ minHeight:36 }} disabled={retrying} onClick={retryLoad}>{tr('dashboard.retry')}</button>
+          </div>
+        )}
+
         {canManage && (
-          <AttentionPanel role={isAdmin ? 'admin' : 'manager'} loading={loading} onOpenLive={setLiveTarget}
+          <AttentionPanel role={isAdmin ? 'admin' : 'manager'} loading={loading} incomplete={hasProblem('live') || hasProblem('attention')} onOpenLive={setLiveTarget}
             data={{ liveClockIns, liveBreaks, forgottenCount: forgotten, pendingVacations: pendingReqs.vac, swapsAccepted, onboardingSubmitted, backupDays, retentionDue }} />
         )}
 
@@ -344,6 +400,8 @@ export default function Dashboard() {
                   {until && !clockedIn && <span style={{ background:'rgba(255,255,255,0.2)', borderRadius:20, padding:'2px 10px', fontSize:12 }}>{until}</span>}
                 </div>
               </>
+            ) : notLoaded('mine') ? (
+              <div style={{ fontSize:20, fontWeight:700 }} data-testid="dashboard-mine-failed">{tr('dashboard.myShiftsFailed')}</div>
             ) : (
               <>
                 <div style={{ fontSize:20, fontWeight:700 }}>{tr("ui.e0543209621f")}</div>
@@ -368,10 +426,10 @@ export default function Dashboard() {
         {canManage && (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:12, marginBottom:20 }}>
             {[
-              { icon:'👥', label:tr("ui.f4cb6891b9e5"), value: stats.employees, color:'var(--accent)', to:'/mitarbeiter' },
-              { icon:'⏱', label:tr("ui.54f20657416a"),  value: liveClockIns.length, color: liveClockIns.length > 0 ? '#059669' : 'var(--text-secondary)', to:'/einclocken' },
-              { icon:'🌴', label:tr("ui.1854fecf6125"), value: stats.pendingVac, color: stats.pendingVac > 0 ? '#D97706' : 'var(--text-secondary)', to:'/urlaub', badge: stats.pendingVac > 0 },
-              { icon:'🔄', label:tr("ui.5b96824ea444"), value: stats.pendingSwaps, color: stats.pendingSwaps > 0 ? '#D97706' : 'var(--text-secondary)', to:'/schichten', badge: stats.pendingSwaps > 0 },
+              { icon:'👥', label:tr("ui.f4cb6891b9e5"), value: notLoaded('team') ? '–' : stats.employees, color:'var(--accent)', to:'/mitarbeiter' },
+              { icon:'⏱', label:tr("ui.54f20657416a"),  value: notLoaded('live') ? '–' : liveClockIns.length, color: liveClockIns.length > 0 ? '#059669' : 'var(--text-secondary)', to:'/einclocken' },
+              { icon:'🌴', label:tr("ui.1854fecf6125"), value: notLoaded('team') ? '–' : stats.pendingVac, color: stats.pendingVac > 0 ? '#D97706' : 'var(--text-secondary)', to:'/urlaub', badge: stats.pendingVac > 0 },
+              { icon:'🔄', label:tr("ui.5b96824ea444"), value: notLoaded('team') ? '–' : stats.pendingSwaps, color: stats.pendingSwaps > 0 ? '#D97706' : 'var(--text-secondary)', to:'/schichten', badge: stats.pendingSwaps > 0 },
               ...(isAdmin ? [{ icon:'🔑', label:tr("ui.65f9ab63f84f"), value: pendingCount || 0, color: pendingCount > 0 ? '#DC2626' : 'var(--text-secondary)', to:'/benutzer', badge: pendingCount > 0 }] : []),
             ].map((s, labelIndex) => (
               <Link key={labelIndex} to={s.to} style={{ textDecoration:'none' }}>
@@ -410,6 +468,8 @@ export default function Dashboard() {
               </div>
               {loading ? (
                 <div style={{ padding:'12px 16px', color:'var(--text-secondary)', fontSize:13 }}>{tr("ui.ebbb1d1f265f")}</div>
+              ) : notLoaded('team') ? (
+                <div style={{ padding:'14px 16px', fontSize:13, color:'var(--warn)' }} data-testid="dashboard-team-failed">{tr('dashboard.loadFailed')}</div>
               ) : todayShifts.length === 0 ? (
                 <div style={{ padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <span style={{ fontSize:13, color:'var(--text-muted)' }}>{tr("ui.cb780633d4d3")}</span>
@@ -457,7 +517,11 @@ export default function Dashboard() {
               )}
             </div>
             {canManage ? (
-              liveClockIns.length === 0 ? (
+              loading && loadState.live === 'loading' ? (
+                <div style={{ padding:'14px 16px', color:'var(--text-secondary)', fontSize:13 }}>{tr("ui.ebbb1d1f265f")}</div>
+              ) : notLoaded('live') ? (
+                <div style={{ padding:'14px 16px', fontSize:13, color:'var(--warn)' }} data-testid="dashboard-live-failed">{tr('dashboard.loadFailed')}</div>
+              ) : liveClockIns.length === 0 ? (
                 <div style={{ padding:'14px 16px' }}>
                   <span style={{ fontSize:13, color:'var(--text-muted)' }}>{tr("ui.0cd095ecb598")}</span>
                 </div>
@@ -505,6 +569,8 @@ export default function Dashboard() {
                   </div>
                   <Link to="/schichten" style={{ display:'block', textAlign:'center', padding:'10px', color:'var(--accent)', fontSize:12, borderTop:'1px solid var(--border)', textDecoration:'none' }}>{tr("ui.519391724942")}</Link>
                 </div>
+              ) : notLoaded('mine') ? (
+                <div style={{ padding:'20px 16px', fontSize:13, color:'var(--warn)' }} data-testid="dashboard-mine-failed-card">{tr('dashboard.myShiftsFailed')}</div>
               ) : (
                 <div className="empty-state" style={{ padding:'24px 16px' }}>
                   <div className="empty-state-icon">🌴</div>

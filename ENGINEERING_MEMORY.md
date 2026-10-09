@@ -448,6 +448,13 @@ Test-Falle: Der Supabase-Stub im Browser-Harness muss JEDEN Importpfad treffen (
 veraltete Pausen-Antwort zunächst unentdeckt). Gepinnte Dateien nur mit wörtlicher Rückführung in `tests/pinView.mjs`.
 Regression Protection: `tests/profileLoad`, `clockStatus` (echte Seite in Headless Chrome), `requestTimeout` (echte
 supabase-js), `resumeRefresh`.
+Batch 2d (Dashboard): Sammelanzeigen („Aktuell nichts zu erledigen“, Zähler-Kacheln) dürfen nur aus ERFOLGREICH geladenen
+Quellen entstehen – Fehler je Datengruppe (mine/live/team/attention: loading|ok|stale|failed), bei Fehler bleibt der letzte
+Stand, nie geladen → „–“/„konnte nicht geladen werden“, `AttentionPanel incomplete` statt Entwarnung. „Lädt…“ nur beim
+ersten Laden. Fehler auslesen ohne den i18n-Baseline zu brechen: nur die Destrukturierung erweitern (`{ data, error: xErr }`),
+Aufruftexte/Reihenfolge unverändert. Test-Falle: CDP `Runtime.evaluate` mit `awaitPromise` wartet auf ein zurückgegebenes
+Promise (z. B. `window.__refresh()`) – für „während der Ladung prüfen“ mit `; true` abschließen. (VERIFIED)
+Regression Protection: `tests/dashboardResilience` (echte Seite, Gegenproben gegen 64bae5f).
 
 ## Project Anti-Patterns
 

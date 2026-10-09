@@ -26,7 +26,9 @@ function texts(item, role) {
   }
 }
 
-export default function AttentionPanel({ role, loading, data, onOpenLive }) {
+// incomplete (Resilience Batch 2d): mindestens eine Datenquelle konnte nicht geladen werden → nie „nichts zu tun“ melden,
+// sondern „nicht vollständig prüfbar“; vorhandene Punkte bleiben sichtbar. Ohne incomplete: Anzeige unverändert.
+export default function AttentionPanel({ role, loading, data, onOpenLive, incomplete = false }) {
   useLocale()
   const [now, setNow] = useState(() => new Date())
   const [expanded, setExpanded] = useState(false)
@@ -50,6 +52,8 @@ export default function AttentionPanel({ role, loading, data, onOpenLive }) {
       </div>
       {initial ? (
         <p className="attention-empty attention-muted" aria-live="polite">{tr('attention.checking')}</p>
+      ) : items.length === 0 && incomplete ? (
+        <p className="attention-empty attention-muted" aria-live="polite" data-testid="attention-incomplete"><span aria-hidden="true">⚠️ </span>{tr('attention.incomplete')}</p>
       ) : items.length === 0 ? (
         <p className="attention-empty" aria-live="polite"><span aria-hidden="true">✓ </span>{tr('attention.none')}</p>
       ) : (
@@ -76,6 +80,9 @@ export default function AttentionPanel({ role, loading, data, onOpenLive }) {
             )
           })}
         </ul>
+      )}
+      {!initial && incomplete && items.length > 0 && (
+        <p className="attention-empty attention-muted" data-testid="attention-incomplete-hint">{tr('attention.incompleteHint')}</p>
       )}
       {hidden > 0 && (
         <button type="button" className="attention-more" onClick={() => setExpanded(true)}>{tr('attention.more', { count: hidden })}</button>

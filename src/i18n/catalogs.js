@@ -2431,6 +2431,12 @@ export const de = {
   "routeError.text": "Ein Darstellungsfehler ist aufgetreten. Gespeicherte Daten sind nicht betroffen. Bitte die Seite neu laden oder eine andere Seite wählen.",
   "routeError.reload": "Seite neu laden",
   "routeError.home": "Zur Startseite",
+  "dashboard.loadProblem": "Einige Daten konnten nicht geladen werden. Angezeigt wird der letzte erfolgreich geladene Stand.",
+  "dashboard.loadFailed": "Konnte nicht geladen werden.",
+  "dashboard.myShiftsFailed": "Deine Schichten konnten nicht geladen werden.",
+  "dashboard.retry": "Erneut laden",
+  "attention.incomplete": "Konnte nicht vollständig geprüft werden – bitte erneut laden.",
+  "attention.incompleteHint": "Nicht alle Daten konnten geprüft werden – die Liste ist eventuell unvollständig.",
 }
 
 export const en = {
@@ -4865,4 +4871,10 @@ export const en = {
   "routeError.text": "A display error occurred. Saved data is not affected. Please reload the page or choose another page.",
   "routeError.reload": "Reload page",
   "routeError.home": "Go to start page",
+  "dashboard.loadProblem": "Some data could not be loaded. Showing the last successfully loaded state.",
+  "dashboard.loadFailed": "Could not be loaded.",
+  "dashboard.myShiftsFailed": "Your shifts could not be loaded.",
+  "dashboard.retry": "Reload",
+  "attention.incomplete": "Could not be fully checked – please reload.",
+  "attention.incompleteHint": "Not all data could be checked – the list may be incomplete.",
 }

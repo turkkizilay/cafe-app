@@ -130,9 +130,11 @@ test('Dashboard-Verdrahtung: Panel nur für Admin/Manager, ersetzt die drei Admi
   const p = readFileSync('src/components/AttentionPanel.jsx', 'utf8')
   for (const k of ['ui.48fd6a9638f4', 'ui.15e9ef667d1b', 'ui.add2b4917aba', 'ui.c664e3a24d8b', 'ui.6043f353c565']) assert.match(p, new RegExp(k.replace('.', '\\.')), `Panel zeigt den bisherigen Text ${k}`)
   assert.match(s, /supabase\.from\('shift_swap_requests'\)\.select\('status'\)\.in\('status', \['open','accepted'\]\)/, 'gleiche Anfrage, Status statt Zählung')
-  assert.match(s, /pendingSwaps: \(swapsPending\.data \|\| \[\]\)\.length \}\)\n\s+setSwapsAccepted\(\(swapsPending\.data \|\| \[\]\)\.filter\(s => s\.status === 'accepted'\)\.length\)/)
+  assert.match(s, /pendingSwaps: \(swapsPending\.data \|\| \[\]\)\.length \}\)/)
+  // Batch 2d: „Freigabe fehlt“ nur aus erfolgreicher Antwort – bei Fehler bleibt der letzte Stand, Panel gilt als unvollständig
+  assert.match(s, /if \(swapsPending\.error\) failed\.attention = true\n\s+else setSwapsAccepted\(\(swapsPending\.data \|\| \[\]\)\.filter\(s => s\.status === 'accepted'\)\.length\)/)
   assert.match(s, /supabase\.from\('employee_onboarding'\)\.select\('id', \{ count:'exact', head:true \}\)\.eq\('status', 'submitted'\)/)
-  const adminBlock = s.slice(s.indexOf('if (isAdmin) {\n          const { count: fCount }'), s.indexOf('// Live-Personalkosten berechnen'))
+  const adminBlock = s.slice(s.indexOf('if (isAdmin) {\n          const { count: fCount'), s.indexOf('// Live-Personalkosten berechnen'))
   assert.match(adminBlock, /employee_onboarding/, 'Zusatzanfrage nur im Admin-Zweig')
   const before = execFileSync('git', ['show', '61336d8:src/pages/Dashboard.jsx'], { encoding: 'utf8' })   // letzter freigegebener Stand
   const calls = t => (t.match(/supabase\.(from|rpc)\(/g) || []).length
@@ -141,7 +143,7 @@ test('Dashboard-Verdrahtung: Panel nur für Admin/Manager, ersetzt die drei Admi
 
 test('i18n DE/EN/BN vollständig, gleiche Platzhalter, BN in Bangla mit lateinischen Ziffern', () => {
   const keys = Object.keys(de).filter(k => k.startsWith('attention.'))
-  assert.equal(keys.length, 20)
+  assert.equal(keys.length, 22)   // + attention.incomplete/incompleteHint (Resilience Batch 2d)
   const vals = v => typeof v === 'object' ? Object.values(v) : [v]
   const ph = s => (s.match(/\{\w+\}/g) || []).sort().join()
   for (const k of keys) {
