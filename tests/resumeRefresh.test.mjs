@@ -194,7 +194,7 @@ test('Steuerung: auto = gleicher Single-Flight, ohne Toasts; ↻ während eines 
 test('RefreshProvider: genau eine Bindung (stabile Steuerung), Abbau im Effekt-Cleanup, ↻-Weg unverändert', () => {
   const src = readFileSync('src/context/RefreshContext.jsx', 'utf8')
   assert.equal((src.match(/createResumeTrigger\(/g) || []).length, 1)
-  assert.match(src, /onTrigger: \(\) => controller\.refresh\(\{ auto: true \}\)/)
+  assert.match(src, /onTrigger: \(\) => \{ checkForNewVersion\(\); return controller\.refresh\(\{ auto: true \}\) \}/, 'derselbe automatische Refresh; Versionsprüfung nur als Hinweis (F8)')
   assert.match(src, /return \(\) => trigger\.dispose\(\)\n  \}, \[controller\]\)/)
   assert.match(src, /const refreshData = useCallback\(\(\) => controller\.refresh\(\), \[controller\]\)/)
   for (const f of ['src/pages/Dashboard.jsx', 'src/pages/Vacation.jsx', 'src/pages/TimeManagement.jsx', 'src/pages/Shifts.jsx'])

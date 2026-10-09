@@ -2411,6 +2411,17 @@ export const de = {
   "clock.statusRetry": "Erneut laden",
   "error.timeoutRead": "⏱ Zeitüberschreitung beim Laden – bitte erneut versuchen.",
   "error.timeoutWrite": "⏱ Keine Antwort vom Server. Die Aktion wurde möglicherweise trotzdem gespeichert – bitte aktualisieren und den Stand prüfen, bevor Sie es erneut versuchen.",
+  "errorBoundary.title": "Hier ist etwas schiefgelaufen",
+  "errorBoundary.text": "Diese Ansicht konnte nicht angezeigt werden. Gespeicherte Daten sind nicht betroffen. Bitte neu laden oder zur Startseite wechseln.",
+  "errorBoundary.chunkTitle": "Ein Teil der App konnte nicht geladen werden",
+  "errorBoundary.chunkText": "Vermutlich wurde eine neue Version veröffentlicht oder die Verbindung war kurz unterbrochen. Bitte neu laden.",
+  "errorBoundary.reload": "Neu laden",
+  "errorBoundary.home": "Zur Startseite",
+  "update.available": "Eine neue Version der App ist verfügbar.",
+  "update.chunk": "Ein Teil der App konnte nicht geladen werden – vermutlich gibt es eine neue Version. Bitte neu laden.",
+  "update.reload": "Neu laden",
+  "update.later": "Später",
+  "update.unsavedConfirm": "Auf dieser Seite gibt es ungespeicherte Eingaben oder einen offenen Dialog. Beim Neuladen gehen sie verloren. Trotzdem jetzt neu laden?",
 }
 
 export const en = {
@@ -4825,4 +4836,15 @@ export const en = {
   "clock.statusRetry": "Reload",
   "error.timeoutRead": "⏱ Loading timed out – please try again.",
   "error.timeoutWrite": "⏱ No response from the server. The action may have been saved anyway – please refresh and check the status before trying again.",
+  "errorBoundary.title": "Something went wrong",
+  "errorBoundary.text": "This view could not be displayed. Saved data is not affected. Please reload or go to the start page.",
+  "errorBoundary.chunkTitle": "Part of the app could not be loaded",
+  "errorBoundary.chunkText": "A new version was probably released, or the connection was briefly interrupted. Please reload.",
+  "errorBoundary.reload": "Reload",
+  "errorBoundary.home": "Go to start page",
+  "update.available": "A new version of the app is available.",
+  "update.chunk": "Part of the app could not be loaded – there is probably a new version. Please reload.",
+  "update.reload": "Reload",
+  "update.later": "Later",
+  "update.unsavedConfirm": "This page has unsaved input or an open dialog. Reloading will discard it. Reload anyway?",
 }

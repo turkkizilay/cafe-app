@@ -3,6 +3,7 @@ import { message as appMessage } from '../i18n/runtime.js'
 import { showToast } from '../components/UI/Toast'
 import { createRefreshController } from '../lib/refreshController'
 import { createResumeTrigger } from '../lib/resumeRefresh'
+import { checkForNewVersion } from '../lib/versionCheck'
 
 // Zentraler Daten-Refresh (kein Seiten-Reload): Jede Seite meldet ihre bestehende Ladefunktion an,
 // der Aktualisieren-Button ruft refreshData() auf (keine eigene Pull-Geste).
@@ -44,7 +45,8 @@ export function RefreshProvider({ children }) {
   // Genau eine Bindung je Provider; beim Abbau werden alle Listener und Timer entfernt (lib/resumeRefresh.js).
   useEffect(() => {
     if (typeof document === 'undefined' || typeof window === 'undefined') return
-    const trigger = createResumeTrigger({ doc: document, win: window, onTrigger: () => controller.refresh({ auto: true }) })
+    // Gleiche Ereignisse prüfen auch, ob eine neue App-Version ausgeliefert wurde (nur Hinweis, nie Neuladen – F8)
+    const trigger = createResumeTrigger({ doc: document, win: window, onTrigger: () => { checkForNewVersion(); return controller.refresh({ auto: true }) } })
     return () => trigger.dispose()
   }, [controller])
 

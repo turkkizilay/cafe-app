@@ -1,5 +1,6 @@
 import { normalizeLocale, intlLocale, translate, createFormatters } from './core.js'
 import { translateSource } from './messages.js'
+import { timeoutKind } from '../lib/requestTimeout.js'
 
 // Presentation only: descriptors belong to the caller, never to a global history.
 let currentLocale = 'de'
@@ -34,6 +35,13 @@ export function messageError(value) {
   error.displayMessage = value
   return error
 }
-export function errorMessage(error) { return error?.displayMessage ?? error?.message }
+// Zeitüberschreitung der Daten-API (lib/requestTimeout.js) nie roh („AbortError: request-timeout-…“) zeigen, sondern als
+// übersetzbare Meldung (Deskriptor – bleibt beim Sprachwechsel richtig). Schreiben: „möglicherweise gespeichert“, nie
+// „fehlgeschlagen“. Alle Aufrufer geben das Ergebnis über localizeMessage/messageParts/Toast aus (Resilience F9-c).
+export function errorMessage(error) {
+  const text = error?.displayMessage ?? error?.message
+  const kind = typeof text === 'string' ? timeoutKind({ message: text, details: error?.details }) : null
+  return kind ? message(kind === 'write' ? 'error.timeoutWrite' : 'error.timeoutRead') : text
+}
 export function sourceLabel(source, values) { return translateSource(currentLocale, source, values) }
 export function formatters() { return createFormatters(currentLocale) }
