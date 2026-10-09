@@ -10,6 +10,7 @@ import { translateSupabaseError } from '../lib/errorHelper'
 import { MINDESTLOHN } from '../lib/constants'
 import { useToast } from '../components/UI/Toast'
 import { useSavingGuard } from '../lib/savingGuard'
+import { isTransientFailure } from '../lib/profileLoad'
 import { useProfile } from '../context/ProfileContext'
 import { logActivity } from '../lib/activityLog'
 import { monthlyTargetFromInput, parseWeeklyHours, STUDENT_MONTHLY_LIMIT_H } from '../lib/workTimeModels'
@@ -87,23 +88,49 @@ export default function Employees() {
   const [docUploading, setDocUploading] = useState(false)
   const [docActionId,  setDocActionId]  = useState(null)  // 'id:open' | 'id:dl' | 'id:arch'
   const docFileRef = useRef(null)
+  // Resilience Batch 2e: Ladefehler ≠ „keine Dokumente“; nur die jüngste Ladung für die GERADE geöffnete Akte anzeigen;
+  // Doppeltipp/parallele Uploads über eine Ref-Sperre (State-Sperre greift erst nach dem nächsten Rendern)
+  const [docsError,   setDocsError]   = useState(false)
+  const docsSeq = useRef(0)
+  const docsFor = useRef(null)      // Mitarbeiter, dessen Akte gerade angezeigt wird
+  const docGuard = useSavingGuard()
 
   useEffect(() => { fetchEmployees() }, [showInactive])
   useRefreshHandler(() => Promise.all([fetchEmployees(), isAdmin ? fetchAccess() : null]))   // Aktualisieren-Button
 
   // ── Dokument-Funktionen (Admin only) ─────────────────────────
+  // Gibt die geladene Liste zurück (null = nicht geladen) – auch für die Gegenprüfung nach einem unklaren Upload
   async function fetchDocs(employeeId) {
-    if (!employeeId) return
-    setDocsLoading(true)
-    const { data } = await supabase.from('employee_documents')
-      .select('*').eq('employee_id', employeeId).order('uploaded_at', { ascending: false })
-    setEmpDocs(data || [])
-    setDocsLoading(false)
+    if (!employeeId) return null
+    const shown = docsFor.current === employeeId
+    const my = shown ? ++docsSeq.current : null
+    if (shown) setDocsLoading(true)
+    let res
+    try {
+      res = await supabase.from('employee_documents')
+        .select('*').eq('employee_id', employeeId).order('uploaded_at', { ascending: false })
+    } catch { res = { data: null, error: true } }
+    const { data, error } = res
+    // Veraltet (neuere Ladung oder inzwischen andere Akte geöffnet) → nichts anzeigen
+    if (shown && my === docsSeq.current && docsFor.current === employeeId) {
+      if (error) setDocsError(true)            // letzter Stand derselben Akte bleibt, Hinweis statt Leerzustand
+      else { setEmpDocs(data || []); setDocsError(false) }
+      setDocsLoading(false)
+    }
+    return error ? null : (data || [])
+  }
+
+  function resetDocForm() {
+    setDocForm({ document_type:'employment_contract', title:'', description:'', valid_from:'', valid_until:'' })
+    setDocFile(null)
+    if (docFileRef.current) docFileRef.current.value = ''
   }
 
   async function uploadDoc() {
     if (docUploading || !docFile || !docForm.title.trim() || !form.id) return
+    if (!docGuard.begin()) return
     setDocUploading(true)
+    const employeeId = form.id
     try {
       const docId   = crypto.randomUUID()
       const safeName = sanitizeFileName(docFile.name)
@@ -113,7 +140,7 @@ export default function Employees() {
         .from('employee-documents').upload(filePath, docFile, { cacheControl:'3600', upsert:false })
       if (storErr) { toast.error(messageParts([appMessage("ui.69d9669978d1"), errorMessage(storErr)])); return }
 
-      const { error: dbErr } = await supabase.from('employee_documents').insert([{
+      const { error: dbErr, status: dbStatus } = await supabase.from('employee_documents').insert([{
         id: docId,
         employee_id:      form.id,
         document_type:    docForm.document_type,
@@ -130,18 +157,23 @@ export default function Employees() {
         valid_until:      docForm.valid_until || null,
         is_active:        true,
       }])
-      if (dbErr) {
-        // Rollback Storage
+      if (dbErr && !isTransientFailure(dbStatus)) {
+        // Server hat den Eintrag eindeutig abgelehnt → nur die soeben neu erzeugte Datei (eigener Pfad mit docId) entfernen
         await supabase.storage.from('employee-documents').remove([filePath])
         toast.error(messageParts([appMessage("ui.d5711a0bb238"), errorMessage(dbErr)]))
         return
       }
+      if (dbErr) {
+        // Unklar (keine Antwort/Zeitüberschreitung/5xx): Eintrag kann gespeichert sein → NIE löschen, nicht wiederholen,
+        // erst gegenprüfen. Eine Datei ohne Eintrag erscheint nach 1 Tag als Handlungsbedarf („verwaist“) und muss vom
+        // Admin manuell unter Aufbewahrung gelöscht werden – es gibt KEINE automatische Löschung (kein Cron-Job).
+        const list = await fetchDocs(employeeId)
+        if (!list?.some(d => d.id === docId)) { toast.warn(appMessage('employees.docUnclear', { title: docForm.title.trim() }), 12000); return }
+      }
       toast.success(appMessage("ui.4688296e9058"))
-      setDocForm({ document_type:'employment_contract', title:'', description:'', valid_from:'', valid_until:'' })
-      setDocFile(null)
-      if (docFileRef.current) docFileRef.current.value = ''
-      fetchDocs(form.id)
-    } finally { setDocUploading(false) }
+      if (docsFor.current === employeeId) resetDocForm()   // inzwischen andere Akte offen → deren Auswahl nicht anfassen
+      if (!dbErr) fetchDocs(employeeId)
+    } finally { docGuard.end(); setDocUploading(false) }
   }
 
   async function openDoc(doc) {
@@ -237,8 +269,14 @@ export default function Employees() {
     setAccess(map)
   }
 
-  function openAdd() { setForm({ ...EMPTY }); setError(''); setEmpDocs([]); setModal('add') }
-  function openEdit(emp) { setForm({ ...emp, _origVac: emp.vacation_days_per_year }); setError(''); setModal('edit'); fetchDocs(emp.id) }
+  // Andere Akte → Liste und gewählte Datei verwerfen (nie die Datei von A in die Akte von B hochladen)
+  function switchDocsTo(employeeId) {
+    if (docsFor.current === employeeId) return
+    docsFor.current = employeeId
+    setEmpDocs([]); setDocsError(false); resetDocForm()
+  }
+  function openAdd() { setForm({ ...EMPTY }); setError(''); setEmpDocs([]); switchDocsTo(null); setModal('add') }
+  function openEdit(emp) { switchDocsTo(emp.id); setForm({ ...emp, _origVac: emp.vacation_days_per_year }); setError(''); setModal('edit'); fetchDocs(emp.id) }
 
   async function handleSave() {
     if (!isAdmin) return
@@ -841,7 +879,7 @@ export default function Employees() {
                       onChange={e => {
                         const file = e.target.files?.[0]
                         if (!file) return
-                        if (file.size > 20971520) { toast.warn(appMessage("ui.4c2aef50a6c1")); e.target.value=''; return }
+                        if (file.size > 10485760) { toast.warn(appMessage("ui.4c2aef50a6c1")); e.target.value=''; return }
                         if (file.type !== 'application/pdf') { toast.warn(appMessage("ui.1d26c75e57a5")); e.target.value=''; return }
                         setDocFile(file)
                         if (!docForm.title) setDocForm(p=>({...p, title: DOC_TYPES[p.document_type]}))
@@ -855,9 +893,15 @@ export default function Employees() {
                   </div>
 
                   {/* Dokument-Liste */}
+                  {docsError && !docsLoading && (
+                    <div className="alert alert-warn" role="alert" data-testid="docs-load-error" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap', fontSize:13, marginBottom:8 }}>
+                      <span>{tr('employees.docsLoadFailed')}</span>
+                      <button type="button" className="btn btn-sm" style={{ minHeight:36 }} onClick={() => fetchDocs(form.id)}>{tr('employees.docsRetry')}</button>
+                    </div>
+                  )}
                   {docsLoading ? (
                     <div style={{ textAlign:'center', padding:16, fontSize:13, color:'var(--text-muted)' }}>{tr("ui.a28b8a0f4826")}</div>
-                  ) : empDocs.length === 0 ? (
+                  ) : empDocs.length === 0 && docsError ? null : empDocs.length === 0 ? (
                     <div style={{ textAlign:'center', padding:16, fontSize:13, color:'var(--text-muted)' }}>{tr("ui.0f11c7238346")}</div>
                   ) : (
                     <div style={{ display:'flex', flexDirection:'column', gap:8 }}>

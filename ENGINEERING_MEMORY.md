@@ -455,6 +455,14 @@ ersten Laden. Fehler auslesen ohne den i18n-Baseline zu brechen: nur die Destruk
 Aufruftexte/Reihenfolge unverändert. Test-Falle: CDP `Runtime.evaluate` mit `awaitPromise` wartet auf ein zurückgegebenes
 Promise (z. B. `window.__refresh()`) – für „während der Ladung prüfen“ mit `; true` abschließen. (VERIFIED)
 Regression Protection: `tests/dashboardResilience` (echte Seite, Gegenproben gegen 64bae5f).
+Batch 2e (Personalakte-Upload): Nach Storage-Upload + DB-Eintrag nur bei EINDEUTIGER Ablehnung (Serverantwort 4xx)
+die eigene, neu erzeugte Datei (eindeutiger Pfad mit docId, `upsert:false`) entfernen. Unklar (`isTransientFailure`:
+status 0/Timeout/5xx) heißt: Eintrag kann gespeichert sein → nie löschen, nicht wiederholen, über die Liste nach `docId`
+gegenprüfen. Eine dabei verbleibende Datei ohne Eintrag erscheint nach 1 Tag als Handlungsbedarf („verwaist“,
+Migration 11) und muss vom Admin manuell unter Aufbewahrung gelöscht werden – KEINE automatische Löschung, kein
+Cron-Job (Production-Cron-Jobs: nur Backup, Push-Retry, Aktivitätsprotokoll). Einen Eintrag ohne Datei erkennt nichts.
+Production-Bucket `employee-documents`: 10 MB – App-Grenze gleich halten. (VERIFIED)
+Regression Protection: `tests/employeeDocsResilience` (echte Seite, Gegenproben gegen 5ded527).
 
 ## Project Anti-Patterns
 
