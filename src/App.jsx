@@ -1,6 +1,6 @@
 import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts } from './i18n/runtime.js'
-import { useLocale, LocaleContext } from './context/LocaleContext.jsx'
-import { useState, useEffect, useCallback, useRef, Component } from 'react'
+import { useLocale } from './context/LocaleContext.jsx'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { BrandBadge } from './components/UI/Brand'
 import { useAutoLogout } from './hooks/useAutoLogout'
 import { logActivity } from './lib/activityLog'
@@ -8,8 +8,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { ProfileContext } from './context/ProfileContext'
 import { DarkModeProvider } from './context/DarkModeContext'
-import { ToastProvider, showToast } from './components/UI/Toast'
+import { ToastProvider, showToast, clearToasts } from './components/UI/Toast'
 import { profileLoadOutcome, isTransientFailure } from './lib/profileLoad'
+import { createRequestGate } from './lib/profileRequests'
+import RouteErrorBoundary from './components/RouteErrorBoundary'
 import Login from './components/Auth/Login'
 import Sidebar from './components/Layout/Sidebar'
 import Dashboard from './pages/Dashboard'
@@ -161,24 +163,6 @@ function AutoLogoutWarning({ countdown, onExtend, onLogout }) {
   )
 }
 
-class ErrorBoundary extends Component {
-  static contextType = LocaleContext
-  state = { error: null }
-  static getDerivedStateFromError(error) { return { error } }
-  render() {
-    if (this.state.error) return (
-      <div style={{ padding:40, textAlign:'center', fontFamily:'system-ui' }}>
-        <div style={{ fontSize:40, marginBottom:16 }}>⚠️</div>
-        <h2 style={{ fontSize:18, marginBottom:8 }}>{tr("ui.6c52e3f2ffd7")}</h2>
-        <p style={{ color:'#666', marginBottom:20, fontSize:14 }}>{localizeMessage(this.state.error.message)}</p>
-        <button onClick={() => { this.setState({error:null}); window.location.reload() }}
-          style={{ padding:'10px 24px', background:'#C2793A', color:'#fff', border:'none', borderRadius:8, cursor:'pointer' }}>{tr("ui.48a67009af21")}</button>
-      </div>
-    )
-    return this.props.children
-  }
-}
-
 export default function App() {
   useLocale()
   const [session,     setSession]     = useState(null)
@@ -192,6 +176,7 @@ export default function App() {
   const [recoveryEvent,setRecoveryEvent] = useState(false)
   const [privacyAck,  setPrivacyAck]  = useState({ uid: null, state: 'checking' })
   const [mustChangePw, setMustChangePw] = useState(false)   // Admin-Reset: erst neues Passwort (Migration 38)
+  const [profileGate] = useState(createRequestGate)          // nur Antworten der aktuellen Person/jüngsten Anfrage (lib/profileRequests.js)
 
   const handleAutoLogout = useCallback(async (reason) => {
     try {
@@ -222,12 +207,14 @@ export default function App() {
     const now = Date.now()
     if (!force && lastFetchRef.current.uid === uid && now - lastFetchRef.current.at < 60000) return
     lastFetchRef.current = { uid, at: now }
+    const req = profileGate.begin(uid)   // ältere Anfragen sind ab jetzt veraltet
     // Ist das Profil schon da, still im Hintergrund aktualisieren (kein Lade-Bildschirm)
     if (loadedUidRef.current !== uid) setLoading(true)
     setFetchErr(null)
     try {
       // Nach einem Admin-Reset zuerst das neue Passwort – serverseitig ist ohnehin alles andere gesperrt
       const access = await loadMyAccessState(supabase)
+      if (!profileGate.isCurrent(req)) return   // veraltet (Personenwechsel/Abmelden/neuere Anfrage): nichts setzen, nichts auslösen
       if (access.revoked) { await supabase.auth.signOut({ scope: 'local' }); setLoading(false); return }
       setMustChangePw(access.mustChange)
       if (access.mustChange) { setProfile(null); loadedUidRef.current = null; setLoading(false); return }
@@ -236,6 +223,7 @@ export default function App() {
         .select('*')
         .eq('id', uid)
         .maybeSingle()
+      if (!profileGate.isCurrent(req)) return
 
       if (error) {
         console.error('Profile fetch error:', error)
@@ -255,6 +243,7 @@ export default function App() {
       // Kenntnisnahme der aktuellen Datenschutzhinweise: Serverstatus vor Freigabe der App laden
       if (data?.status === 'approved') {
         const ack = await loadPrivacyAck(supabase, uid)
+        if (!profileGate.isCurrent(req)) return
         setPrivacyAck(prev => nextAckState(prev, uid, ack))
       }
       setProfile(data || null)
@@ -275,12 +264,14 @@ export default function App() {
         // sick_leave hat keine status-Spalte — Krankmeldungen separat zählen
         const { count: sCount, error: sErr } = await supabase
           .from('sick_leave').select('*', { count:'exact', head:true }).is('end_date', null)
+        if (!profileGate.isCurrent(req)) return
         // Ladefehler ist keine „0“: bisherige Zähler bleiben stehen
         if (!pErr && !oErr) setPending(data.role === 'admin' ? (pCount || 0) : 0)   // Freischalten kann nur der Admin
         if (!vErr) setVacPending(vCount || 0)
         if (!sErr) setSickPending(sCount || 0)
       }
     } catch (err) {
+      if (!profileGate.isCurrent(req)) return
       if (profileLoadOutcome({ failed: true, transient: true, uid, loadedUid: loadedUidRef.current }) === 'keep') {
         showToast(appMessage('app.profileRefreshFailed'), 'warn', 6000)
         lastFetchRef.current.at = 0; setLoading(false); return
@@ -305,6 +296,7 @@ export default function App() {
       if (document.visibilityState === 'visible') {
         supabase.auth.getSession().then(({ data }) => {
           if (!data.session) {
+            profileGate.setUser(null)
             setSession(null)
             setProfile(null)
             setLoading(false)
@@ -318,6 +310,7 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
+      profileGate.setUser(session?.user?.id)
       setSession(session)
       if (session) fetchProfile(session.user.id)
       else setLoading(false)
@@ -326,6 +319,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       // Gleiche Sitzung → altes Objekt behalten, damit nicht die ganze App neu rendert
       setSession(prev => (prev && session && prev.access_token === session.access_token) ? prev : session)
+      profileGate.setUser(session?.user?.id)   // Personenwechsel/Abmelden: laufende Profil-Anfragen werden ungültig
       if (event === 'PASSWORD_RECOVERY') {
         setRecoveryEvent(true)
       }
@@ -340,6 +334,7 @@ export default function App() {
         pushRefreshedRef.current = false
         setPrivacyAck({ uid: null, state: 'checking' })
         setProfile(null)
+        clearToasts()   // keine Hinweise/Dokument-Links der vorherigen Person
         setMustChangePw(false)
         setPending(0)
         setLoading(false)
@@ -461,7 +456,6 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
     <DarkModeProvider>
       <ProfileContext.Provider value={ctx}>
         <ToastProvider>
@@ -486,6 +480,7 @@ export default function App() {
                   return null
                 })()}
 
+                <RouteErrorBoundary>
                 <Routes>
                   <Route path="/"              element={<Dashboard />} />
                   <Route path="/einclocken"    element={<ClockIn session={session} />} />
@@ -505,6 +500,7 @@ export default function App() {
                   <Route path="/einstellungen/integrationen/lightspeed/callback" element={isAdmin ? <LightspeedOAuthCallback /> : <AccessDenied />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
+                </RouteErrorBoundary>
               </div>
             </div>
 
@@ -515,6 +511,5 @@ export default function App() {
         </ToastProvider>
       </ProfileContext.Provider>
     </DarkModeProvider>
-    </ErrorBoundary>
   )
 }

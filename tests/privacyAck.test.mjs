@@ -46,7 +46,9 @@ test('App: freigeschaltete Konten sehen die App erst nach serverseitig bestätig
   assert.ok(gate > 0 && gate < app.indexOf('<div className="app-shell">'), 'Sperre vor dem geschützten Bereich')
   assert.ok(app.indexOf('legalKindForPath(window.location.pathname)') < gate, '22: Rechtsseiten bleiben öffentlich')
   assert.match(app, /const ackForProfile = privacyAck\.uid === profile\.id \? privacyAck\.state : 'checking'/)   // Status gehört zur Person
-  assert.match(app, /const ack = await loadPrivacyAck\(supabase, uid\)\s*\n\s*setPrivacyAck\(prev => nextAckState\(prev, uid, ack\)\)/)
+  // Resilience Batch 2c: zwischen Antwort und Setzen nur die Prüfung „noch aktuelle Person/jüngste Anfrage“ (verwirft veraltete
+  // Antworten, damit B's Status nie durch A's späte Antwort ersetzt wird) – sonst unverändert direkt gesetzt
+  assert.match(app, /const ack = await loadPrivacyAck\(supabase, uid\)\s*\n\s*if \(!profileGate\.isCurrent\(req\)\) return\s*\n\s*setPrivacyAck\(prev => nextAckState\(prev, uid, ack\)\)/)
   assert.ok(app.indexOf('await loadPrivacyAck(supabase, uid)') < app.indexOf('setProfile(data || null)'), 'Status vor dem Profil gesetzt → kein kurzes Aufblitzen der App')
   assert.match(app, /setPrivacyAck\(\{ uid: null, state: 'checking' \}\)\s*\n\s*setProfile\(null\)/)                // Abmelden setzt zurück
   assert.match(app, /\? <PrivacyAckGate supabase=\{supabase\}/); assert.match(app, /: <PrivacyAckChecking \/>/)

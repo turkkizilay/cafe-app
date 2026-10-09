@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { deviceSignOutOptions } from '../src/lib/signOutScope.js'
 import { prepareSessionFlag, answerSessionPings, askForActiveTab, SESSION_CHANNEL, HANDSHAKE_MS, FLAG_ACTIVE, FLAG_NO_REMEMBER } from '../src/lib/sessionTabs.js'
+import { pinView } from './pinView.mjs'
 
 const BEFORE = '35c4035'   // Stand vor Batch 2a
 const read = f => readFileSync(f, 'utf8')
@@ -142,7 +143,12 @@ test('F6-2: main.jsx – Antwort-Kanal vor dem Rendern, Rendern nach dem Handsha
   assert.ok(main.indexOf('answerSessionPings(') < main.indexOf('prepareSessionFlag('))
   assert.match(main, /prepareSessionFlag\(\{ session: storage\('sessionStorage'\), local: storage\('localStorage'\), Channel \}\)\.catch\(\(\) => 'error'\)\.finally\(renderApp\)/)
   assert.doesNotMatch(main.replace(/\/\/.*$/gm, ''), /(^|[^.\w])(sessionStorage|localStorage)\./m, 'kein ungeschützter Speicherzugriff auf Modulebene')
-  assert.equal(read('src/App.jsx'), atBefore('src/App.jsx'), 'Startprüfung in App.jsx unverändert (gepinnt)')
+  // App.jsx: gegenüber dem Stand vor 2a nur die ausdrücklich freigegebenen, wörtlich zurückgeführten Ausnahmen (pinView, z. B. Batch 2c)
+  assert.equal(pinView('src/App.jsx', read('src/App.jsx')), pinView('src/App.jsx', atBefore('src/App.jsx')), 'App.jsx: keine anderen Änderungen (gepinnt)')
+  // … und die Startprüfung „nicht angemeldet bleiben“ selbst ist wörtlich unverändert (zusätzlich, unabhängig von pinView)
+  const startCheck = s => s.slice(s.indexOf("    const noRemember    = localStorage.getItem('cafe_no_remember') === '1'"), s.indexOf('  }, [])', s.indexOf("    const noRemember    = localStorage.getItem('cafe_no_remember') === '1'")))
+  assert.ok(startCheck(read('src/App.jsx')).length > 100)
+  assert.equal(startCheck(read('src/App.jsx')), startCheck(atBefore('src/App.jsx')), 'Startprüfung wörtlich unverändert')
   assert.match(read('src/components/Auth/Login.jsx'), /sessionStorage\.setItem\('cafe_session_active', '1'\)/, 'Login setzt das Flag weiterhin')
 })
 

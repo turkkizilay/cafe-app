@@ -30,6 +30,14 @@ export function dismissToast(id) {
   _notify()
 }
 
+// Beim Abmelden/Personenwechsel (Resilience Batch 2c-3): Hinweise der vorherigen Person (können Namen enthalten) und ein
+// offener „Dokument öffnen“-Dialog (signierte URL zu einem privaten Dokument) dürfen nie bei der nächsten Person erscheinen.
+export function clearToasts() {
+  _map.clear()
+  _notify()
+  clearOpenFallback()
+}
+
 export function useToast() {
   return {
     success: (m, d) => showToast(m, 'success', d ?? 4000),

@@ -2427,6 +2427,10 @@ export const de = {
   "shifts.staleEdit": "Diese Schicht wurde inzwischen geändert, getauscht oder gelöscht. Es wurde nichts überschrieben – der aktuelle Stand ist geladen. Bitte die Schicht erneut öffnen.",
   "shifts.loadFailed": "Der Schichtplan konnte nicht geladen werden. Angezeigt wird der zuletzt geladene Stand.",
   "shifts.retry": "Erneut laden",
+  "routeError.title": "Diese Seite konnte nicht angezeigt werden",
+  "routeError.text": "Ein Darstellungsfehler ist aufgetreten. Gespeicherte Daten sind nicht betroffen. Bitte die Seite neu laden oder eine andere Seite wählen.",
+  "routeError.reload": "Seite neu laden",
+  "routeError.home": "Zur Startseite",
 }
 
 export const en = {
@@ -4857,4 +4861,8 @@ export const en = {
   "shifts.staleEdit": "This shift has been changed, swapped or deleted in the meantime. Nothing was overwritten – the current state has been loaded. Please open the shift again.",
   "shifts.loadFailed": "The shift plan could not be loaded. Showing the last loaded state.",
   "shifts.retry": "Reload",
+  "routeError.title": "This page could not be displayed",
+  "routeError.text": "A display error occurred. Saved data is not affected. Please reload the page or choose another page.",
+  "routeError.reload": "Reload page",
+  "routeError.home": "Go to start page",
 }
