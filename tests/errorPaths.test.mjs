@@ -29,16 +29,24 @@ const common = { appMessage: (k, v) => ({ k, v }), translateSupabaseError: () =>
 const guard = () => { const g = { locked: false, begin: () => (g.locked ? false : (g.locked = true)), end: () => { g.locked = false } }; return g }
 const ERR = { error: { message: 'boom' } }
 
+const SHIFT_OPENED = { id: 's1', employee_id: 'e1', date: '2026-10-12', start_time: '08:00:00', end_time: '16:00:00' }
 test('Schicht löschen: Speichern-Sperre wird immer freigegeben, bei Fehler keine Erfolgsmeldung', async () => {
-  for (const [label, res, ok] of [['Erfolg', { error: null }, true], ['Fehler', ERR, false]]) {
+  // Resilience Batch 2b-2: bedingtes Löschen auf den Stand beim Öffnen – Erfolg nur mit bestätigter Zeile
+  for (const [label, res, ok] of [['Erfolg', { data: [{ id: 's1' }], error: null }, true], ['Fehler', ERR, false]]) {
     const saving = []; const toast = spyToast(); let fetched = 0
-    const fn = load('src/pages/Shifts.jsx', 'deleteShift', { ...common, saving: false, setSaving: v => saving.push(v), supabase: fakeSupabase({ shifts: res }), toast, setEditModal: () => {}, setDelConfirm: () => {}, fetchData: () => fetched++ })
+    const fn = load('src/pages/Shifts.jsx', 'deleteShift', { ...common, saving: false, setSaving: v => saving.push(v), supabase: fakeSupabase({ shifts: res }), toast, editModal: SHIFT_OPENED, setEditModal: () => {}, setDelConfirm: () => {}, fetchData: () => fetched++ })
     await fn('s1')
     assert.deepEqual(saving, [true, false], `${label}: saving zurückgesetzt`)
     assert.equal(toast.calls.some(c => c[0] === 'success'), ok, label)
     assert.equal(toast.calls.some(c => c[0] === 'error'), !ok, label)
     assert.equal(fetched, ok ? 1 : 0)
   }
+  // Inzwischen getauscht/geändert/gelöscht (0 Zeilen): nichts gelöscht, keine Erfolgsmeldung, Hinweis, Stand neu, Dialog zu
+  const saving = []; const toast = spyToast(); let fetched = 0, closed = 0
+  await load('src/pages/Shifts.jsx', 'deleteShift', { ...common, saving: false, setSaving: v => saving.push(v), supabase: fakeSupabase({ shifts: { data: [], error: null } }), toast, editModal: SHIFT_OPENED, setEditModal: v => { if (v === null) closed++ }, setDelConfirm: () => {}, fetchData: () => fetched++ })('s1')
+  assert.deepEqual(toast.calls.map(c => [c[0], c[1]?.k]), [['warn', 'shifts.staleEdit']])
+  assert.deepEqual([fetched, closed, saving.at(-1)], [1, 1, false])
+  assert.match(extractFn('src/pages/Shifts.jsx', 'deleteShift'), /\.delete\(\)\.eq\('id', id\)\.eq\('employee_id', editModal\.employee_id\)\.eq\('date', editModal\.date\)\.eq\('start_time', editModal\.start_time\)\.eq\('end_time', editModal\.end_time\)\.select\('id'\)/)
 })
 
 test('Tausch ablehnen: bereits freigegebene Anfrage (veraltete Ansicht) → Fehler statt „abgelehnt“; nur laufende Anfragen', async () => {
@@ -50,14 +58,18 @@ test('Tausch ablehnen: bereits freigegebene Anfrage (veraltete Ansicht) → Fehl
     ['Backend-Fehler', { data: null, ...ERR }, ['error']],
   ]) {
     const toast = spyToast(); const saving = []
-    const fn = load('src/pages/Shifts.jsx', 'rejectSwap', { ...common, swapSaving: false, setSwapSaving: v => saving.push(v), supabase: fakeSupabase({ shift_swap_requests: res }), toast, fetchSwaps: () => {}, fetchData: () => {} })
+    const fn = load('src/pages/Shifts.jsx', 'rejectSwap', { ...common, swapSaving: false, setSwapSaving: v => saving.push(v), swapGuard: guard(), supabase: fakeSupabase({ shift_swap_requests: res }), toast, fetchSwaps: () => {}, fetchData: () => {} })
     await fn('s1')
     assert.deepEqual(toast.calls.map(c => c[0]), kinds, label)
     assert.deepEqual(saving, [true, false], `${label}: Sperre frei`)
   }
   const locked = spyToast()
-  await load('src/pages/Shifts.jsx', 'rejectSwap', { ...common, swapSaving: true, setSwapSaving: () => { throw new Error('darf nicht') }, supabase: fakeSupabase({}), toast: locked, fetchSwaps: () => {}, fetchData: () => {} })('s1')
+  await load('src/pages/Shifts.jsx', 'rejectSwap', { ...common, swapSaving: true, setSwapSaving: () => { throw new Error('darf nicht') }, swapGuard: guard(), supabase: fakeSupabase({}), toast: locked, fetchSwaps: () => {}, fetchData: () => {} })('s1')
   assert.equal(locked.calls.length, 0, 'Doppelklick ignoriert')
+  // Batch 2b-4: zweiter Tipp im selben Render (State noch nicht aktualisiert) – synchrone Sperre greift
+  const g = guard(); g.begin(); const tap2 = spyToast()
+  await load('src/pages/Shifts.jsx', 'rejectSwap', { ...common, swapSaving: false, setSwapSaving: () => { throw new Error('darf nicht') }, swapGuard: g, supabase: fakeSupabase({}), toast: tap2, fetchSwaps: () => {}, fetchData: () => {} })('s1')
+  assert.equal(tap2.calls.length, 0, 'zweiter Tipp im selben Render ignoriert')
 })
 
 test('Ausstempeln aus veralteter Ansicht (anderes Gerät hat schon ausgestempelt): nichts überschreiben, kein Erfolg', async () => {

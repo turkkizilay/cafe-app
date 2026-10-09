@@ -1,6 +1,6 @@
 import { t as tr, getIntlLocale, localizeMessage, message as appMessage, errorMessage, messageParts, formatParam } from '../i18n/runtime.js'
 import { useLocale } from '../context/LocaleContext.jsx'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase, getInitials } from '../lib/supabase'
 import { formatDate } from '../i18n/format.js'
 import Avatar from '../components/UI/Avatar'
@@ -12,6 +12,7 @@ import { useDarkMode } from '../context/DarkModeContext'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import TimeInput24 from '../components/UI/TimeInput24'
 import { notifyTimeDataChanged } from '../lib/laborCost'
+import { findSameStartShift, hhmm } from '../lib/shiftDuplicates'
 
 const DAY_NAMES  = () => [tr("ui.d23e867e38e8"), tr("ui.16ab72874809"), tr("ui.d8f33a13ae6e"), tr("ui.30094e0bec00"), tr("ui.eed8f901692d"), tr("ui.a951efc79deb"), tr("ui.fb1df1a24e3f")]
 const DAY_FULL   = () => [tr("ui.b703fc6aeb9c"),tr("ui.c2e102ca1f11"),tr("ui.76c93ad154a5"),tr("ui.b15c4daa80ba"),tr("ui.5815ddf1ffb1"),tr("ui.7c22aad82322"),tr("ui.a5984592501e")]
@@ -64,6 +65,9 @@ export default function Shifts() {
   const addGuard    = useSavingGuard()
   const updateGuard = useSavingGuard()
   const respondGuard = useSavingGuard()   // Tausch annehmen/ablehnen/zurückziehen: Doppeltipp → nur eine Anfrage
+  const swapGuard = useSavingGuard()      // Tausch anfragen/freigeben/ablehnen (Manager): Doppeltipp → nur eine Anfrage (Batch 2b-4)
+  const loadSeq = useRef(0)               // nur die zuletzt angeforderte Woche darf die Anzeige setzen (Batch 2b-3)
+  const [loadError, setLoadError] = useState(false)   // Ladefehler ist nie „leere Woche“
   const [swapBusyId, setSwapBusyId] = useState(null)
   const { dark: darkMode } = useDarkMode()
   const canEdit = isAdmin || isManager
@@ -96,13 +100,18 @@ export default function Shifts() {
   useRefreshHandler(() => Promise.all([fetchData(), fetchSwaps()]))   // Aktualisieren-Button
 
   async function fetchData() {
+    const my = ++loadSeq.current
     setLoading(true)
-    const [{ data: s }, { data: e }] = await Promise.all([
+    const [{ data: s, error: sErr }, { data: e, error: eErr }] = await Promise.all([
       supabase.from('shifts')
         .select('*')
         .gte('date', start).lte('date', end).order('start_time'),
       supabase.rpc('get_employees_directory'),
     ])
+    if (my !== loadSeq.current) return   // ältere Woche (schnelles Blättern) überschreibt nie die angezeigte
+    // Nicht ladbar: zuletzt geladenen Stand behalten und Hinweis zeigen – nie eine scheinbar leere Woche
+    if (sErr || eErr) { setLoadError(true); setLoading(false); return }
+    setLoadError(false)
     const active = (e || [])
       .filter(emp => emp.is_active)
       .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '', 'de'))
@@ -147,6 +156,10 @@ export default function Shifts() {
       toast.warn(appMessage("ui.a0706f001cea")); return
     }
     setSaving(true)
+    // Mögliches Duplikat (gleiche Person, gleicher Tag, gleiche Startzeit): nachfragen, nie blockieren. Unbekannt → nichts anlegen.
+    const dup = await findSameStartShift(supabase, { employeeId: form.employee_id, date: form.date, startTime: form.start_time })
+    if (!dup.ok) { toast.error(appMessage('shifts.dupCheckFailed'), 9000); return }
+    if (dup.existing && !window.confirm(tr('shifts.dupConfirm', { date: formatDate(form.date), time: hhmm(dup.existing.start_time) }))) return
     const hrs = Math.max(0, (() => {
               const s2 = new Date(`2000-01-01T${form.start_time}`).getTime()
               let   e2 = new Date(`2000-01-01T${form.end_time}`).getTime()
@@ -154,7 +167,8 @@ export default function Shifts() {
               return (e2 - s2) / 3600000
             })())
     const { error } = await supabase.from('shifts').insert([{ ...form, planned_hours: hrs }])
-    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.e83d6389c102"))); return }
+    // Fehler oder keine Antwort: Woche neu laden – eine trotzdem gespeicherte Schicht wird sichtbar (nächster Versuch fragt nach)
+    if (error) { toast.error(translateSupabaseError(error, appMessage("ui.e83d6389c102"))); fetchData(); return }
     toast.success(appMessage("ui.c435cfa6d137"))
     setModal(false); fetchData()
     notifyTimeDataChanged()   // Live-Personalkosten (Plan) neu abgleichen
@@ -187,8 +201,10 @@ export default function Shifts() {
     let e2   = new Date(`2000-01-01T${form.end_time}`).getTime()
     if (e2 <= s2) e2 += 86400000
     const hrs = Math.max(0, (e2 - s2) / 3600000)
-    const { error } = await supabase.from('shifts').update({ ...form, planned_hours: hrs }).eq('id', editModal.id)
+    // Nur speichern, wenn die Schicht noch so ist wie beim Öffnen (z. B. inzwischen getauscht → nichts überschreiben)
+    const { data: changed, error } = await supabase.from('shifts').update({ ...form, planned_hours: hrs }).eq('id', editModal.id).eq('employee_id', editModal.employee_id).eq('date', editModal.date).eq('start_time', editModal.start_time).eq('end_time', editModal.end_time).select('id')
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.e83d6389c102"))); return }
+    if (!changed?.length) { toast.warn(appMessage('shifts.staleEdit'), 10000); setEditModal(null); fetchData(); return }
     toast.success(appMessage("ui.fde9ec277b18"))
     setEditModal(null); fetchData()
     notifyTimeDataChanged()   // Live-Personalkosten (Plan) neu abgleichen
@@ -198,8 +214,10 @@ export default function Shifts() {
     if (saving) return
     setSaving(true)
     try {
-      const { error } = await supabase.from('shifts').delete().eq('id', id)
+      // Nur löschen, wenn die Schicht noch so ist wie beim Öffnen (inzwischen getauscht/geändert/gelöscht → nichts tun)
+      const { data: deleted, error } = await supabase.from('shifts').delete().eq('id', id).eq('employee_id', editModal.employee_id).eq('date', editModal.date).eq('start_time', editModal.start_time).eq('end_time', editModal.end_time).select('id')
       if (error) { toast.error(translateSupabaseError(error)); return }
+      if (!deleted?.length) { toast.warn(appMessage('shifts.staleEdit'), 10000); setEditModal(null); setDelConfirm(false); fetchData(); return }
       toast.success(appMessage("ui.aefcd8cefdd7"))
       setEditModal(null); setDelConfirm(false); fetchData()
       notifyTimeDataChanged()   // Live-Personalkosten (Plan) neu abgleichen
@@ -214,6 +232,7 @@ export default function Shifts() {
 
   async function submitSwap() {
     if (!swapForm.target_id) { toast.warn(appMessage("ui.e8f28b520944")); return }
+    if (!swapGuard.begin()) return
     setSwapSaving(true)
     const { error } = await supabase.from('shift_swap_requests').insert([{
       requester_id:       myEmpId,
@@ -222,7 +241,7 @@ export default function Shifts() {
       target_shift_id:    swapForm.target_shift_id || null,
       message:             swapForm.message?.trim() || null,
     }])
-    setSwapSaving(false)
+    setSwapSaving(false); swapGuard.end()
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.c1f53b6028c3"))); return }
     toast.success(appMessage("ui.dd13e21cb687"))
     setSwapModal(null)
@@ -251,10 +270,10 @@ export default function Shifts() {
   // ── Schichttausch: Admin-Freigabe (führt Schichten tatsächlich zusammen) ──
   // Eine Transaktion in der DB (approve_swap): prüft Status + Schichtbesitz erneut, alles oder nichts
   async function approveSwap(swap) {
-    if (swapSaving) return
+    if (swapSaving || !swapGuard.begin()) return
     setSwapSaving(true)
     const { error } = await supabase.rpc('approve_swap', { p_swap_id: swap.id })
-    setSwapSaving(false)
+    setSwapSaving(false); swapGuard.end()
     if (error) {
       toast.error(messageParts([appMessage("ui.39f69e181f3d"), (errorMessage(error) || error)]))
       fetchSwaps(); fetchData()
@@ -266,13 +285,13 @@ export default function Shifts() {
   }
 
   async function rejectSwap(id) {
-    if (swapSaving) return
+    if (swapSaving || !swapGuard.begin()) return
     setSwapSaving(true)
     // Nur laufende Anfragen ablehnen: eine inzwischen (z. B. von einem anderen Manager) freigegebene
     // Anfrage darf nicht auf „abgelehnt“ springen, während die Schichten bereits getauscht sind
     const { data, error } = await supabase.from('shift_swap_requests').update({ status:'rejected' })
       .eq('id', id).in('status', ['open', 'accepted']).select('id')
-    setSwapSaving(false)
+    setSwapSaving(false); swapGuard.end()
     if (error) { toast.error(translateSupabaseError(error, appMessage("ui.7be75ced7162"))); return }
     if (!data?.length) { toast.error(appMessage("error.bd03e1e5cae8")); fetchSwaps(); fetchData(); return }
     toast.success(appMessage("ui.bc2291382f28"))
@@ -402,6 +421,13 @@ export default function Shifts() {
             </div>
           )
         })()}
+
+        {loadError && (
+          <div className="alert alert-warn" role="alert" data-testid="shifts-load-error" style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap', marginBottom:12 }}>
+            <span style={{ flex:'1 1 220px' }}>{tr('shifts.loadFailed')}</span>
+            <button type="button" className="btn btn-sm" onClick={() => fetchData()}>{tr('shifts.retry')}</button>
+          </div>
+        )}
 
         {/* Shift Grid */}
         <div className="card">

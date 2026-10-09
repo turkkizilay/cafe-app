@@ -134,17 +134,20 @@ test('Schicht anlegen: Start ohne Person; ohne gültige Auswahl kein Insert (ech
   const s = read('src/pages/Shifts.jsx')
   assert.match(s, /setForm\(\{ employee_id: '', date: today,/)
   const run = async employee_id => {
-    const calls = [], warns = []
+    const calls = [], warns = [], dupChecks = []
     const deps = { form: { employee_id, date: '2026-11-02', start_time: '08:00', end_time: '16:00', position: '', notes: '' }, employees: [A, B],
       toast: { warn: m => warns.push(m), error: m => warns.push(m), success: () => {} }, appMessage: k => k, translateSupabaseError: x => x,
       setSaving: () => {}, setModal: () => {}, fetchData: () => {}, notifyTimeDataChanged: () => {},
+      // Resilience Batch 2b-1: Duplikat-Prüfung vor dem Insert (hier: kein Duplikat)
+      findSameStartShift: async (client, q) => { dupChecks.push(q); return { ok: true, existing: null } }, tr: k => k, formatDate: d => d, hhmm: t => t,
       supabase: { from: t => ({ insert: async rows => { calls.push({ t, rows }); return { error: null } } }) } }
     await new Function(...Object.keys(deps), `return (${grab(s, 'doAddShift')})`)(...Object.values(deps))()
-    return { calls, warns }
+    return { calls, warns, dupChecks }
   }
-  for (const id of ['', 'emp-x']) { const r = await run(id); assert.equal(r.calls.length, 0, id); assert.deepEqual(r.warns, ['time.selectEmployeeFirst']) }
+  for (const id of ['', 'emp-x']) { const r = await run(id); assert.equal(r.calls.length, 0, id); assert.deepEqual(r.warns, ['time.selectEmployeeFirst']); assert.equal(r.dupChecks.length, 0, `${id}: ohne gültige Person auch keine Prüfung`) }
   const ok = await run('emp-b')
   assert.equal(ok.calls.length, 1); assert.equal(ok.calls[0].rows[0].employee_id, 'emp-b')
+  assert.deepEqual(ok.dupChecks, [{ employeeId: 'emp-b', date: '2026-11-02', startTime: '08:00' }])
 })
 
 test('Zeitkorrekturen: None-Default bleibt (keine Regression)', () => {

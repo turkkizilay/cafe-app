@@ -2422,6 +2422,11 @@ export const de = {
   "update.reload": "Neu laden",
   "update.later": "Später",
   "update.unsavedConfirm": "Auf dieser Seite gibt es ungespeicherte Eingaben oder einen offenen Dialog. Beim Neuladen gehen sie verloren. Trotzdem jetzt neu laden?",
+  "shifts.dupConfirm": "Für diese Person gibt es am {date} bereits eine Schicht ab {time} Uhr. Trotzdem eine weitere Schicht anlegen?",
+  "shifts.dupCheckFailed": "Es konnte nicht geprüft werden, ob diese Schicht schon existiert (keine Verbindung?). Es wurde nichts angelegt – bitte erneut versuchen.",
+  "shifts.staleEdit": "Diese Schicht wurde inzwischen geändert, getauscht oder gelöscht. Es wurde nichts überschrieben – der aktuelle Stand ist geladen. Bitte die Schicht erneut öffnen.",
+  "shifts.loadFailed": "Der Schichtplan konnte nicht geladen werden. Angezeigt wird der zuletzt geladene Stand.",
+  "shifts.retry": "Erneut laden",
 }
 
 export const en = {
@@ -4847,4 +4852,9 @@ export const en = {
   "update.reload": "Reload",
   "update.later": "Later",
   "update.unsavedConfirm": "This page has unsaved input or an open dialog. Reloading will discard it. Reload anyway?",
+  "shifts.dupConfirm": "This person already has a shift on {date} starting at {time}. Create another shift anyway?",
+  "shifts.dupCheckFailed": "Could not check whether this shift already exists (no connection?). Nothing was created – please try again.",
+  "shifts.staleEdit": "This shift has been changed, swapped or deleted in the meantime. Nothing was overwritten – the current state has been loaded. Please open the shift again.",
+  "shifts.loadFailed": "The shift plan could not be loaded. Showing the last loaded state.",
+  "shifts.retry": "Reload",
 }
