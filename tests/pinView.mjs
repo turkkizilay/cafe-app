@@ -8,7 +8,8 @@
 // • Dashboard.jsx: zusätzlich das Panel „Handlungsbedarf“ (07.10.2026), siehe DASH_ATTENTION unten.
 // • App.jsx: exakt der Profil-Ladefehler (Resilience F1, 08.10.2026), siehe APP_PROFILE_LOAD unten.
 // • ClockIn.jsx: exakt der Stempelstatus UNKNOWN (Resilience F2, 08.10.2026), siehe CLOCK_STATUS_F2 unten.
-// • src/lib/supabase.js: exakt der zentrale Request-Timeout (Resilience F3, 08.10.2026), siehe SUPABASE_TIMEOUT_F3 unten.
+// • src/lib/supabase.js: exakt der zentrale Request-Timeout (Resilience F3, 08.10.2026), siehe SUPABASE_TIMEOUT_F3 unten,
+//   und „Abmelden nur dieses Gerät“ (Resilience Batch 2a, 09.10.2026), siehe SUPABASE_SIGNOUT_2A unten.
 // • Payroll.jsx, Timesheet.jsx und alle übrigen Dateien: KEINE Ausnahme, weiter byte-gleich.
 const A11Y_ONLY = new Set(['src/pages/Vacation.jsx', 'src/pages/TimeManagement.jsx', 'src/pages/PayrollDocuments.jsx',
   'src/pages/UserManagement.jsx', 'src/pages/Account.jsx', 'src/pages/Shifts.jsx'])
@@ -126,9 +127,17 @@ const SUPABASE_TIMEOUT_F3 = [
   ["import { createClient } from '@supabase/supabase-js'\nimport { withRequestTimeout } from './requestTimeout'\n", "import { createClient } from '@supabase/supabase-js'\n"],
 ]
 
+// Resilience Batch 2a (09.10.2026, ausdrücklich freigegeben): exakt „Abmelden nur dieses Gerät“ in supabase.js – ein Import
+// und der Scope im bestehenden Abmelde-Wrapper (lib/signOutScope.js). Wird VOR SUPABASE_TIMEOUT_F3 zurückgeführt; jede andere
+// Änderung an supabase.js bricht den Pin weiterhin.
+const SUPABASE_SIGNOUT_2A = [
+  ["  } catch { /* Abmelden geht immer vor */ }\n  return _signOut(deviceSignOutOptions(args[0]))   // nur dieses Gerät (lib/signOutScope.js); ausdrücklicher Scope gilt weiter\n", "  } catch { /* Abmelden geht immer vor */ }\n  return _signOut(...args)\n"],
+  ["import { withRequestTimeout } from './requestTimeout'\nimport { deviceSignOutOptions } from './signOutScope'\n", "import { withRequestTimeout } from './requestTimeout'\n"],
+]
+
 export function pinView(file, src) {
   // nur auf den neuen Stand anwenden (Kontextzeilen reiner Löschungen kommen auch im alten Text vor)
-  if (file === 'src/lib/supabase.js') { if (src.includes('withRequestTimeout(')) for (const [n, o] of SUPABASE_TIMEOUT_F3) src = src.replace(n, () => o); return src }
+  if (file === 'src/lib/supabase.js') { if (src.includes('deviceSignOutOptions(')) for (const [n, o] of SUPABASE_SIGNOUT_2A) src = src.replace(n, () => o); if (src.includes('withRequestTimeout(')) for (const [n, o] of SUPABASE_TIMEOUT_F3) src = src.replace(n, () => o); return src }
   if (file === 'src/pages/ClockIn.jsx') { if (src.includes('deriveClockStatus(')) for (const [n, o] of CLOCK_STATUS_F2) src = src.replace(n, () => o); return src }
   if (file === 'src/App.jsx') { if (src.includes('profileLoadOutcome(')) for (const [n, o] of APP_PROFILE_LOAD) src = src.replace(n, () => o); return src }
   if (file === 'src/pages/Dashboard.jsx') { if (src.includes('<AttentionPanel ')) for (const [n, o] of DASH_ATTENTION) src = src.replace(n, () => o); return src }   // Funktion: kein „$“-Muster im Ersatztext

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { withRequestTimeout } from './requestTimeout'
+import { deviceSignOutOptions } from './signOutScope'
 
 // ── Supabase Konfiguration ──────────────────────────────────
 // Supabase Konfiguration
@@ -49,7 +50,7 @@ supabase.auth.signOut = async (...args) => {
     const { detachPushFromAccount } = await import('./push')
     await Promise.race([detachPushFromAccount(), new Promise(r => setTimeout(r, 2500))])
   } catch { /* Abmelden geht immer vor */ }
-  return _signOut(...args)
+  return _signOut(deviceSignOutOptions(args[0]))   // nur dieses Gerät (lib/signOutScope.js); ausdrücklicher Scope gilt weiter
 }
 
 // ── Hilfsfunktionen ─────────────────────────────────────────
