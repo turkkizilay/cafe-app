@@ -167,12 +167,13 @@ test('C2: laufende Schicht – Pause/Arbeitsbeginn in der Zukunft abgelehnt; Aus
      to_char((clock_in - interval '60 minutes') AT TIME ZONE 'Europe/Berlin', 'HH24:MI') before_in,
      to_char((clock_in - interval '45 minutes') AT TIME ZONE 'Europe/Berlin', 'HH24:MI') before_in2,
      to_char((now() + interval '60 minutes') AT TIME ZONE 'Europe/Berlin', 'HH24:MI') fut, to_char((now() + interval '75 minutes') AT TIME ZONE 'Europe/Berlin', 'HH24:MI') fut2,
+     ((now() + interval '60 minutes') AT TIME ZONE 'Europe/Berlin')::date::text fut_d,   -- eigenes Datum: nachts (ca. 23–3 Uhr) liegt „+60 min“ nicht am Eintragsdatum
      to_char((clock_in + interval '30 minutes') AT TIME ZONE 'Europe/Berlin', 'HH24:MI') p1, to_char((clock_in + interval '45 minutes') AT TIME ZONE 'Europe/Berlin', 'HH24:MI') p2
      FROM time_entries WHERE id = $1`, [id])
   const s0 = await snap(id)
   assert.match(await err(async () => save(a, { id, emp: EMP(E4), date: t.d, inT: t.i, outT: null, breaks: [{ start: t.before_in, end: t.before_in2 }], expected: await state(id) })), /außerhalb der Arbeitszeit/, 'vor Arbeitsbeginn getippt (→ Folgetag)')
   assert.match(await err(async () => save(a, { id, emp: EMP(E4), date: t.d, inT: t.i, outT: null, breaks: [{ start: t.fut, end: t.fut2 }], expected: await state(id) })), /außerhalb der Arbeitszeit/, 'Pause in der Zukunft')
-  assert.match(await err(async () => save(a, { id, emp: EMP(E4), date: t.d, inT: t.fut, outT: null, expected: await state(id) })), /nicht in der Zukunft beginnen/, 'Arbeitsbeginn in der Zukunft')
+  assert.match(await err(async () => save(a, { id, emp: EMP(E4), date: t.fut_d, inT: t.fut, outT: null, expected: await state(id) })), /nicht in der Zukunft beginnen/, 'Arbeitsbeginn in der Zukunft')
   assert.equal(await snap(id), s0)
   assert.match(await err(() => db.sys.query(`INSERT INTO time_entry_breaks (time_entry_id, employee_id, break_start) VALUES ($1, $2, now() + interval '1 hour')`, [id, EMP(E4)])), /Zukunft/, 'Guard')
   await save(a, { id, emp: EMP(E4), date: t.d, inT: t.i, outT: null, breaks: [{ start: t.p1, end: t.p2 }], expected: await state(id) })

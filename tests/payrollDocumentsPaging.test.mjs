@@ -37,6 +37,7 @@ function makeFake({ docs = [], employees = [], role = 'admin', ownEmployeeId = n
       order(c, o = {}) { q.order.push([c, o.ascending !== false]); return api },
       range(a, b) { q.range = [a, b]; return api },
       limit(n) { q.limit = n; return api },
+      maybeSingle() { q.single = true; return api },   // Belegungsprüfung vor dem Upload (Batch 2F, lib/payrollUpload.js)
       delete() { q.op = 'delete'; return api },
       upsert(rows, o) { q.op = 'upsert'; q.rows = rows; q.onConflict = o?.onConflict; return api },
       then(res, rej) { const d = db.delay?.(q) || 0; return new Promise(r => setTimeout(r, d)).then(run).then(res, rej) },
@@ -61,6 +62,7 @@ function makeFake({ docs = [], employees = [], role = 'admin', ownEmployeeId = n
       }
       let rows = visible().filter(d => q.eq.every(([c, v]) => d[c] === v))
       rows = rows.slice().sort((a, b) => { for (const [c, asc] of q.order) { if (a[c] < b[c]) return asc ? -1 : 1; if (a[c] > b[c]) return asc ? 1 : -1 } return 0 })
+      if (q.single) return { data: rows[0] ? pick(rows[0], q.cols) : null, error: null }
       const total = rows.length
       if (q.limit != null) rows = rows.slice(0, q.limit)
       if (q.range) {
@@ -208,11 +210,16 @@ test('i18n DE/EN/BN: neue Texte vollständig, Platzhalter gleich, BN in Bangla-S
   assert.equal(de['a11y.previous'], 'Zurück'); assert.equal(de['a11y.next'], 'Weiter')
 })
 
-test('Unverändert: Upload-Jahre (Vorjahr/aktuell/nächstes), Signed URLs 120/60 s, Storage-Pfad, keine Migration/Payroll-Änderung', () => {
+test('Unverändert: Upload-Jahre (Vorjahr/aktuell/nächstes), Signed URLs 120/60 s, Storage-Pfad (Mitarbeiterordner zuerst, eindeutig je Upload, nie überschreiben), keine Migration/Payroll-Änderung', () => {
   const s = readFileSync('src/pages/PayrollDocuments.jsx', 'utf8')
   assert.match(s, /\{\[now\.getFullYear\(\)-1, now\.getFullYear\(\), now\.getFullYear\(\)\+1\]\.map\(y => <option key=\{y\}>\{y\}<\/option>\)\}/)
   assert.match(s, /createSignedUrl\(doc\.file_path, 120\)/); assert.match(s, /createSignedUrl\(doc\.file_path, 60, \{ download: filename \}\)/)
-  assert.match(s, /const filePath = `\$\{selEmp\}\/\$\{selYear\}-\$\{monthPad\}-lohnabrechnung\.pdf`/)
+  // Batch 2F: eigener Pfad je Upload statt festem Monatspfad – Mitarbeiterordner bleibt das 1. Segment (Storage-Lese-Policy)
+  assert.match(s, /const filePath = payrollUploadPath\(selEmp, selYear, monthPad\)/)
+  const lib = readFileSync('src/lib/payrollUpload.js', 'utf8')
+  assert.match(lib, /export function payrollUploadPath\(employeeId, year, monthPad, id = crypto\.randomUUID\(\)\) \{\n\s+return `\$\{employeeId\}\/\$\{year\}-\$\{monthPad\}-lohnabrechnung-\$\{id\}\.pdf`/)
+  assert.match(s, /\.upload\(filePath, file, \{ contentType: 'application\/pdf', upsert: false \}\)/, 'nie eine vorhandene Datei überschreiben')
+  assert.doesNotMatch(s, /upsert: true/)
   assert.doesNotMatch(s, /\.range\(|from\('payroll_documents'\)\.select\('\*/, 'Liste nur über src/lib/payrollDocuments.js')
   assert.doesNotMatch(readFileSync('src/lib/payrollDocuments.js', 'utf8'), /service_role|SERVICE_ROLE|rpc\(|storage/)
 })

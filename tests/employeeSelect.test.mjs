@@ -6,6 +6,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { de, en } from '../src/i18n/catalogs.js'
+import { payrollUploadPath, findPayrollDoc, removePayrollFile } from '../src/lib/payrollUpload.js'
+import { isTransientFailure } from '../src/lib/profileLoad.js'
 
 const read = f => readFileSync(f, 'utf8')
 const grab = (src, name) => {
@@ -39,21 +41,33 @@ test('Lohnabrechnung: Start ohne Auswahl, kein Nachladen setzt eine Person, Butt
   assert.match(s, /onClick=\{handleUpload\} disabled=\{uploading \|\| !selEmp\}/)
 })
 
-// Echte handleUpload-Funktion mit nachgebildetem Supabase (Storage + Tabelle) ausführen
+// Echte handleUpload- und uploadChecked-Funktion (Batch 2F) mit nachgebildetem Supabase (Storage + Tabelle) ausführen;
+// Belegungsprüfung über die echte lib/payrollUpload.js (Monat frei). reads = lesende Prüfungen, calls = Mutationen.
 function uploader({ selEmp, employees, file = { type: 'application/pdf', size: 1000, name: 'abrechnung.pdf' } }) {
-  const calls = [], warns = []
+  const calls = [], warns = [], reads = []
   const supabase = {
     storage: { from: bucket => ({ upload: async (path, f, o) => { calls.push({ kind: 'storage', bucket, path, upsert: o.upsert }); return { error: null } } }) },
-    from: table => ({ upsert: async (rows, o) => { calls.push({ kind: 'db', table, rows, onConflict: o.onConflict }); return { error: null } } }),
+    from: table => {
+      const q = { table, eq: [] }
+      const api = {
+        select: cols => { q.cols = cols; return api }, eq: (k, v) => { q.eq.push([k, v]); return api },
+        maybeSingle: async () => { reads.push(q); return { data: null, error: null } },
+        upsert: async (rows, o) => { calls.push({ kind: 'db', table, rows, onConflict: o.onConflict }); return { error: null, status: 201 } },
+      }
+      return api
+    },
   }
   const deps = {
     fileRef: { current: { files: [file], value: 'x' } }, toast: { warn: m => warns.push(m), error: m => warns.push(m) },
     appMessage: k => k, messageParts: x => x, errorMessage: x => x, formatParam: () => '', logActivity: () => {}, setTimeout: () => {},
     selEmp, employees, selYear: 2026, selMonth: 9, selNotes: '', profile: { id: 'admin-user' }, supabase,
     setUploading: () => {}, setMsg: () => {}, setSelNotes: () => {}, fetchAll: () => {},
+    uploadGuard: { begin: () => true, end: () => {} }, tr: k => k, window: { confirm: () => { throw new Error('Rückfrage bei freiem Monat') } },
+    payrollUploadPath, findPayrollDoc, removePayrollFile, isTransientFailure,
   }
-  const fn = new Function(...Object.keys(deps), `return (${grab(read('src/pages/PayrollDocuments.jsx'), 'handleUpload')})`)(...Object.values(deps))
-  return { run: fn, calls, warns }
+  const page = read('src/pages/PayrollDocuments.jsx')
+  const fn = new Function(...Object.keys(deps), `${grab(page, 'uploadChecked')}\nreturn (${grab(page, 'handleUpload')})`)(...Object.values(deps))
+  return { run: fn, calls, warns, reads }
 }
 const A = { id: 'emp-a', first_name: 'Anna', last_name: 'A' }, B = { id: 'emp-b', first_name: 'Ben', last_name: 'B' }
 
@@ -84,11 +98,19 @@ test('Lohnabrechnung: Auswahl A → Upload nur für A; Wechsel A → B → Uploa
     assert.deepEqual(u.warns, [])
     const [st, db] = u.calls
     assert.equal(st.kind, 'storage'); assert.equal(st.bucket, 'payroll-docs')
-    assert.equal(st.path, `${emp.id}/2026-09-lohnabrechnung.pdf`, 'Ordner = gewählte Person (Lese-Policy der Person)')
+    assert.equal(st.path.split('/')[0], emp.id, 'Ordner = gewählte Person (Lese-Policy der Person)')
+    assert.match(st.path, new RegExp(`^${emp.id}/2026-09-lohnabrechnung-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.pdf$`), 'eindeutige Datei-ID je Upload')
+    assert.equal(st.upsert, false, 'nie eine vorhandene Datei überschreiben')
+    assert.equal(db.rows[0].file_path, st.path, 'Datensatz zeigt auf genau die hochgeladene Datei')
+    assert.deepEqual(u.reads.map(r => r.eq), [[['employee_id', emp.id], ['year', 2026], ['month', 9]]], 'Belegung nur für die gewählte Person geprüft')
     assert.equal(db.table, 'payroll_documents'); assert.equal(db.rows.length, 1)
     assert.equal(db.rows[0].employee_id, emp.id)
-    assert.ok(u.calls.every(c => JSON.stringify(c).indexOf(emp === A ? B.id : A.id) < 0), 'keine fremde ID')
+    assert.ok([...u.calls, ...u.reads].every(c => JSON.stringify(c).indexOf(emp === A ? B.id : A.id) < 0), 'keine fremde ID')
   }
+  // eindeutig: zwei Uploads derselben Person und desselben Monats erzeugen zwei verschiedene Pfade
+  const [u1, u2] = [uploader({ selEmp: A.id, employees: [A, B] }), uploader({ selEmp: A.id, employees: [A, B] })]
+  await u1.run(); await u2.run()
+  assert.notEqual(u1.calls[0].path, u2.calls[0].path)
 })
 
 test('Lohnabrechnung: Prüfung der Person kommt vor jeder anderen Aktion (auch ohne Datei kein Upload)', async () => {

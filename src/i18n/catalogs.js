@@ -2438,6 +2438,11 @@ export const de = {
   "employees.docUnclear": "Das Speichern von „{title}“ konnte nicht bestätigt werden. Bitte die Dokumentliste prüfen (ggf. neu laden), bevor du es erneut hochlädst.",
   "employees.docsLoadFailed": "Dokumente konnten nicht geladen werden.",
   "employees.docsRetry": "Erneut laden",
+  "payrollDocs.replaceConfirm": "Für {name} liegt für {month} {year} bereits eine Lohnabrechnung vor („{file}“).\n\nErsetzen? Die bisherige Datei wird danach entfernt.",
+  "payrollDocs.replaceCheckFailed": "Es konnte nicht geprüft werden, ob für diesen Monat schon eine Lohnabrechnung vorliegt. Es wurde nichts hochgeladen – bitte erneut versuchen.",
+  "payrollDocs.uploadUnclear": "Das Speichern der Lohnabrechnung {month} {year} konnte nicht bestätigt werden. Die bisherige Abrechnung bleibt erhalten. Bitte die Liste prüfen (ggf. neu laden), bevor du es erneut versuchst.",
+  "payrollDocs.oldFileKept": "Die neue Lohnabrechnung ist gespeichert. Die bisherige Datei konnte nicht entfernt werden und erscheint unter Aufbewahrung als Datei ohne Zuordnung.",
+  "payrollDocs.deleteFileKept": "Der Eintrag wurde gelöscht. Die Datei konnte nicht entfernt werden und erscheint unter Aufbewahrung als Datei ohne Zuordnung.",
   "attention.incomplete": "Konnte nicht vollständig geprüft werden – bitte erneut laden.",
   "attention.incompleteHint": "Nicht alle Daten konnten geprüft werden – die Liste ist eventuell unvollständig.",
 }
@@ -4881,6 +4886,11 @@ export const en = {
   "employees.docUnclear": "Saving “{title}” could not be confirmed. Please check the document list (reload if needed) before uploading it again.",
   "employees.docsLoadFailed": "Documents could not be loaded.",
   "employees.docsRetry": "Reload",
+  "payrollDocs.replaceConfirm": "A payslip for {name} for {month} {year} already exists (“{file}”).\n\nReplace it? The previous file will then be removed.",
+  "payrollDocs.replaceCheckFailed": "Could not check whether a payslip already exists for this month. Nothing was uploaded – please try again.",
+  "payrollDocs.uploadUnclear": "Saving the payslip for {month} {year} could not be confirmed. The previous payslip is kept. Please check the list (reload if needed) before trying again.",
+  "payrollDocs.oldFileKept": "The new payslip is saved. The previous file could not be removed and appears under Retention as an unassigned file.",
+  "payrollDocs.deleteFileKept": "The entry was deleted. The file could not be removed and appears under Retention as an unassigned file.",
   "attention.incomplete": "Could not be fully checked – please reload.",
   "attention.incompleteHint": "Not all data could be checked – the list may be incomplete.",
 }

@@ -11,6 +11,8 @@ import { logActivity } from '../lib/activityLog'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
 import { formerStaffCutoff } from '../lib/workHours'
 import { pageCount, clampPage, hasFilters, loadDocumentsPage } from '../lib/payrollDocuments'
+import { payrollUploadPath, findPayrollDoc, removePayrollFile } from '../lib/payrollUpload'
+import { isTransientFailure } from '../lib/profileLoad'
 
 const NO_FILTER = { employeeId: '', year: '', month: '' }
 
@@ -25,6 +27,7 @@ export default function PayrollDocuments() {
   const { isAdmin, profile } = useProfile()
   const toast = useToast()
   const deleteGuard = useSavingGuard()
+  const uploadGuard = useSavingGuard()   // Doppeltipp: Sperre greift sofort, nicht erst nach dem nächsten Rendern (Batch 2F)
   const [employees,  setEmployees]  = useState([])
   const [filterEmployees, setFilterEmployees] = useState([])   // Filter: alle Personen (auch lange Ausgeschiedene mit alten Abrechnungen)
   const [minYear,    setMinYear]    = useState(null)
@@ -106,21 +109,33 @@ export default function PayrollDocuments() {
     if (file.type !== 'application/pdf') { toast.warn(appMessage("ui.8d29dfe2c4fb")); return }
     if (file.size > 10 * 1024 * 1024) { toast.warn(appMessage("ui.045a756f65c5")); return }
 
+    if (!uploadGuard.begin()) return
     setUploading(true)
+    try { await uploadChecked(file) } finally { uploadGuard.end(); setUploading(false) }
+  }
+
+  // Batch 2F: eine vorhandene Monatsabrechnung nie still ersetzen. Eigener Pfad je Upload (Mitarbeiterordner zuerst,
+  // upsert:false) – keine vorhandene Datei wird überschrieben; die ersetzte Datei erst nach bestätigtem Eintrag entfernen.
+  async function uploadChecked(file) {
     const monthPad = String(selMonth).padStart(2, '0')
-    const filePath = `${selEmp}/${selYear}-${monthPad}-lohnabrechnung.pdf`
+    const emp = employees.find(e => e.id === selEmp)
+    const monthLabel = formatParam('date', new Date(2000, selMonth - 1), {month:'long'})
+
+    const existing = await findPayrollDoc(supabase, { employeeId: selEmp, year: selYear, month: selMonth })
+    if (!existing.ok) { toast.error(appMessage('payrollDocs.replaceCheckFailed'), 9000); return }   // nicht prüfbar → nichts hochladen
+    if (existing.doc && !window.confirm(tr('payrollDocs.replaceConfirm', { name: emp ? `${emp.first_name} ${emp.last_name}` : '', month: monthLabel, year: selYear, file: existing.doc.file_name || '' }))) return
+    const filePath = payrollUploadPath(selEmp, selYear, monthPad)
 
     const { error: uploadError } = await supabase.storage
       .from('payroll-docs')
-      .upload(filePath, file, { contentType: 'application/pdf', upsert: true })
+      .upload(filePath, file, { contentType: 'application/pdf', upsert: false })
 
     if (uploadError) {
       toast.error(messageParts([appMessage("ui.93446336643a"), errorMessage(uploadError)]))
-      setUploading(false)
       return
     }
 
-    const { error: dbError } = await supabase.from('payroll_documents').upsert([{
+    const { error: dbError, status: dbStatus } = await supabase.from('payroll_documents').upsert([{
       employee_id: selEmp,
       year:        selYear,
       month:       selMonth,
@@ -131,9 +146,24 @@ export default function PayrollDocuments() {
       notes:       selNotes || null,
     }], { onConflict: 'employee_id,year,month' })
 
-    if (dbError) { toast.error(messageParts([appMessage("ui.311318091447"), errorMessage(dbError)])); setUploading(false); return }
+    if (dbError && !isTransientFailure(dbStatus)) {
+      // eindeutig abgelehnt → nur die soeben hochgeladene neue Datei entfernen; bisherige Datei und Eintrag bleiben
+      await removePayrollFile(supabase, filePath)
+      toast.error(messageParts([appMessage("ui.311318091447"), errorMessage(dbError)]))
+      return
+    }
+    if (dbError) {
+      // unklar (keine Antwort/Zeitüberschreitung/5xx): Eintrag kann gespeichert sein → nichts löschen, nicht wiederholen,
+      // gegenprüfen; die bisherige Abrechnung bleibt in jedem Fall erhalten
+      const check = await findPayrollDoc(supabase, { employeeId: selEmp, year: selYear, month: selMonth })
+      if (!check.ok || check.doc?.file_path !== filePath) { toast.warn(appMessage('payrollDocs.uploadUnclear', { month: monthLabel, year: selYear }), 12000); return }
+    }
 
-    const emp = employees.find(e => e.id === selEmp)
+    // ersetzt (nach bestätigter Rückfrage): die bisherige Datei erst jetzt entfernen – der neue Eintrag ist bestätigt
+    if (existing.doc?.file_path && existing.doc.file_path !== filePath && !(await removePayrollFile(supabase, existing.doc.file_path))) {
+      toast.warn(appMessage('payrollDocs.oldFileKept'), 9000)
+    }
+
     setMsg(appMessage("ui.2137fc6a781d", { p1: (emp?.first_name), p2: (emp?.last_name), p3: (formatParam('date', new Date(2000, selMonth - 1), {month:'long'})), p4: (selYear) }))
 
     // Protokoll (nur DASS ein Dokument hochgeladen wurde, kein Betrag)
@@ -148,7 +178,6 @@ export default function PayrollDocuments() {
     setTimeout(() => setMsg(''), 5000)
     fileRef.current.value = ''
     setSelNotes('')
-    setUploading(false)
     fetchAll()
   }
 
@@ -201,8 +230,10 @@ export default function PayrollDocuments() {
       const { error } = await supabase.from('payroll_documents').delete().eq('id', doc.id)
       if (error) { toast.error(appMessage("ui.5bbd80995ec4")); return }
       deleted = true
-      await supabase.storage.from('payroll-docs').remove([doc.file_path])
-      toast.success(appMessage("ui.d01284bfc449"))
+      const { error: fileErr } = await supabase.storage.from('payroll-docs').remove([doc.file_path])
+      // Batch 2F: ehrlich melden – Eintrag gelöscht, Datei aber noch da (erscheint unter „Aufbewahrung“)
+      if (fileErr) toast.warn(appMessage('payrollDocs.deleteFileKept'), 9000)
+      else toast.success(appMessage("ui.d01284bfc449"))
     } finally {
       deleteGuard.end()
       // War es das letzte Dokument der letzten Seite, direkt die vorherige gültige Seite laden

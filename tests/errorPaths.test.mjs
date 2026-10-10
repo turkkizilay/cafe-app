@@ -167,7 +167,6 @@ test('Krankmeldung mit Attest: fehlgeschlagene Verknüpfung wird gemeldet', () =
 
 test('Keine Supabase-Schreibaktion ohne Fehlerauswertung in Seiten (außer bewusst tolerierten)', () => {
   const allowed = [
-    "src/pages/PayrollDocuments.jsx: await supabase.storage.from('payroll-docs').remove([doc.file_path])",   // Datei nach gelöschtem Datensatz aufräumen
     "src/pages/Employees.jsx: await supabase.storage.from('employee-documents').remove([filePath])",
   ]
   const found = []

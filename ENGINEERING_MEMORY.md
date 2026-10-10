@@ -463,6 +463,14 @@ Migration 11) und muss vom Admin manuell unter Aufbewahrung gelöscht werden –
 Cron-Job (Production-Cron-Jobs: nur Backup, Push-Retry, Aktivitätsprotokoll). Einen Eintrag ohne Datei erkennt nichts.
 Production-Bucket `employee-documents`: 10 MB – App-Grenze gleich halten. (VERIFIED)
 Regression Protection: `tests/employeeDocsResilience` (echte Seite, Gegenproben gegen 5ded527).
+Batch 2F (Lohnabrechnungen): Nie einen festen Pfad mit `upsert:true` – das überschreibt eine vorhandene Datei vor dem
+DB-Eintrag, und das App-Backup enthält nur die Dateiliste (Inhalte nicht wiederherstellbar). Stattdessen: Belegung prüfen
+(nicht prüfbar → nichts hochladen), ausdrückliche Rückfrage, eigener Pfad je Upload (Mitarbeiterordner zuerst – darauf
+beruhen die Storage-Policies), `upsert:false`; ersetzte Datei erst nach bestätigtem Eintrag entfernen
+(`src/lib/payrollUpload.js`). i18n-Baseline vergleicht Aufruf-Snippets inkl. Einrückung: neue Abfragen in eine Lib,
+bestehende Aufrufe nicht umrücken. Test-Falle: DB-Tests mit `now()+x` als reiner Uhrzeit brechen nachts (C2: 23–3 Uhr) –
+Datum immer mitberechnen. (VERIFIED)
+Regression Protection: `tests/payrollUploadResilience` (echte Funktionen, Gegenproben gegen 2fb4d48).
 
 ## Project Anti-Patterns
 
