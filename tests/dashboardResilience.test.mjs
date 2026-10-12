@@ -35,7 +35,7 @@ function checkDashboard(src) {
   assert.equal((fa.match(/if \(outdated\(\)\) return/g) || []).length, 7, 'nach jedem await: veraltete Ladung bricht ab')
   assert.match(fa, /if \(!loadedOnceRef\.current\) setLoading\(true\)/, '„Lädt…“ nur beim ersten Laden')
   assert.doesNotMatch(fa, /^\s+setLoading\(true\)/m)
-  for (const [guard, setter] of [['!failed.mine', 'setNextShift('], ['!failed.live', 'setLiveClockIns('], ['!failed.team', 'setStats('], ['!failed.team', 'setTodayShifts(']]) {
+  for (const [guard, setter] of [['!failed.mine', 'setMyShifts('], ['!failed.live', 'setLiveClockIns('], ['!failed.team', 'setStats('], ['!failed.team', 'setTodayShifts(']]) {
     const i = fa.indexOf(setter); assert.ok(i > 0, setter)
     assert.ok(fa.lastIndexOf(`if (${guard}) {`, i) > 0 && fa.lastIndexOf(`if (${guard}) {`, i) > fa.lastIndexOf('await', i), `${setter} nur ohne Fehler`)
   }

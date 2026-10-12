@@ -13,6 +13,7 @@ import { openBreak } from '../lib/workHours'
 import { fetchBreaksForEntries } from '../lib/breaks'
 import { fetchStaffOperational, mergeStaffRows, fillEmbeddedEmployees } from '../lib/staffDirectory'
 import { useRefreshHandler } from '../context/RefreshContext.jsx'
+import { announceShift } from '../lib/shiftAnnouncement'
 import { useLiveLaborCost } from '../lib/useLiveLaborCost'
 import LiveLaborCostCard from '../components/LiveLaborCostCard'
 import LiveTimeControl from '../components/LiveTimeControl'
@@ -43,12 +44,11 @@ function formatShiftDay(dateStr) {
   return d.toLocaleDateString(getIntlLocale(), { weekday:'long', day:'numeric', month:'long' })
 }
 
-function timeUntil(dateStr, startTime) {
-  const target = new Date(`${dateStr}T${startTime}`)
-  const diff   = target - Date.now()
-  if (diff <= 0) return null
-  const h = Math.floor(diff / 3600000)
-  const m = Math.floor((diff % 3600000) / 60000)
+// Minuten bis Beginn (Berliner Wandzeit, lib/shiftAnnouncement.js) → „in 2h 10min“; null bei ≤ 0 oder > 48 h
+function timeUntil(minutes) {
+  if (!(minutes > 0)) return null
+  const h = Math.floor(minutes / 60)
+  const m = Math.floor(minutes % 60)
   if (h > 48) return null
   if (h === 0) return tr("dashboard.inMinutes", { count: m })
   if (m === 0) return tr("dashboard.inHours", { count: h })
@@ -88,7 +88,8 @@ export default function Dashboard() {
   const canManage = isAdmin || isManager
 
   const [myEmployee,  setMyEmployee]  = useState(null)
-  const [nextShift,   setNextShift]   = useState(null)
+  const [myShifts,    setMyShifts]    = useState([])   // eigene Schichten ab heute (wie geladen); die angezeigte wählt announceShift
+  const [now,         setNow]         = useState(() => new Date())   // Phasenwechsel ohne Neuladen (nur Zeit, keine Anfragen)
   const [todayShifts, setTodayShifts] = useState([])  // Alle Schichten heute (Admin)
   const [liveClockIns,setLiveClockIns]= useState([])
   const [liveBreaks,  setLiveBreaks]  = useState({})   // Pausen der offenen Schichten { entryId: [...] }
@@ -146,7 +147,7 @@ export default function Dashboard() {
       failed.mine = !!(shiftRes.error || empRes.error || myClockRes.error)
       if (!failed.mine) {
         const shifts = shiftRes.data || []
-        setNextShift(shifts[0] || null)
+        setMyShifts(shifts)
         setMyEmployee(empRes.data || null)
       }
       // Manager: fremde Mitarbeiter nur operativ (Migration 19) – Namen aus get_staff_operational()
@@ -277,6 +278,7 @@ export default function Dashboard() {
   }, [profile?.employee_id, canManage])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t) }, [])
   useRefreshHandler(fetchAll)   // Aktualisieren-Button
 
   // Stellvertretend JETZT buchen (Serverzeit, Bestätigung im Dialog); danach Serverstand + Live-Kosten neu laden
@@ -303,9 +305,14 @@ export default function Dashboard() {
   const firstName = myEmployee?.first_name
     || profile?.first_name   // Name aus Registrierung
     || ''                    // Kein Fallback auf Email mehr
-  const until     = nextShift ? timeUntil(nextShift.date, nextShift.start_time) : null
+  // Schichtbanner (Bugfix 12.10.2026): nur eine noch nicht beendete Schicht; Phase nach Berliner Zeit
+  const shiftInfo = announceShift(myShifts, now)
+  const nextShift = shiftInfo.shift
+  const until     = nextShift && shiftInfo.phase !== 'running' ? timeUntil(shiftInfo.startsIn) : null
   const todayDate = localDateStr()
-  const isToday   = nextShift?.date === todayDate
+  const isToday   = shiftInfo.isToday
+  // „Jetzt Einclocken“ nur, wenn der zuverlässig geladene Status „nicht eingestempelt“ bestätigt (keine Extra-Anfrage)
+  const canClockIn = ['soon', 'imminent', 'running'].includes(shiftInfo.phase) && loadState.mine === 'ok' && !clockedIn
   const noEmpLinked = !profile?.employee_id && !myEmployee
   // Batch 2d: 'failed' = noch nie geladen → „nicht geladen“ statt Null/Leerzustand; 'stale' = letzter Stand + Hinweis
   const notLoaded   = g => loadState[g] === 'failed'
@@ -390,8 +397,14 @@ export default function Dashboard() {
                 <div style={{ fontSize:22, fontWeight:700, lineHeight:1.3 }}>
                   {isToday && clockedIn
                     ? tr("ui.721773fe1f69")
-                    : isToday
-                    ? tr("ui.686825b73377", { p1: (until || tr('dashboard.soon')) })
+                    : shiftInfo.phase === 'running'
+                    ? tr('dashboard.shiftRunning', { time: nextShift.start_time?.slice(0,5) })
+                    : shiftInfo.phase === 'imminent'
+                    ? tr("ui.686825b73377", { p1: tr('dashboard.soon') })
+                    : shiftInfo.phase === 'soon'
+                    ? tr('dashboard.shiftSoon')
+                    : isToday && until
+                    ? tr("ui.686825b73377", { p1: until })
                     : tr("ui.a0e4bf554be7", { p1: (formatShiftDay(nextShift.date)) })}
                 </div>
                 <div style={{ fontSize:14, opacity:0.9, marginTop:6, display:'flex', alignItems:'center', gap:12 }}>
@@ -402,6 +415,8 @@ export default function Dashboard() {
               </>
             ) : notLoaded('mine') ? (
               <div style={{ fontSize:20, fontWeight:700 }} data-testid="dashboard-mine-failed">{tr('dashboard.myShiftsFailed')}</div>
+            ) : shiftInfo.phase === 'unknown' ? (
+              <div style={{ fontSize:16, fontWeight:600 }} data-testid="dashboard-shift-unknown">{tr('dashboard.shiftUnknown')}</div>
             ) : (
               <>
                 <div style={{ fontSize:20, fontWeight:700 }}>{tr("ui.e0543209621f")}</div>
@@ -412,7 +427,7 @@ export default function Dashboard() {
 
           {/* Quick Actions */}
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            {!clockedIn && isToday && nextShift && (
+            {canClockIn && (
               <Link to="/einclocken" style={{ background:'rgba(255,255,255,0.2)', backdropFilter:'blur(8px)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:10, padding:'10px 18px', color:'#fff', textDecoration:'none', fontSize:13, fontWeight:600 }}>{tr("ui.30330faa0d54")}</Link>
             )}
             {clockedIn && (
@@ -571,6 +586,8 @@ export default function Dashboard() {
                 </div>
               ) : notLoaded('mine') ? (
                 <div style={{ padding:'20px 16px', fontSize:13, color:'var(--warn)' }} data-testid="dashboard-mine-failed-card">{tr('dashboard.myShiftsFailed')}</div>
+              ) : shiftInfo.phase === 'unknown' ? (
+                <div style={{ padding:'20px 16px', fontSize:13, color:'var(--text-secondary)' }} data-testid="dashboard-shift-unknown-card">{tr('dashboard.shiftUnknown')}</div>
               ) : (
                 <div className="empty-state" style={{ padding:'24px 16px' }}>
                   <div className="empty-state-icon">🌴</div>

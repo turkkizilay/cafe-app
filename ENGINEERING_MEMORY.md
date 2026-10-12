@@ -471,6 +471,13 @@ beruhen die Storage-Policies), `upsert:false`; ersetzte Datei erst nach bestäti
 bestehende Aufrufe nicht umrücken. Test-Falle: DB-Tests mit `now()+x` als reiner Uhrzeit brechen nachts (C2: 23–3 Uhr) –
 Datum immer mitberechnen. (VERIFIED)
 Regression Protection: `tests/payrollUploadResilience` (echte Funktionen, Gegenproben gegen 2fb4d48).
+Schichtbanner (Bugfix 12.10.2026): „Nächste Schicht“ nie als erste Zeile ab heute 00:00 – sonst wird eine heute schon
+beendete Schicht angekündigt, und ein Ersatztext für „Beginn ≤ jetzt“ („gleich“) dreht die Aussage um. Auswahl und Phase
+(60–15 bald · 15–0 gleich · läuft · beendet) in `src/lib/shiftAnnouncement.js`, beim Rendern mit Minutentakt, Zeitzone
+fest Europe/Berlin (Wandzeit über Intl). Aktionen wie „Einclocken“ nur bei zuverlässig geladenem Status (`loadState`
+'ok'), nie bei veraltetem/fehlerhaftem. Test-Technik: steuerbare Uhr im Browser (Date-Unterklasse + Intervall-Rückrufe
+von Hand) und `Emulation.setTimezoneOverride`. (VERIFIED)
+Regression Protection: `tests/shiftBanner` (echte Seite, Gegenprobe gegen a023cca).
 
 ## Project Anti-Patterns
 
